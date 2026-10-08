@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix Remix Cropsa egypt",
+  "description": "منظومة كروبسا مصر (Cropsa egypt) الرائدة لإدارة التمويل والتقسيط، وإدارة شركات التقسيط، وقواعد بيانات العملاء، والتحليل الائتماني بالذكاء الاصطناعي والمتابعة والتحصيل.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
