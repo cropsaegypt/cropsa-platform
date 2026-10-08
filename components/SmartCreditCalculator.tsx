@@ -48,26 +48,44 @@ export const SmartCreditCalculator: React.FC<SmartCreditCalculatorProps> = ({
     addAuditLog 
   } = useStore();
 
-  const isCompanyAdmin = currentUser?.role === Role.INSTALLMENT_COMPANY || 
-                         currentUser?.role === Role.SUPER_ADMIN || 
-                         currentUser?.role === Role.ADMIN;
+  const isCropsaAdmin = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.ADMIN;
   
-  const companyId = currentCompany?.id || currentUser?.companyId || 'comp_01';
-  const companyName = currentCompany?.name || 'شركة التقسيط المعتمدة';
+  // Independent Tool Mode: Cropsa General OR Company Specific
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
+    isCropsaAdmin ? 'crobsa_general' : (currentCompany?.id || currentUser?.companyId || 'comp_01')
+  );
 
-  // Security Check: strictly prohibited for Branch Managers and Branch Staff
-  const isBranchUser = currentUser?.role === Role.BRANCH_MANAGER || 
-                       currentUser?.role === Role.COMPANY_EMPLOYEE;
+  const selectedCompany = useMemo(() => {
+    if (selectedCompanyId === 'crobsa_general') {
+      return {
+        id: 'crobsa_general',
+        name: 'منظومة كروبسا مصر (المعيار العام)',
+        commissionRate: 3.0,
+        creditCeiling: 100000000,
+        usedCredit: 0
+      };
+    }
+    return companies.find(c => c.id === selectedCompanyId) || currentCompany || companies[0];
+  }, [selectedCompanyId, companies, currentCompany]);
 
-  if (isBranchUser) {
+  const companyId = selectedCompany?.id || 'crobsa_general';
+  const companyName = selectedCompany?.name || 'منظومة كروبسا مصر';
+
+  // Granular Permission Check: System Admin OR User with explicit 'ai_analysis' permission
+  const hasCalculatorPermission = 
+    isCropsaAdmin || 
+    currentUser?.role === Role.INSTALLMENT_COMPANY || 
+    currentUser?.permissions?.includes('ai_analysis');
+
+  if (!hasCalculatorPermission) {
     return (
       <div className="bg-white rounded-3xl p-8 border border-rose-200 text-center space-y-4 shadow-sm" dir="rtl">
         <div className="h-16 w-16 mx-auto rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
           <ShieldCheck className="h-8 w-8" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900">صلاحية محجوبة لفروع الشركة</h2>
+        <h2 className="text-xl font-bold text-slate-900">صلاحية محجوبة</h2>
         <p className="text-sm text-slate-600 max-w-md mx-auto">
-          حاسبة الائتمان والتقييم المتقدم مخصصة حصرياً للمدير العام لشركة التقسيط ومدير النظام (كروبسا)، وليست متاحة لمستوى الفروع.
+          حاسبة الائتمان والتقييم الذكي مخصصة فقط للحسابات التي يمنحها مدير النظام صلاحية (ai_analysis). يرجى مراجعة الإدارة لتفعيل الصلاحية لك.
         </p>
         {onBack && (
           <button
@@ -363,37 +381,58 @@ export const SmartCreditCalculator: React.FC<SmartCreditCalculatorProps> = ({
       {/* Top Header Card */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-cropsa-800 text-white flex items-center justify-center shadow-md">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md">
             <Calculator className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-black text-slate-900">
-                حاسبة الائتمان والتقييم الذكي للجدارة
+                {isCropsaAdmin && selectedCompanyId === 'crobsa_general' 
+                  ? 'حاسبة كروبسا المركزية لتقييم الائتمان والتقسيط الذكي' 
+                  : `حاسبة الائتمان والتقييم الذكي (${companyName})`}
               </h1>
               <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                خاص بإدارة شركة التقسيط
+                {isCropsaAdmin ? 'إدارة منظومة كروبسا مصر' : 'خاص بإدارة شركة التقسيط'}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              التحقق الفوري من أهلية العميل بناءً على مدة التمويل والأوراق والمستندات المرفوعة في ملف الحالة
+              {isCropsaAdmin 
+                ? 'أداة ذكية متكاملة لحساب أقساط التمويل وتقييم جدارة العملاء لمنظومة كروبسا أو وفق ضوابط أي شركة تقسيط معتمدة'
+                : 'التحقق الفوري من أهلية العميل وحساب الأقساط بناءً على برامج وسياسات الشركة'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <div className="text-left md:text-right px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-            <span className="text-[10px] text-slate-400 block font-semibold">الجهة المقيمة:</span>
-            <span className="font-bold text-slate-800 flex items-center gap-1">
-              <Building2 className="h-3.5 w-3.5 text-emerald-600" />
-              {companyName}
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Company Selector for Cropsa System Administrators */}
+          {isCropsaAdmin ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-xs font-bold text-slate-600 whitespace-nowrap">الجهة / النظام:</span>
+              <select
+                value={selectedCompanyId}
+                onChange={(e) => setSelectedCompanyId(e.target.value)}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              >
+                <option value="crobsa_general">🌿 منظومة كروبسا مصر (المعيار العام)</option>
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>🏢 {c.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="text-left md:text-right px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+              <span className="text-[10px] text-slate-400 block font-semibold">الجهة المقيمة:</span>
+              <span className="font-bold text-slate-800 flex items-center gap-1">
+                <Building2 className="h-3.5 w-3.5 text-emerald-600" />
+                {companyName}
+              </span>
+            </div>
+          )}
 
           {onBack && (
             <button
               onClick={onBack}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <ArrowRight className="h-3.5 w-3.5" />
               <span>رجوع</span>

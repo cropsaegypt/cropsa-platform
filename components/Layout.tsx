@@ -274,7 +274,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             icon: HelpCircle
           },
           {
-            id: 'company-ai',
+            id: 'credit-calculator',
             label: isAr ? 'حاسبة الائتمان والتقييم' : 'Credit Calculator',
             icon: Calculator
           }
@@ -369,17 +369,34 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         (a.assignedCompanyIds?.includes(targetCompanyId) || a.assignedCompanyIds?.includes(currentUser.id))
       );
 
-      const newAppsCount = companySpecificApps.filter(a => 
-        a.status === ApplicationStatus.RECEIVED || 
-        a.status === ApplicationStatus.PENDING_ADMIN || 
-        !a.assignedOfficerId
-      ).length;
+      const isNewIncomingApp = (a: Application) => {
+        if (a.isArchived) return false;
+        if (
+          a.status === ApplicationStatus.APPROVED || 
+          a.status === ApplicationStatus.AMOUNT_TRANSFERRED || 
+          a.status === ApplicationStatus.REJECTED ||
+          a.status === ApplicationStatus.CANCELLED_BY_CLIENT ||
+          a.status === ApplicationStatus.WITHDRAWN
+        ) {
+          return false;
+        }
+        if (a.assignedBranchId || a.assignedOfficerId) return false;
+        return (
+          a.status === ApplicationStatus.RECEIVED || 
+          a.status === ApplicationStatus.PENDING_ADMIN || 
+          a.status === ApplicationStatus.PENDING_REVIEW
+        );
+      };
+
+      const newAppsCount = companySpecificApps.filter(isNewIncomingApp).length;
 
       const trackingCasesCount = companySpecificApps.filter(a => 
-        a.status !== ApplicationStatus.RECEIVED && 
-        a.status !== ApplicationStatus.PENDING_ADMIN &&
+        !a.isArchived && 
+        !isNewIncomingApp(a) &&
         a.status !== ApplicationStatus.REJECTED &&
-        a.status !== ApplicationStatus.AMOUNT_TRANSFERRED
+        a.status !== ApplicationStatus.AMOUNT_TRANSFERRED &&
+        a.status !== ApplicationStatus.CANCELLED_BY_CLIENT &&
+        a.status !== ApplicationStatus.WITHDRAWN
       ).length;
 
       sections.push({
@@ -412,11 +429,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             icon: CheckCircle2,
             count: trackingCasesCount || undefined
           },
-          {
+          ...( (currentUser.role === Role.INSTALLMENT_COMPANY || currentUser.permissions?.includes('ai_analysis')) ? [{
             id: 'company-ai',
             label: isAr ? 'حاسبة الائتمان والتقييم الذكي' : 'Credit Calculator',
             icon: Calculator
-          },
+          }] : [] ),
           {
             id: 'company-database',
             label: isAr ? 'دليل وسجل العملاء' : 'Clients Directory',
@@ -478,16 +495,37 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         (a.assignedCompanyIds?.includes(bmCompanyId) || a.assignedCompanyIds?.includes(currentUser.id))
       );
 
+      const isBmNewIncomingApp = (a: Application) => {
+        if (a.isArchived) return false;
+        if (
+          a.status === ApplicationStatus.APPROVED || 
+          a.status === ApplicationStatus.AMOUNT_TRANSFERRED || 
+          a.status === ApplicationStatus.REJECTED ||
+          a.status === ApplicationStatus.CANCELLED_BY_CLIENT ||
+          a.status === ApplicationStatus.WITHDRAWN
+        ) {
+          return false;
+        }
+        if (a.assignedBranchId || a.assignedOfficerId) return false;
+        return (
+          a.status === ApplicationStatus.RECEIVED || 
+          a.status === ApplicationStatus.PENDING_ADMIN || 
+          a.status === ApplicationStatus.PENDING_REVIEW
+        );
+      };
+
       const bmBranchAppsCount = bmCompanyApps.filter(a => 
-        a.status !== ApplicationStatus.RECEIVED && 
-        a.status !== ApplicationStatus.PENDING_ADMIN &&
+        !a.isArchived && 
+        !isBmNewIncomingApp(a) &&
         a.status !== ApplicationStatus.REJECTED &&
         a.status !== ApplicationStatus.AMOUNT_TRANSFERRED &&
+        a.status !== ApplicationStatus.CANCELLED_BY_CLIENT &&
+        a.status !== ApplicationStatus.WITHDRAWN &&
         (a.assignedBranchId === currentUser.branchId || (currentUser.branchName && a.assignedBranchName === currentUser.branchName))
       ).length;
 
       const bmNewAppsCount = bmCompanyApps.filter(a => 
-        (a.status === ApplicationStatus.RECEIVED || a.status === ApplicationStatus.PENDING_ADMIN || !a.assignedOfficerId) &&
+        isBmNewIncomingApp(a) &&
         (a.assignedBranchId === currentUser.branchId || !a.assignedBranchId)
       ).length;
 
@@ -555,18 +593,38 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
 
     // ========================================================
     // 4. COMPANY EMPLOYEE (موظف دراسة وفحص ائتماني)
-    // ========================================================
     else if (currentUser.role === Role.COMPANY_EMPLOYEE) {
+      const isEmpNewIncomingApp = (a: Application) => {
+        if (a.isArchived) return false;
+        if (
+          a.status === ApplicationStatus.APPROVED || 
+          a.status === ApplicationStatus.AMOUNT_TRANSFERRED || 
+          a.status === ApplicationStatus.REJECTED ||
+          a.status === ApplicationStatus.CANCELLED_BY_CLIENT ||
+          a.status === ApplicationStatus.WITHDRAWN
+        ) {
+          return false;
+        }
+        if (a.assignedBranchId || a.assignedOfficerId) return false;
+        return (
+          a.status === ApplicationStatus.RECEIVED || 
+          a.status === ApplicationStatus.PENDING_ADMIN || 
+          a.status === ApplicationStatus.PENDING_REVIEW
+        );
+      };
+
       const empMyCasesCount = applications.filter(a => 
         !a.isArchived && 
-        a.status !== ApplicationStatus.RECEIVED && 
-        a.status !== ApplicationStatus.PENDING_ADMIN &&
+        !isEmpNewIncomingApp(a) &&
+        a.status !== ApplicationStatus.REJECTED &&
+        a.status !== ApplicationStatus.AMOUNT_TRANSFERRED &&
+        a.status !== ApplicationStatus.CANCELLED_BY_CLIENT &&
+        a.status !== ApplicationStatus.WITHDRAWN &&
         (a.assignedOfficerId === currentUser.id || a.assignedBranchId === currentUser.branchId)
       ).length;
 
       const empNewAppsCount = applications.filter(a => 
-        !a.isArchived && 
-        (a.status === ApplicationStatus.RECEIVED || a.status === ApplicationStatus.PENDING_ADMIN || !a.assignedOfficerId) &&
+        isEmpNewIncomingApp(a) &&
         (a.assignedBranchId === currentUser.branchId || !a.assignedBranchId)
       ).length;
 
@@ -697,10 +755,32 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         (!isStaff || !currentUser.branchId || a.assignedBranchId === currentUser.branchId || !a.assignedBranchId)
       ).length;
 
+      const isMobNewIncoming = (a: Application) => {
+        if (a.isArchived) return false;
+        if (
+          a.status === ApplicationStatus.APPROVED || 
+          a.status === ApplicationStatus.AMOUNT_TRANSFERRED || 
+          a.status === ApplicationStatus.REJECTED ||
+          a.status === ApplicationStatus.CANCELLED_BY_CLIENT ||
+          a.status === ApplicationStatus.WITHDRAWN
+        ) {
+          return false;
+        }
+        if (a.assignedBranchId || a.assignedOfficerId) return false;
+        return (
+          a.status === ApplicationStatus.RECEIVED || 
+          a.status === ApplicationStatus.PENDING_ADMIN || 
+          a.status === ApplicationStatus.PENDING_REVIEW
+        );
+      };
+
       const trackingCasesCount = applications.filter(a => 
         !a.isArchived && 
-        a.status !== ApplicationStatus.RECEIVED && 
-        a.status !== ApplicationStatus.PENDING_ADMIN &&
+        !isMobNewIncoming(a) &&
+        a.status !== ApplicationStatus.REJECTED &&
+        a.status !== ApplicationStatus.AMOUNT_TRANSFERRED &&
+        a.status !== ApplicationStatus.CANCELLED_BY_CLIENT &&
+        a.status !== ApplicationStatus.WITHDRAWN &&
         (!isStaff || a.assignedOfficerId === currentUser.id || a.assignedBranchId === currentUser.branchId)
       ).length;
 
@@ -812,11 +892,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         active: currentPage === 'user-wallet'
       },
       {
-        id: 'action-client-followup',
-        label: isAr ? 'متابعة العملاء' : 'Follow-up',
+        id: 'clients',
+        label: isAr ? 'العملاء' : 'Clients',
         icon: Users,
-        isAction: true,
-        action: () => setClientFollowUpOpen(true)
+        active: currentPage === 'clients'
       }
     ];
   }, [currentUser.role, language, currentPage, applications.length, overdueCases.length, companies.length]);
@@ -939,37 +1018,47 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
           )}
         </div>
 
-        {/* User Identity Banner (Clickable to switch role) */}
+        {/* User Identity Banner (Clickable to switch role for Super Admin only) */}
         {isCollapsed ? (
           <div 
-            onClick={() => setRoleSwitcherModalOpen(true)}
-            className="p-2 mx-auto my-2.5 bg-slate-800/50 hover:bg-slate-800/80 rounded-xl border border-slate-700/50 cursor-pointer transition-all flex flex-col items-center justify-center shrink-0 w-12 h-12 relative group"
-            title={`${currentUser.name} (${roleLabels[currentUser.role] || ''}) - ${language === 'ar' ? 'اضغط لتبديل الحساب وتجربة الصلاحيات' : 'Switch Role'}`}
+            onClick={() => {
+              if (currentUser.role === Role.SUPER_ADMIN) setRoleSwitcherModalOpen(true);
+            }}
+            className={`p-2 mx-auto my-2.5 bg-slate-800/50 rounded-xl border border-slate-700/50 transition-all flex flex-col items-center justify-center shrink-0 w-12 h-12 relative group ${
+              currentUser.role === Role.SUPER_ADMIN ? 'cursor-pointer hover:bg-slate-800/80 hover:border-emerald-500/40' : 'cursor-default'
+            }`}
+            title={`${currentUser.name} (${roleLabels[currentUser.role] || ''})${currentUser.role === Role.SUPER_ADMIN ? ` - ${language === 'ar' ? 'اضغط لتبديل الحساب وتجربة الصلاحيات' : 'Switch Role'}` : ''}`}
           >
-            <div className="h-8 w-8 rounded-lg bg-sky-600/20 text-sky-400 border border-sky-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+            <div className="h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center font-bold text-xs shrink-0">
               {currentUser.name.charAt(0)}
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-900" />
           </div>
         ) : (
           <div 
-            onClick={() => setRoleSwitcherModalOpen(true)}
-            className="p-3 mx-3 my-2.5 bg-slate-800/50 hover:bg-slate-800/80 rounded-xl border border-slate-700/50 cursor-pointer transition-all group shrink-0"
-            title={language === 'ar' ? 'اضغط لتغيير الحساب وتجربة الصلاحيات' : 'Switch Role'}
+            onClick={() => {
+              if (currentUser.role === Role.SUPER_ADMIN) setRoleSwitcherModalOpen(true);
+            }}
+            className={`p-3 mx-3 my-2.5 bg-slate-800/50 rounded-xl border border-slate-700/50 transition-all group shrink-0 ${
+              currentUser.role === Role.SUPER_ADMIN ? 'cursor-pointer hover:bg-slate-800/80 hover:border-emerald-500/40' : 'cursor-default'
+            }`}
+            title={currentUser.role === Role.SUPER_ADMIN ? (language === 'ar' ? 'اضغط لتغيير الحساب وتجربة الصلاحيات' : 'Switch Role') : undefined}
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 <span>{language === 'ar' ? 'الحساب النشط' : 'Active'}</span>
               </span>
-              <span className="text-[10px] text-slate-400 group-hover:text-sky-300 flex items-center gap-1">
-                <ArrowLeftRight className="h-3 w-3 text-slate-400 group-hover:text-sky-300" />
-                <span>{language === 'ar' ? 'تبديل' : 'Switch'}</span>
-              </span>
+              {currentUser.role === Role.SUPER_ADMIN && (
+                <span className="text-[10px] text-emerald-400/80 group-hover:text-emerald-300 flex items-center gap-1 font-bold">
+                  <ArrowLeftRight className="h-3 w-3" />
+                  <span>{language === 'ar' ? 'تبديل' : 'Switch'}</span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-sky-600/20 text-sky-400 border border-sky-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+              <div className="h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center font-bold text-xs shrink-0">
                 {currentUser.name.charAt(0)}
               </div>
               <div className="min-w-0 flex-1">
@@ -1243,17 +1332,19 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
 
           {/* Controls: Quick follow-up, Language, Notifications, Avatar */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Clean Client Follow-up Button */}
-            <button
-              onClick={() => setClientFollowUpOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-xl transition-colors shadow-2xs"
-              title={language === 'ar' ? 'متابعة العملاء وسجل الإجراءات' : 'Client Follow-Up'}
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">
-                {language === 'ar' ? 'متابعة العملاء' : 'Client Follow-Up'}
-              </span>
-            </button>
+            {/* Clean Client Follow-up Button: Exclusively for Cropsa System Administrators */}
+            {(currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) && (
+              <button
+                onClick={() => setClientFollowUpOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors shadow-2xs"
+                title={language === 'ar' ? 'متابعة العملاء وسجل الإجراءات' : 'Client Follow-Up'}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">
+                  {language === 'ar' ? 'متابعة العملاء' : 'Client Follow-Up'}
+                </span>
+              </button>
+            )}
 
             {/* Language Toggle Button */}
             <button
@@ -1419,13 +1510,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                 >
                   <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shadow-lg transition-transform active:scale-95 ${
                     item.active 
-                      ? 'bg-gradient-to-tr from-crobsa-700 to-sky-600 text-white ring-4 ring-crobsa-100' 
+                      ? 'bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white ring-4 ring-emerald-100' 
                       : 'bg-slate-900 text-white hover:bg-slate-800'
                   }`}>
                     <Icon className="h-6 w-6" />
                   </div>
                   <span className={`text-[10px] font-bold mt-1 ${
-                    item.active ? 'text-crobsa-800 font-black' : 'text-slate-600'
+                    item.active ? 'text-emerald-700 font-black' : 'text-slate-600'
                   }`}>
                     {item.label}
                   </span>
@@ -1438,14 +1529,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                 key={item.id}
                 onClick={() => item.isAction ? item.action?.() : onNavigate(item.id)}
                 className={`relative flex-1 py-1 flex flex-col items-center justify-center transition-all active:scale-95 ${
-                  item.active ? 'text-crobsa-700 font-black' : 'text-slate-500 hover:text-slate-800 font-medium'
+                  item.active ? 'text-emerald-600 font-black' : 'text-slate-500 hover:text-slate-800 font-medium'
                 }`}
               >
                 <div className="relative">
-                  <Icon className={`h-5 w-5 transition-colors ${item.active ? 'text-crobsa-700 stroke-[2.5]' : 'text-slate-500'}`} />
+                  <Icon className={`h-5 w-5 transition-colors ${item.active ? 'text-emerald-600 stroke-[2.5]' : 'text-slate-500'}`} />
                   {item.badge && (
                     <span className={`absolute -top-1.5 -right-2 text-[9px] font-black px-1.5 py-0.2 rounded-full min-w-4 text-center ring-2 ring-white text-white ${
-                      item.badgeColor === 'rose' ? 'bg-rose-500' : item.badgeColor === 'sky' ? 'bg-sky-600' : 'bg-crobsa-600'
+                      item.badgeColor === 'rose' ? 'bg-rose-500' : item.badgeColor === 'sky' ? 'bg-sky-600' : 'bg-emerald-600'
                     }`}>
                       {item.badge}
                     </span>

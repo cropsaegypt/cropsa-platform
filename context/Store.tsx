@@ -60,6 +60,7 @@ import {
   DEFAULT_BRANDING
 } from '../services/mockData';
 import { translations } from '../services/translations';
+import { supabase } from '../services/supabase';
 
 interface NavigationTarget {
   page: string;
@@ -154,6 +155,8 @@ interface StoreContextType {
 
   // Client Directory & Cross-Company Access Requests
   addClient: (client: Partial<Client>) => Promise<void>;
+  updateClient: (clientId: string, data: Partial<Client>) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
   addClientTimelineEvent: (clientId: string, event: Omit<ClientTimelineItem, 'id' | 'timestamp' | 'clientId'>) => Promise<void>;
   addClientCrossComment: (params: {
     clientId: string;
@@ -1250,7 +1253,67 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch (err) {
       console.warn('Firestore addClient fallback:', err);
     }
+    try {
+      if (supabase) {
+        await supabase.from('clients').insert([{
+          id: newClient.id,
+          name: newClient.name,
+          national_id: newClient.nationalId,
+          phone: newClient.phoneNumber,
+          governorate: newClient.governorate,
+          job_title: newClient.profession,
+          credit_rating: typeof newClient.creditRating === 'number' ? newClient.creditRating : 80,
+          total_financed: newClient.totalApprovedAmount || 0
+        }]);
+      }
+    } catch (err) {
+      console.warn('Supabase addClient fallback:', err);
+    }
     addAuditLog('CREATE_CLIENT', `Added client ${newClient.name}`, newClient.id);
+  };
+
+  const updateClient = async (clientId: string, data: Partial<Client>) => {
+    setClients(prev => prev.map(c => c.id === clientId ? { ...c, ...data } : c));
+    try {
+      await updateDoc(doc(db, 'clients', clientId), data);
+    } catch (err) {
+      console.warn('Firestore updateClient fallback:', err);
+    }
+    try {
+      if (supabase) {
+        const payload: Record<string, any> = {};
+        if (data.name !== undefined) payload.name = data.name;
+        if (data.nationalId !== undefined) payload.national_id = data.nationalId;
+        if (data.phoneNumber !== undefined) payload.phone = data.phoneNumber;
+        if (data.governorate !== undefined) payload.governorate = data.governorate;
+        if (data.profession !== undefined) payload.job_title = data.profession;
+        if (data.creditRating !== undefined) payload.credit_rating = typeof data.creditRating === 'number' ? data.creditRating : 80;
+        if (data.totalApprovedAmount !== undefined) payload.total_financed = data.totalApprovedAmount;
+        if (Object.keys(payload).length > 0) {
+          await supabase.from('clients').update(payload).eq('id', clientId);
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase updateClient fallback:', err);
+    }
+    addAuditLog('UPDATE_CLIENT', `Updated client ${clientId}`, clientId);
+  };
+
+  const deleteClient = async (clientId: string) => {
+    setClients(prev => prev.filter(c => c.id !== clientId));
+    try {
+      await deleteDoc(doc(db, 'clients', clientId));
+    } catch (err) {
+      console.warn('Firestore deleteClient fallback:', err);
+    }
+    try {
+      if (supabase) {
+        await supabase.from('clients').delete().eq('id', clientId);
+      }
+    } catch (err) {
+      console.warn('Supabase deleteClient fallback:', err);
+    }
+    addAuditLog('DELETE_CLIENT', `Deleted client ${clientId}`, clientId);
   };
 
   const addClientTimelineEvent = async (clientId: string, event: Omit<ClientTimelineItem, 'id' | 'timestamp' | 'clientId'>) => {
@@ -2034,6 +2097,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       details: `تم توجيه الطلب إلى: ${companyNames} ${resolvedBranchName ? `(الفرع: ${resolvedBranchName})` : ''} ${resolvedOfficerName ? `(المسؤول: ${resolvedOfficerName})` : ''}`
     };
 
+    const isActuallyAssigned = Boolean(resolvedBranchId || resolvedOfficerId);
+    const resolvedStatus = isActuallyAssigned ? ApplicationStatus.PAPER_REVIEW : ApplicationStatus.RECEIVED;
+
     const updatedApp: Application = {
       ...app,
       assignedCompanyIds: companyIds,
@@ -2042,7 +2108,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       assignedOfficerId: resolvedOfficerId,
       assignedOfficerName: resolvedOfficerName,
       assignedAt: nowStr,
-      status: ApplicationStatus.RECEIVED,
+      status: resolvedStatus,
       history: [newHistoryItem, ...app.history]
     };
 
@@ -2055,7 +2121,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         assignedOfficerId: updatedApp.assignedOfficerId,
         assignedOfficerName: updatedApp.assignedOfficerName,
         assignedAt: nowStr,
-        status: ApplicationStatus.RECEIVED,
+        status: resolvedStatus,
         history: updatedApp.history
       });
     } catch (err) {
@@ -2603,14 +2669,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const app = applications.find(a => a.id === appId);
     if (!app) return;
 
-    // Check company workflow settings (defaults to APPROVED / طلب معتمد)
+    // Check company workflow settings (defaults to PAPER_REVIEW / مراجعة الأوراق)
     const company = companies.find(c => app.assignedCompanyIds?.includes(c.id)) || currentCompany;
-    let targetPostStatus = ApplicationStatus.APPROVED;
+    let targetPostStatus = ApplicationStatus.PAPER_REVIEW;
     if (company?.workflowConfig?.useCustomScheme && company.workflowConfig.postAssignStage) {
       targetPostStatus = company.workflowConfig.postAssignStage as ApplicationStatus;
     }
 
-    const newStatus = (app.status === ApplicationStatus.PENDING_ADMIN || app.status === ApplicationStatus.RECEIVED)
+    const newStatus = (app.status === ApplicationStatus.PENDING_ADMIN || app.status === ApplicationStatus.RECEIVED || app.status === ApplicationStatus.PENDING_REVIEW)
       ? targetPostStatus
       : app.status;
 
@@ -2618,7 +2684,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ? (app.requestedAmount || 0)
       : app.approvedAmount;
 
-    const statusLabel = STATUS_ARABIC[newStatus] || 'طلب معتمد';
+    const statusLabel = STATUS_ARABIC[newStatus] || 'مراجعة الأوراق';
 
     const newHistoryItem = {
       action: 'OFFICER_ASSIGNED',
@@ -2674,14 +2740,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const app = applications.find(a => a.id === appId);
     if (!app) return;
 
-    // Check company workflow settings (defaults to APPROVED / طلب معتمد)
+    // Check company workflow settings (defaults to PAPER_REVIEW / مراجعة الأوراق)
     const company = companies.find(c => app.assignedCompanyIds?.includes(c.id)) || currentCompany;
-    let targetPostStatus = ApplicationStatus.APPROVED;
+    let targetPostStatus = ApplicationStatus.PAPER_REVIEW;
     if (company?.workflowConfig?.useCustomScheme && company.workflowConfig.postAssignStage) {
       targetPostStatus = company.workflowConfig.postAssignStage as ApplicationStatus;
     }
 
-    const newStatus = (app.status === ApplicationStatus.PENDING_ADMIN || app.status === ApplicationStatus.RECEIVED)
+    const newStatus = (app.status === ApplicationStatus.PENDING_ADMIN || app.status === ApplicationStatus.RECEIVED || app.status === ApplicationStatus.PENDING_REVIEW)
       ? targetPostStatus
       : app.status;
 
@@ -2689,7 +2755,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ? (app.requestedAmount || 0)
       : app.approvedAmount;
 
-    const statusLabel = STATUS_ARABIC[newStatus] || 'طلب معتمد';
+    const statusLabel = STATUS_ARABIC[newStatus] || 'مراجعة الأوراق';
     const details = officerName
       ? `تم توجيه الملف لفرع (${branchName}) وإسناد المسؤول: ${officerName} - تحويل الطلب تلقائياً إلى حالة: ${statusLabel}`
       : `تم إسناد الطلب لفرع (${branchName}) بشكل عام - تحويل الطلب تلقائياً إلى حالة: ${statusLabel}`;
@@ -2797,12 +2863,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         );
 
         const compObj = companies.find(c => c.id === resolvedCompanyId);
-        let targetPostStatus = ApplicationStatus.APPROVED;
+        let targetPostStatus = ApplicationStatus.PAPER_REVIEW;
         if (compObj?.workflowConfig?.useCustomScheme && compObj.workflowConfig.postAssignStage) {
           targetPostStatus = compObj.workflowConfig.postAssignStage as ApplicationStatus;
         }
 
-        const newStatus = (a.status === ApplicationStatus.PENDING_ADMIN || a.status === ApplicationStatus.RECEIVED)
+        const newStatus = (a.status === ApplicationStatus.PENDING_ADMIN || a.status === ApplicationStatus.RECEIVED || a.status === ApplicationStatus.PENDING_REVIEW)
           ? targetPostStatus
           : a.status;
 
@@ -2810,7 +2876,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           ? (a.requestedAmount || 0)
           : a.approvedAmount;
 
-        const statusLabel = STATUS_ARABIC[newStatus] || 'طلب معتمد';
+        const statusLabel = STATUS_ARABIC[newStatus] || 'مراجعة الأوراق';
 
         const newHistItem = {
           action: 'AUTO_BRANCH_ASSIGNED',
@@ -3777,6 +3843,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       updateStaffPassword,
       bulkImportBranchesAndStaff,
       addClient,
+      updateClient,
+      deleteClient,
       addClientTimelineEvent,
       addClientCrossComment,
       requestClientAccess,

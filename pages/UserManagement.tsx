@@ -82,6 +82,13 @@ export const UserManagement: React.FC = () => {
     return branches.filter(b => b.companyId === formData.companyId);
   }, [branches, formData.companyId]);
 
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([
+    'view_clients', 
+    'request_access', 
+    'ai_analysis', 
+    'approve_apps'
+  ]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const selectedBranch = branches.find(b => b.id === formData.branchId);
@@ -90,7 +97,7 @@ export const UserManagement: React.FC = () => {
       ...formData,
       branchName: selectedBranch?.name || undefined,
       governorate: selectedBranch?.governorate || formData.governorate,
-      permissions: isCompanyRole ? ['view_clients', 'request_access', 'ai_analysis', 'approve_apps'] : undefined
+      permissions: isCompanyRole ? selectedPermissions : undefined
     });
 
     setShowForm(false);
@@ -324,6 +331,45 @@ export const UserManagement: React.FC = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Granular Permissions Selection (تحديد الصلاحيات بدقة بما فيها حاسبة الائتمان) */}
+            {isCompanyRole && (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <span>تحديد صلاحيات الحساب (مدير النظام يتحكم بمَن يرى الأدوات والحاسبة)</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                  {[
+                    { id: 'ai_analysis', label: 'حاسبة الائتمان والتقييم الذكي', desc: 'استخدام أداة تقييم الجدارة وحساب الأقساط' },
+                    { id: 'view_clients', label: 'عرض قاعدة بيانات العملاء', desc: 'الاطلاع على سجل ودليل العملاء' },
+                    { id: 'request_access', label: 'طلب كود فحص عميل', desc: 'إرسال طلبات فك الحظر والاستعلام' },
+                    { id: 'approve_apps', label: 'اعتماد وقبول الطلبات', desc: 'اتخاذ قرار الموافقة الائتمانية' },
+                    { id: 'view_reports', label: 'التقارير والإحصائيات', desc: 'الاطلاع على لوحات الأداء والتحليلات' },
+                    { id: 'followup_cases', label: 'متابعة الحالات قيد التنفيذ', desc: 'إدارة مسار الفحص والاتصالات' },
+                  ].map(p => (
+                    <label key={p.id} className="flex items-start gap-2 p-2.5 rounded-xl bg-white border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer shadow-2xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedPermissions.includes(p.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPermissions([...selectedPermissions, p.id]);
+                          } else {
+                            setSelectedPermissions(selectedPermissions.filter(x => x !== p.id));
+                          }
+                        }}
+                        className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block leading-tight">{p.label}</span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">{p.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
 

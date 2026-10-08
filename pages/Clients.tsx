@@ -30,16 +30,21 @@ import {
   CreditCard,
   Briefcase,
   MapPin,
-  TrendingUp
+  TrendingUp,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { ClientDetailModal } from '../components/ClientDetailModal';
 import { ClientTimelineModal } from '../components/ClientTimelineModal';
 import { SmartClientBulkImportModal } from '../components/SmartClientBulkImportModal';
 import { SmartClientRenewalModal } from '../components/SmartClientRenewalModal';
 import { SmartAddClientModal } from '../components/SmartAddClientModal';
+import { EditClientModal } from '../components/EditClientModal';
 
 export const Clients: React.FC = () => {
-  const { clients, applications, users, currentUser } = useStore();
+  const { clients, applications, users, currentUser, deleteClient } = useStore();
+
+  const isAdmin = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.ADMIN;
 
   // Modals state
   const [showBulkImportModal, setShowBulkImportModal] = useState(false);
@@ -47,6 +52,9 @@ export const Clients: React.FC = () => {
   const [renewingClient, setRenewingClient] = useState<Client | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [timelineClientId, setTimelineClientId] = useState<string | null>(null);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [deletingClient, setDeletingClient] = useState<Client | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -63,15 +71,89 @@ export const Clients: React.FC = () => {
     currentUser?.role !== Role.ADMIN && 
     currentUser?.role !== Role.INSTALLMENT_COMPANY &&
     currentUser?.role !== Role.BRANCH_MANAGER &&
+    currentUser?.role !== Role.COMPANY_EMPLOYEE &&
     currentUser?.role !== Role.SALESMAN &&
     currentUser?.role !== Role.SUPPLIER
   ) {
     return <div className="p-8 text-center text-slate-500 text-sm">ليس لديك صلاحية للوصول لهذه الصفحة</div>;
   }
 
+  // Scoped clients list strictly isolating data per role to prevent unauthorized data access
+  const scopedClients = useMemo(() => {
+    if (!currentUser) return [];
+
+    // 1. Super Admin and System Operations Admin: Full access
+    if (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) {
+      return clients;
+    }
+
+    // 2. Installment Company Director: Only clients funded by or assigned to this company
+    if (currentUser.role === Role.INSTALLMENT_COMPANY) {
+      const compId = currentUser.companyId || currentUser.id;
+      return clients.filter(c => {
+        if (c.addedBy === currentUser.id) return true;
+        if (c.authorizedCompanies?.includes(compId) || c.authorizedCompanies?.includes(currentUser.id)) return true;
+        if (c.manualEntry?.installmentCompanyId === compId || c.manualEntry?.installmentCompanyId === currentUser.id) return true;
+        return applications.some(a => 
+          a.clientNationalId === c.nationalId && 
+          (a.assignedCompanyIds?.includes(compId) || a.assignedCompanyIds?.includes(currentUser.id))
+        );
+      });
+    }
+
+    // 3. Branch Manager: Only clients with applications assigned to this branch
+    if (currentUser.role === Role.BRANCH_MANAGER) {
+      return clients.filter(c => {
+        if (c.addedBy === currentUser.id) return true;
+        return applications.some(a => 
+          a.clientNationalId === c.nationalId && 
+          ((currentUser.branchId && a.assignedBranchId === currentUser.branchId) ||
+           (currentUser.branchName && a.assignedBranchName === currentUser.branchName))
+        );
+      });
+    }
+
+    // 4. Company Employee (Credit Officer, Collection Agent): Only clients assigned to this employee or their branch
+    if (currentUser.role === Role.COMPANY_EMPLOYEE) {
+      return clients.filter(c => {
+        if (c.addedBy === currentUser.id) return true;
+        return applications.some(a => 
+          a.clientNationalId === c.nationalId && 
+          (
+            a.assignedOfficerId === currentUser.id || 
+            (currentUser.branchId && a.assignedBranchId === currentUser.branchId) ||
+            (currentUser.branchName && a.assignedBranchName === currentUser.branchName)
+          )
+        );
+      });
+    }
+
+    // 5. Salesman (رافع الطلبات): Strictly only clients added or submitted by this salesman
+    if (currentUser.role === Role.SALESMAN) {
+      return clients.filter(c => {
+        if (c.addedBy === currentUser.id) return true;
+        return applications.some(a => 
+          a.clientNationalId === c.nationalId && a.submittedBy === currentUser.id
+        );
+      });
+    }
+
+    // 6. Supplier (المورد): Strictly only clients added or submitted by this supplier
+    if (currentUser.role === Role.SUPPLIER) {
+      return clients.filter(c => {
+        if (c.addedBy === currentUser.id) return true;
+        return applications.some(a => 
+          a.clientNationalId === c.nationalId && a.submittedBy === currentUser.id
+        );
+      });
+    }
+
+    return [];
+  }, [clients, applications, currentUser]);
+
   // Calculate integrated client data
   const enrichedClients = useMemo(() => {
-    return clients.map(client => {
+    return scopedClients.map(client => {
       const clientNatId = client.nationalId || '';
       const clientApps = applications.filter(a => a.clientNationalId === clientNatId);
       const approvedApps = clientApps.filter(a => a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED);
@@ -148,7 +230,7 @@ export const Clients: React.FC = () => {
         isEligibleForRenewal
       };
     });
-  }, [clients, applications, users]);
+  }, [scopedClients, applications, users]);
 
   // Aggregate statistics for the intelligence header
   const stats = useMemo(() => {
@@ -258,7 +340,7 @@ export const Clients: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900">قاعدة بيانات عملاء كروبسا الذكية</h1>
-            <span className="bg-sky-100 text-sky-800 text-xs px-2.5 py-0.5 rounded-full font-bold">
+            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-xs px-2.5 py-0.5 rounded-full font-bold">
               متابعة متكاملة للتمويل والصرف
             </span>
           </div>
@@ -282,7 +364,7 @@ export const Clients: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowAddClientModal(true)}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors"
           >
             <UserPlus className="h-4 w-4" />
             إضافة عميل يدوياً
@@ -293,10 +375,10 @@ export const Clients: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowBulkImportModal(true)}
-              className="bg-cropsa-800 hover:bg-cropsa-900 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors border border-cropsa-700"
+              className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors border border-slate-800"
               title="إضافة مجمعة لمدير النظام عبر شيت إكسل"
             >
-              <FileSpreadsheet className="h-4 w-4 text-emerald-300" />
+              <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
               إضافة مجمعة عبر الشيت (Super Admin)
             </button>
           )}
@@ -310,7 +392,7 @@ export const Clients: React.FC = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
           <div className="flex items-center justify-between text-slate-500 text-xs">
             <span>إجمالي العملاء بالقاعدة</span>
-            <ShieldCheck className="h-4 w-4 text-cropsa-600" />
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
             {stats.totalClientsCount} <span className="text-xs font-normal text-slate-500">عميل</span>
@@ -338,9 +420,9 @@ export const Clients: React.FC = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
           <div className="flex items-center justify-between text-slate-500 text-xs">
             <span>إجمالي الأسقف المعتمدة</span>
-            <CreditCard className="h-4 w-4 text-purple-600" />
+            <CreditCard className="h-4 w-4 text-emerald-600" />
           </div>
-          <div className="text-xl sm:text-2xl font-black text-purple-950 font-mono">
+          <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
             {stats.totalApprovedCeiling.toLocaleString()} <span className="text-xs font-normal text-slate-500">ج.م</span>
           </div>
           <div className="text-[11px] text-slate-400">
@@ -408,7 +490,7 @@ export const Clients: React.FC = () => {
             onClick={() => setActiveTabFilter('ALL')}
             className={`px-3.5 py-1.5 rounded-xl transition-all ${
               activeTabFilter === 'ALL'
-                ? 'bg-cropsa-950 text-white shadow-xs'
+                ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -662,9 +744,31 @@ export const Clients: React.FC = () => {
                     }`}
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
-                    تجديد (AI)
+                    تجديد
                   </button>
                 </div>
+
+                {/* Admin Quick Management (Edit / Delete) */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2 pt-1.5 border-t border-slate-100/80">
+                    <button
+                      type="button"
+                      onClick={() => setEditingClient(c)}
+                      className="flex-1 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                      title="تعديل بيانات العميل"
+                    >
+                      <Edit className="h-3.5 w-3.5" /> تعديل العميل
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingClient(c)}
+                      className="flex-1 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                      title="حذف العميل نهائياً"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> حذف العميل
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -809,6 +913,28 @@ export const Clients: React.FC = () => {
                           <RefreshCw className="h-3 w-3" />
                           تجديد التمويل
                         </button>
+
+                        {/* Admin Edit & Delete Actions */}
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setEditingClient(c)}
+                              className="text-amber-600 hover:bg-amber-50 p-1.5 rounded-lg border border-amber-200 transition-colors"
+                              title="تعديل بيانات العميل"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingClient(c)}
+                              className="text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg border border-rose-200 transition-colors"
+                              title="حذف العميل نهائياً"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
 
@@ -858,6 +984,66 @@ export const Clients: React.FC = () => {
           canViewFullDetails={true}
           onClose={() => setTimelineClientId(null)}
         />
+      )}
+
+      {/* Admin Edit Client Modal */}
+      {editingClient && (
+        <EditClientModal
+          client={editingClient}
+          isOpen={!!editingClient}
+          onClose={() => setEditingClient(null)}
+        />
+      )}
+
+      {/* Admin Delete Client Confirmation Modal */}
+      {deletingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in" dir="rtl">
+          <div className="bg-white rounded-3xl border border-rose-200 shadow-2xl max-w-md w-full p-6 text-center space-y-4">
+            <div className="h-14 w-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="h-7 w-7" />
+            </div>
+            
+            <div>
+              <h3 className="font-extrabold text-slate-900 text-lg">تأكيد حذف العميل نهائياً</h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                هل أنت متأكد من رغبتك في حذف العميل <strong className="text-slate-900 font-bold">"{deletingClient.name}"</strong> (الرقم القومي: <span className="font-mono">{deletingClient.nationalId}</span>)؟
+              </p>
+              <div className="text-[11px] text-rose-700 font-bold mt-3 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                ⚠️ تنبيه إداري: سيتم حذف العميل وكافة سجلاته نهائياً من قاعدة البيانات، ولا يمكن التراجع عن هذه العملية.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingClient(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+              >
+                إلغاء التراجع
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  setIsDeleting(true);
+                  try {
+                    await deleteClient(deletingClient.id);
+                    setDeletingClient(null);
+                  } catch (e) {
+                    console.error(e);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/25 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>{isDeleting ? 'جاري الحذف...' : 'تأكيد الحذف النهائي'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

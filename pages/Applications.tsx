@@ -224,18 +224,27 @@ export const Applications: React.FC = () => {
   };
 
   const filteredApps = applications.filter(app => {
-    // Role based scoping
+    // Role based scoping - Strict data isolation
     if (currentUser.role === Role.SUPPLIER || currentUser.role === Role.SALESMAN) {
       if (app.submittedBy !== currentUser.id) return false;
     }
     if (currentUser.role === Role.INSTALLMENT_COMPANY) {
-      if (!app.assignedCompanyIds.includes(currentUser.id)) return false;
+      const compId = currentUser.companyId || currentUser.id;
+      const isAssigned = app.assignedCompanyIds?.includes(currentUser.id) || 
+                         (currentUser.companyId && app.assignedCompanyIds?.includes(currentUser.companyId)) ||
+                         app.assignedCompanyIds?.includes(compId);
+      if (!isAssigned) return false;
     }
     if (currentUser.role === Role.BRANCH_MANAGER) {
-      if (app.assignedBranchId !== currentUser.branchId) return false;
+      const isMyBranch = (currentUser.branchId && app.assignedBranchId === currentUser.branchId) ||
+                         (currentUser.branchName && app.assignedBranchName === currentUser.branchName) ||
+                         (app.assignedOfficerId === currentUser.id);
+      if (!isMyBranch) return false;
     }
     if (currentUser.role === Role.COMPANY_EMPLOYEE) {
-      if (app.assignedOfficerId !== currentUser.id && app.assignedBranchId !== currentUser.branchId) return false;
+      const isMyOfficer = app.assignedOfficerId === currentUser.id || (app.assignedOfficerName && app.assignedOfficerName.includes(currentUser.name));
+      const isMyBranch = currentUser.branchId && (app.assignedBranchId === currentUser.branchId || app.assignedBranchName === currentUser.branchName);
+      if (!isMyOfficer && !isMyBranch) return false;
     }
 
     // Status Filter

@@ -491,37 +491,42 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
     return portalNotifications.filter(n => !n.read).length;
   }, [portalNotifications]);
 
+  // Check if an application belongs to "الطلبات الجديدة الواردة" (incoming unassigned)
+  const isNewIncomingApp = (a: Application) => {
+    if (a.isArchived) return false;
+    if (
+      a.status === ApplicationStatus.APPROVED || 
+      a.status === ApplicationStatus.AMOUNT_TRANSFERRED || 
+      a.status === ApplicationStatus.REJECTED ||
+      a.status === ApplicationStatus.CANCELLED_BY_CLIENT ||
+      a.status === ApplicationStatus.WITHDRAWN
+    ) {
+      return false;
+    }
+    if (a.assignedBranchId || a.assignedOfficerId) return false;
+    return (
+      a.status === ApplicationStatus.RECEIVED || 
+      a.status === ApplicationStatus.PENDING_ADMIN || 
+      a.status === ApplicationStatus.PENDING_REVIEW
+    );
+  };
+
   // New applications count (received / unassigned)
   const newAppsCount = useMemo(() => {
-    return companyApps.filter(a => 
-      !a.isArchived && 
-      (a.status === ApplicationStatus.RECEIVED || a.status === ApplicationStatus.PENDING_ADMIN || !a.assignedOfficerId)
-    ).length;
+    return companyApps.filter(isNewIncomingApp).length;
   }, [companyApps]);
 
-  // Active tracking cases progressing through the workflow pipeline
+  // Active tracking cases progressing through the workflow pipeline (الحالات الجارية)
   const trackingAppsCount = useMemo(() => {
     return companyApps.filter(a => 
       !a.isArchived && 
-      a.status !== ApplicationStatus.RECEIVED && 
-      a.status !== ApplicationStatus.PENDING_ADMIN &&
+      !isNewIncomingApp(a) &&
       a.status !== ApplicationStatus.REJECTED &&
-      a.status !== ApplicationStatus.AMOUNT_TRANSFERRED
+      a.status !== ApplicationStatus.AMOUNT_TRANSFERRED &&
+      a.status !== ApplicationStatus.CANCELLED_BY_CLIENT &&
+      a.status !== ApplicationStatus.WITHDRAWN
     ).length;
   }, [companyApps]);
-
-  // Auto-assign any unassigned incoming company applications to their matching governorate branches
-  React.useEffect(() => {
-    if (companyId) {
-      const unassigned = applications.filter(a => 
-        (a.assignedCompanyIds?.includes(companyId) || a.assignedCompanyIds?.includes(currentUser?.id || '')) && 
-        !a.assignedBranchId
-      );
-      if (unassigned.length > 0) {
-        autoAssignCompanyBranches(companyId);
-      }
-    }
-  }, [companyId, applications.length]);
 
   // Company staff list
   const companyStaffList = useMemo(() => {
@@ -1546,128 +1551,8 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* SECTIONS NAVIGATION: SLEEK DROPDOWN MENU + MODERN TAB BAR (الأقسام الرئيسية) */}
-      {/* ========================================================================= */}
+      {/* Company Portal Content Sections (Managed directly from the main sidebar) */}
       <div className="space-y-3">
-        {/* Quick Selector Bar & Sleek Dropdown Drawer (دروب داون منيو شكلها رايق مع خط واضح وأكبر) */}
-        <div className="relative">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-            {/* Quick Active Section Card / Dropdown Trigger (موبايل وديسكتوب) */}
-            <button
-              type="button"
-              onClick={() => setIsSectionMenuOpen(!isSectionMenuOpen)}
-              className="w-full sm:w-auto flex-1 bg-white rounded-2xl border-2 border-slate-200/90 p-3 sm:p-3.5 shadow-sm flex items-center justify-between gap-3 text-right hover:border-sky-500 hover:shadow-md transition-all active:scale-[0.99] group cursor-pointer"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center shrink-0 group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                  {React.createElement(currentTabItem?.icon || PieIcon, { className: 'h-5 w-5' })}
-                </div>
-                <div className="min-w-0 text-right">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-black text-slate-400">القسم المعروض حالياً</span>
-                    <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-1.5 py-0.2 rounded-md">انقر للتغيير</span>
-                  </div>
-                  <p className="text-base sm:text-lg font-black text-slate-900 truncate tracking-tight">
-                    {currentTabItem?.label || 'الرئيسية والمؤشرات'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 shrink-0">
-                {currentTabItem?.count !== undefined && currentTabItem.count > 0 && (
-                  <span className="bg-sky-600 text-white text-xs sm:text-sm font-black px-3 py-1 rounded-full shadow-2xs">
-                    {currentTabItem.count}
-                  </span>
-                )}
-                <div className={`p-2 rounded-xl bg-slate-100 text-slate-700 group-hover:bg-sky-100 group-hover:text-sky-700 transition-transform duration-200 ${isSectionMenuOpen ? 'rotate-180 bg-sky-100 text-sky-700' : ''}`}>
-                  <ChevronDown className="h-4.5 w-4.5" />
-                </div>
-              </div>
-            </button>
-          </div>
-
-          {/* Sleek Dropdown Drawer (قائمة منسدلة فخمة بخط كبير وواضح) */}
-          {isSectionMenuOpen && (
-            <div className="absolute top-full inset-x-0 mt-2.5 bg-white rounded-3xl border-2 border-slate-200 shadow-2xl z-40 p-3 space-y-1.5 animate-in fade-in zoom-in-95 duration-150">
-              <div className="p-2 border-b border-slate-100 text-xs sm:text-sm font-black text-slate-600 px-3 flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-sky-600" />
-                  <span>اختر قسماً للانتقال السريع</span>
-                </span>
-                <span className="text-xs text-slate-400 font-bold">({tabItemsList.length} أقسام متاحة)</span>
-              </div>
-              <div className="max-h-96 overflow-y-auto space-y-1.5 scrollbar-thin p-1">
-                {tabItemsList.map(tabItem => {
-                  const TabIcon = tabItem.icon;
-                  const isTabActive = tabItem.matchTabs 
-                    ? tabItem.matchTabs.includes(activeTab) 
-                    : activeTab === tabItem.id;
-
-                  return (
-                    <button
-                      key={tabItem.id}
-                      type="button"
-                      onClick={() => handleSelectTab(tabItem.id)}
-                      className={`w-full flex items-center justify-between p-3.5 rounded-2xl text-base font-black transition-all text-right cursor-pointer ${
-                        isTabActive
-                          ? 'bg-gradient-to-r from-sky-600 to-sky-700 text-white shadow-md shadow-sky-600/20'
-                          : 'text-slate-800 hover:bg-slate-100/90 hover:text-slate-950'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3.5">
-                        <div className={`p-2 rounded-xl shrink-0 ${isTabActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                          <TabIcon className="h-5 w-5" />
-                        </div>
-                        <span className="font-black text-sm sm:text-base">{tabItem.label}</span>
-                      </div>
-                      {tabItem.count !== undefined && tabItem.count > 0 && (
-                        <span className={`text-xs sm:text-sm px-3 py-1 rounded-full font-black ${
-                          isTabActive ? 'bg-white text-sky-800 shadow-xs' : 'bg-slate-100 text-slate-700'
-                        }`}>
-                          {tabItem.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Desktop & Scrollable Tabs Bar with Larger Typography (الكلام واضح وأكبر) */}
-        <div className="hidden lg:flex bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 items-center gap-1.5 overflow-x-auto scrollbar-thin">
-          {tabItemsList.map(tabItem => {
-            const TabIcon = tabItem.icon;
-            const isTabActive = tabItem.matchTabs 
-              ? tabItem.matchTabs.includes(activeTab) 
-              : activeTab === tabItem.id;
-
-            return (
-              <button
-                key={tabItem.id}
-                type="button"
-                onClick={() => handleSelectTab(tabItem.id)}
-                className={`flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm sm:text-base font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  isTabActive
-                    ? 'bg-white text-slate-950 shadow-sm font-black border border-slate-200/90'
-                    : 'text-slate-700 hover:text-slate-950 hover:bg-white/70 font-bold'
-                }`}
-              >
-                <TabIcon className={`h-5 w-5 shrink-0 ${isTabActive ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span className="tracking-tight font-black">{tabItem.label}</span>
-                {tabItem.count !== undefined && tabItem.count > 0 && (
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-black tabular-nums ${
-                    isTabActive ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-700'
-                  }`}>
-                    {tabItem.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
 
         {/* Sub-bar when inside 'Branches & Team' */}
         {!isCompanyStaff && ['branches', 'staff', 'branch_transfers', 'excel_import'].includes(activeTab) && (

@@ -99,11 +99,7 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
   const canDisburse = isCompanyAdmin || isBranchManager;
 
   const [activeSection, setActiveSection] = useState<'new_apps' | 'tracking' | 'all'>(() => {
-    if (initialSubView === 'new_apps' && applications.length > 0) {
-      const hasNew = applications.some(a => !a.isArchived && (a.status === ApplicationStatus.RECEIVED || a.status === ApplicationStatus.PENDING_ADMIN || !a.assignedOfficerId));
-      if (!hasNew) return 'all';
-    }
-    return initialSubView || 'all';
+    return initialSubView || 'new_apps';
   });
 
   // Sync activeSection when parent initialSubView prop changes
@@ -212,17 +208,34 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
 
   // A request is considered in "الطلبات الواردة الجديدة" if:
   // 1. It is active (not archived)
-  // 2. It is at the intake / initial pending stage (RECEIVED or PENDING_ADMIN) or has not been assigned to a review officer yet
-  // Once it enters active review stages (PAPER_REVIEW, ISCORE_CHECK, etc.) with an officer, it moves to workflow tracking
+  // 2. It has NOT been assigned to a branch or officer yet
+  // 3. It is at the intake / initial pending stage (RECEIVED, PENDING_ADMIN, or PENDING_REVIEW)
+  // Once it is assigned to a branch or officer, or moves to active review stages (PAPER_REVIEW, ISCORE_CHECK, etc.),
+  // it immediately moves to "الحالات الجارية" (Active ongoing cases workflow tracking)
   const isNewIncomingApp = (app: Application) => {
     if (app.isArchived) return false;
-    if (app.status === ApplicationStatus.APPROVED || app.status === ApplicationStatus.AMOUNT_TRANSFERRED || app.status === ApplicationStatus.REJECTED) {
+    if (
+      app.status === ApplicationStatus.APPROVED || 
+      app.status === ApplicationStatus.AMOUNT_TRANSFERRED || 
+      app.status === ApplicationStatus.REJECTED ||
+      app.status === ApplicationStatus.CANCELLED_BY_CLIENT ||
+      app.status === ApplicationStatus.WITHDRAWN
+    ) {
       return false;
     }
-    if (app.status === ApplicationStatus.RECEIVED || app.status === ApplicationStatus.PENDING_ADMIN || !app.assignedOfficerId) {
-      return true;
+    // If assigned to a branch or officer, it is an active ongoing case (الحالات الجارية)
+    if (app.assignedBranchId || app.assignedOfficerId) {
+      return false;
     }
-    return false;
+    // If its status is already an active study/review stage
+    if (
+      app.status !== ApplicationStatus.RECEIVED && 
+      app.status !== ApplicationStatus.PENDING_ADMIN && 
+      app.status !== ApplicationStatus.PENDING_REVIEW
+    ) {
+      return false;
+    }
+    return true;
   };
 
   // Counts for new apps vs active tracking cases
@@ -231,7 +244,14 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
   }, [applications]);
 
   const trackingCasesCount = useMemo(() => {
-    return applications.filter(a => !a.isArchived && !isNewIncomingApp(a)).length;
+    return applications.filter(a => 
+      !a.isArchived && 
+      !isNewIncomingApp(a) &&
+      a.status !== ApplicationStatus.REJECTED &&
+      a.status !== ApplicationStatus.AMOUNT_TRANSFERRED &&
+      a.status !== ApplicationStatus.CANCELLED_BY_CLIENT &&
+      a.status !== ApplicationStatus.WITHDRAWN
+    ).length;
   }, [applications]);
 
   const unassignedAppsCount = useMemo(() => {
@@ -2203,6 +2223,8 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
             setAssigningApp(null);
             if (activeSection === 'new_apps') {
               setActiveSection('tracking');
+              setStatusFilter('ALL');
+              onSubSectionChange?.('tracking');
             }
           }}
           onClose={() => setAssigningApp(null)}

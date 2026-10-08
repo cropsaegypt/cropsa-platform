@@ -75,9 +75,24 @@ export const Dashboard: React.FC = () => {
     if (currentUser.role === Role.SUPPLIER || currentUser.role === Role.SALESMAN) {
       myApps = applications.filter(app => app.submittedBy === currentUser.id);
     } else if (currentUser.role === Role.INSTALLMENT_COMPANY) {
-      myApps = applications.filter(app => app.assignedCompanyIds.includes(currentUser.id));
+      const compId = currentUser.companyId || currentUser.id;
+      myApps = applications.filter(app => 
+        app.assignedCompanyIds?.includes(currentUser.id) || 
+        (currentUser.companyId && app.assignedCompanyIds?.includes(currentUser.companyId)) ||
+        app.assignedCompanyIds?.includes(compId)
+      );
     } else if (currentUser.role === Role.BRANCH_MANAGER) {
-      myApps = applications.filter(app => app.assignedBranchId === currentUser.branchId);
+      myApps = applications.filter(app => 
+        (currentUser.branchId && app.assignedBranchId === currentUser.branchId) ||
+        (currentUser.branchName && app.assignedBranchName === currentUser.branchName) ||
+        app.assignedOfficerId === currentUser.id
+      );
+    } else if (currentUser.role === Role.COMPANY_EMPLOYEE) {
+      myApps = applications.filter(app => 
+        app.assignedOfficerId === currentUser.id ||
+        (currentUser.branchId && app.assignedBranchId === currentUser.branchId) ||
+        (currentUser.branchName && app.assignedBranchName === currentUser.branchName)
+      );
     }
 
     const total = myApps.length;
@@ -99,9 +114,9 @@ export const Dashboard: React.FC = () => {
       { name: 'الخميس', apps: total },
     ];
 
-    // Ranking Data for Super Admin
+    // Ranking Data for Super Admin & Operations Admin
     let rankingData: any[] = [];
-    if (currentUser.role === Role.SUPER_ADMIN) {
+    if (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) {
       rankingData = users
         .filter(u => u.role === Role.SUPPLIER || u.role === Role.SALESMAN)
         .map(u => {
@@ -164,7 +179,7 @@ export const Dashboard: React.FC = () => {
 
           <button
             onClick={() => setNavigation({ page: 'new-application' })}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <PlusCircle className="h-4 w-4" />
             <span>طلب تقسيط جديد</span>
@@ -186,8 +201,8 @@ export const Dashboard: React.FC = () => {
           title="إجمالي الطلبات" 
           value={stats.total} 
           icon={FileText} 
-          iconBg="bg-sky-50"
-          iconColor="text-sky-600"
+          iconBg="bg-emerald-50"
+          iconColor="text-emerald-600"
           subtext="إجمالي المعاملات المسجلة"
         />
         <StatCard 
@@ -210,8 +225,8 @@ export const Dashboard: React.FC = () => {
           title="المبلغ المصروف فعلياً" 
           value={`${stats.usedAmount.toLocaleString()} ج.م`} 
           icon={Wallet} 
-          iconBg="bg-indigo-50"
-          iconColor="text-indigo-700"
+          iconBg="bg-slate-100"
+          iconColor="text-slate-800"
           subtext={`نسبة الصرف: ${stats.approvedAmount > 0 ? Math.round((stats.usedAmount / stats.approvedAmount) * 100) : 0}%`}
         />
         <StatCard 
@@ -249,7 +264,7 @@ export const Dashboard: React.FC = () => {
                          <td className="px-4 py-3 font-bold text-slate-900">#{idx + 1}</td>
                          <td className="px-4 py-3 font-semibold text-slate-800">{user.name}</td>
                          <td className="px-4 py-3 text-slate-500">{user.role === Role.SUPPLIER ? 'مورد' : 'مندوب'}</td>
-                         <td className="px-4 py-3 font-bold text-sky-600 tabular-nums">{user.totalApps}</td>
+                         <td className="px-4 py-3 font-bold text-emerald-700 tabular-nums">{user.totalApps}</td>
                          <td className="px-4 py-3 text-emerald-600 font-medium tabular-nums">{user.approvedApps}</td>
                          <td className="px-4 py-3 font-mono font-medium text-slate-700 tabular-nums">{user.totalVolume.toLocaleString()}</td>
                       </tr>
@@ -269,7 +284,7 @@ export const Dashboard: React.FC = () => {
           </div>
           <button
             onClick={() => setNavigation({ page: 'applications' })}
-            className="text-xs font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-1"
+            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
           >
             <span>عرض كل الطلبات</span>
             <ArrowUpRight className="h-3.5 w-3.5" />

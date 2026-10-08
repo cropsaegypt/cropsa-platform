@@ -21,6 +21,7 @@ import { ApplicationQuestionsManager } from './pages/ApplicationQuestionsManager
 import { FinancingProgramsManager } from './pages/FinancingProgramsManager';
 import { CompanyExcelImport } from './pages/CompanyExcelImport';
 import { NotificationTemplatesManager } from './pages/NotificationTemplatesManager';
+import { SmartCreditCalculator } from './components/SmartCreditCalculator';
 import { Role } from './types';
 
 const AppContent: React.FC = () => {
@@ -48,9 +49,15 @@ const AppContent: React.FC = () => {
     } else if (page === 'company-staff') {
       setPortalTab('staff');
       setCurrentPage('company-staff');
+    } else if (page === 'credit-calculator') {
+      setCurrentPage('credit-calculator');
     } else if (page === 'company-ai') {
-      setPortalTab('ai');
-      setCurrentPage('company-ai');
+      if (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) {
+        setCurrentPage('credit-calculator');
+      } else {
+        setPortalTab('ai');
+        setCurrentPage('company-ai');
+      }
     } else if (page === 'company-docs') {
       setPortalTab('shared_docs');
       setCurrentPage('company-docs');
@@ -122,9 +129,27 @@ const AppContent: React.FC = () => {
       case 'company-overdue':
       case 'company-staff':
       case 'company-docs':
-      case 'company-settings':
+      case 'company-settings': {
+        const isCompanyEligible = 
+          currentUser.role === Role.INSTALLMENT_COMPANY || 
+          currentUser.role === Role.BRANCH_MANAGER || 
+          currentUser.role === Role.COMPANY_EMPLOYEE || 
+          currentUser.role === Role.SUPER_ADMIN || 
+          currentUser.role === Role.ADMIN;
+        if (!isCompanyEligible) {
+          return <Dashboard />;
+        }
+        // Sub-route protection: regular employees cannot access branch or staff management or company master settings
+        let safeTab = portalTab;
+        if (currentUser.role === Role.COMPANY_EMPLOYEE && ['branches', 'staff', 'settings', 'branch_transfers'].includes(portalTab)) {
+          safeTab = 'applications';
+        }
+        if (currentUser.role === Role.BRANCH_MANAGER && portalTab === 'settings') {
+          safeTab = 'overview';
+        }
+
         return <InstallmentCompanyPortal 
-          initialTab={portalTab as any} 
+          initialTab={safeTab as any} 
           onTabChange={(tab) => {
             setPortalTab(tab);
             if (tab === 'overview') {
@@ -134,14 +159,23 @@ const AppContent: React.FC = () => {
             }
           }} 
         />;
+      }
+      case 'credit-calculator':
+        return <SmartCreditCalculator onBack={() => handleNavigate('dashboard')} />;
       case 'company-ai':
+        if (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) {
+          return <SmartCreditCalculator onBack={() => handleNavigate('dashboard')} />;
+        }
+        return (
+          currentUser.role === Role.INSTALLMENT_COMPANY || 
+          currentUser.permissions?.includes('ai_analysis')
+        ) ? <InstallmentCompanyPortal initialTab="ai" onTabChange={(tab) => setPortalTab(tab)} /> : <Dashboard />;
+      case 'company-excel-import':
         return (
           currentUser.role === Role.SUPER_ADMIN || 
           currentUser.role === Role.ADMIN || 
           currentUser.role === Role.INSTALLMENT_COMPANY
-        ) ? <InstallmentCompanyPortal initialTab="ai" onTabChange={(tab) => setPortalTab(tab)} /> : <Dashboard />;
-      case 'company-excel-import':
-        return <CompanyExcelImport onBack={() => handleNavigate('company-portal')} />;
+        ) ? <CompanyExcelImport onBack={() => handleNavigate('company-portal')} /> : <Dashboard />;
       case 'crobsa-settings':
         return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <CropsaSettings /> : <Dashboard />;
       case 'companies': 
