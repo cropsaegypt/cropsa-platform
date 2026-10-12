@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { SystemBranding } from '../types';
 import { compressImage } from '../utils/imageCompression';
+import { testSupabaseConnection } from '../services/supabase';
 
 const PRESET_LOGOS = [
   'https://images.unsplash.com/photo-1560472355-536de3962603?w=128&auto=format&fit=crop&q=80',
@@ -137,6 +138,21 @@ export const CropsaSettings: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState<string | null>(null);
+  const [dbStatus, setDbStatus] = useState<{ checked: boolean; ok: boolean; msg: string }>({
+    checked: false,
+    ok: true,
+    msg: 'جاري التحقق من الاتصال...'
+  });
+
+  useEffect(() => {
+    testSupabaseConnection().then(res => {
+      setDbStatus({
+        checked: true,
+        ok: res.ok,
+        msg: res.ok ? 'متصل بقاعدة البيانات السحابية (Supabase) 🟢' : 'تنبيه: ' + res.message
+      });
+    });
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
     const file = e.target.files?.[0];
@@ -146,17 +162,17 @@ export const CropsaSettings: React.FC = () => {
       setCompressing(type === 'logo' ? 'جاري ضغط وتحسين الشعار...' : 'جاري ضغط وتحسين الخلفية...');
       if (type === 'logo') {
         const compressed = await compressImage(file, {
-          maxWidth: 400,
-          maxHeight: 400,
-          quality: 0.9,
+          maxWidth: 320,
+          maxHeight: 320,
+          quality: 0.85,
           format: file.type === 'image/png' ? 'image/png' : 'image/jpeg'
         });
         setLogoUrl(compressed);
       } else {
         const compressed = await compressImage(file, {
-          maxWidth: 1920,
-          maxHeight: 1080,
-          quality: 0.82,
+          maxWidth: 1280,
+          maxHeight: 720,
+          quality: 0.75,
           format: 'image/jpeg'
         });
         setLoginBannerUrl(compressed);
@@ -201,7 +217,7 @@ export const CropsaSettings: React.FC = () => {
         loginBannerDimming
       });
       setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 4000);
+      setTimeout(() => setSavedSuccess(false), 5000);
     } catch (err: any) {
       console.error('Failed to update branding:', err);
       setSaveError(err?.message || 'حدث خطأ أثناء الحفظ في قاعدة البيانات');
@@ -229,7 +245,12 @@ export const CropsaSettings: React.FC = () => {
             <Paintbrush className="h-7 w-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white">إعدادات وهوية المنظومة وصفحة تسجيل الدخول</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-black text-white">إعدادات وهوية المنظومة وصفحة تسجيل الدخول</h1>
+              <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border ${dbStatus.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                {dbStatus.msg}
+              </span>
+            </div>
             <p className="text-xs text-slate-300 mt-1">
               تخصيص كامل لألوان كروبسا، مربعات اسم المستخدم وكلمة المرور، النصوص، الخلفيات، والشعار مع مزامنة فورية في سوبابيس (Supabase)
             </p>
@@ -246,7 +267,7 @@ export const CropsaSettings: React.FC = () => {
           {savedSuccess && (
             <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
               <Check className="h-4 w-4 text-emerald-400" />
-              <span>تم حفظ التعديلات ونشرها وتحديث قاعدة بيانات سوبابيس (Supabase) بنجاح!</span>
+              <span>تم حفظ التعديلات في قاعدة البيانات (Supabase) ومتزامنة فوراً على كل المتصفحات!</span>
             </div>
           )}
 

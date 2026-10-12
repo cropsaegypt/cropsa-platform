@@ -358,7 +358,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setSystemBranding(nextBranding);
-    localStorage.setItem('crobsa_branding', JSON.stringify(nextBranding));
+    
+    // Safely cache in localStorage without letting quota errors block database persistence
+    try {
+      localStorage.setItem('crobsa_branding', JSON.stringify(nextBranding));
+    } catch (e) {
+      console.warn('LocalStorage quota or permission restriction on branding cache:', e);
+    }
 
     if (supabase) {
       try {
@@ -676,7 +682,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     async function syncSupabaseInitialData() {
       try {
-        // 1. Fetch Branding
+        // 1. Fetch Branding from Supabase system_settings
         const { data: brandingRow } = await supabase!
           .from('system_settings')
           .select('data')
@@ -687,7 +693,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           const remoteBranding = brandingRow.data as SystemBranding;
           if (isMounted) {
             setSystemBranding(prev => ({ ...prev, ...remoteBranding }));
-            localStorage.setItem('crobsa_branding', JSON.stringify(remoteBranding));
+            try {
+              localStorage.setItem('crobsa_branding', JSON.stringify(remoteBranding));
+            } catch (e) {
+              console.warn('LocalStorage branding cache skipped:', e);
+            }
           }
         } else {
           const currentLocal = localStorage.getItem('crobsa_branding');
@@ -699,17 +709,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
         }
 
-        // 2. Fetch Companies
+        // 2. Fetch Companies directly from companies table
         const { data: companiesRows } = await supabase!.from('companies').select('*');
-        const { data: companiesFullRow } = await supabase!
-          .from('system_settings')
-          .select('data')
-          .eq('id', 'companies_data')
-          .maybeSingle();
-
-        if (companiesFullRow?.data && Array.isArray(companiesFullRow.data) && companiesFullRow.data.length > 0) {
-          if (isMounted) setCompanies(companiesFullRow.data as InstallmentCompany[]);
-        } else if (companiesRows && companiesRows.length > 0) {
+        if (companiesRows && companiesRows.length > 0) {
           const mapped: InstallmentCompany[] = companiesRows.map((c: any) => ({
             id: c.id,
             name: c.name,
@@ -755,14 +757,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               allowed_governorates: comp.allowedGovernorates || []
             });
           }
-          await supabase!.from('system_settings').upsert({
-            id: 'companies_data',
-            data: MOCK_COMPANIES,
-            updated_at: new Date().toISOString()
-          });
         }
 
-        // 3. Fetch Company Branches
+        // 3. Fetch Company Branches directly from company_branches table
         const { data: branchRows } = await supabase!.from('company_branches').select('*');
         if (branchRows && branchRows.length > 0) {
           if (isMounted) {
@@ -792,17 +789,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
 
-        // 4. Fetch Clients
+        // 4. Fetch Clients directly from clients table
         const { data: clientRows } = await supabase!.from('clients').select('*');
-        const { data: clientsFullRow } = await supabase!
-          .from('system_settings')
-          .select('data')
-          .eq('id', 'clients_data')
-          .maybeSingle();
-
-        if (clientsFullRow?.data && Array.isArray(clientsFullRow.data) && clientsFullRow.data.length > 0) {
-          if (isMounted) setClients(clientsFullRow.data as Client[]);
-        } else if (clientRows && clientRows.length > 0) {
+        if (clientRows && clientRows.length > 0) {
           const mappedClients: Client[] = clientRows.map((cl: any) => {
             const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id);
             return {
@@ -842,14 +831,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               active_installments_count: cl.activeInstallmentsCount || 0
             });
           }
-          await supabase!.from('system_settings').upsert({
-            id: 'clients_data',
-            data: MOCK_CLIENTS,
-            updated_at: new Date().toISOString()
-          });
         }
 
-        // 5. Fetch Users
+        // 5. Fetch Users directly from users table
         const { data: userRows } = await supabase!.from('users').select('*');
         if (userRows && userRows.length > 0) {
           if (isMounted) {
@@ -894,17 +878,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
 
-        // 6. Fetch Applications
+        // 6. Fetch Applications directly from applications table
         const { data: appRows } = await supabase!.from('applications').select('*');
-        const { data: appsFullRow } = await supabase!
-          .from('system_settings')
-          .select('data')
-          .eq('id', 'applications_data')
-          .maybeSingle();
-
-        if (appsFullRow?.data && Array.isArray(appsFullRow.data) && appsFullRow.data.length > 0) {
-          if (isMounted) setApplications(appsFullRow.data as Application[]);
-        } else if (appRows && appRows.length > 0) {
+        if (appRows && appRows.length > 0) {
           const mappedApps: Application[] = appRows.map((a: any) => {
             const existingMock = MOCK_APPLICATIONS.find(m => m.id === a.id);
             return {
@@ -956,11 +932,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               product_description: a.productDescription || ''
             });
           }
-          await supabase!.from('system_settings').upsert({
-            id: 'applications_data',
-            data: MOCK_APPLICATIONS,
-            updated_at: new Date().toISOString()
-          });
         }
       } catch (err) {
         console.warn('Supabase initial sync error:', err);
@@ -969,7 +940,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     syncSupabaseInitialData();
 
-    // Setup Realtime listener for system_settings
+    // Setup Realtime listener across Supabase tables
     try {
       supabaseChannel = supabase
         .channel('cropsa_system_settings_channel')
@@ -979,16 +950,93 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           (payload: any) => {
             if (payload.new && payload.new.id === 'branding' && payload.new.data) {
               setSystemBranding(prev => ({ ...prev, ...payload.new.data }));
-              localStorage.setItem('crobsa_branding', JSON.stringify(payload.new.data));
+              try {
+                localStorage.setItem('crobsa_branding', JSON.stringify(payload.new.data));
+              } catch (e) {}
             }
-            if (payload.new && payload.new.id === 'companies_data' && Array.isArray(payload.new.data)) {
-              setCompanies(payload.new.data);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'clients' },
+          async () => {
+            const { data } = await supabase!.from('clients').select('*');
+            if (data && data.length > 0 && isMounted) {
+              setClients(data.map((cl: any) => {
+                const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id);
+                return {
+                  id: cl.id,
+                  name: cl.name,
+                  nationalId: cl.national_id,
+                  phoneNumber: cl.phone,
+                  governorate: cl.governorate || 'القاهرة',
+                  address: cl.address || '',
+                  profession: cl.job_title || 'موظف',
+                  monthlyIncome: Number(cl.monthly_income) || 0,
+                  iscoreStatus: cl.iscore_status || 'CLEAN',
+                  creditRating: Number(cl.credit_rating) || 80,
+                  totalApprovedAmount: Number(cl.total_financed) || 0,
+                  activeInstallmentsCount: Number(cl.active_installments_count) || 0,
+                  isBlacklisted: existingMock?.isBlacklisted || false,
+                  isDelinquent: existingMock?.isDelinquent || false,
+                  authorizedCompanies: existingMock?.authorizedCompanies || ['comp_01'],
+                  timeline: existingMock?.timeline || []
+                };
+              }));
             }
-            if (payload.new && payload.new.id === 'clients_data' && Array.isArray(payload.new.data)) {
-              setClients(payload.new.data);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'company_branches' },
+          async () => {
+            const { data } = await supabase!.from('company_branches').select('*');
+            if (data && data.length > 0 && isMounted) {
+              setBranches(data.map((b: any) => ({
+                id: b.id,
+                companyId: b.company_id,
+                name: b.name,
+                governorate: b.governorate,
+                address: b.address || '',
+                phone: b.phone || '',
+                managerName: b.manager_name || '',
+                active: b.active ?? true
+              })));
             }
-            if (payload.new && payload.new.id === 'applications_data' && Array.isArray(payload.new.data)) {
-              setApplications(payload.new.data);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'companies' },
+          async () => {
+            const { data } = await supabase!.from('companies').select('*');
+            if (data && data.length > 0 && isMounted) {
+              setCompanies(data.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                nameEn: c.name_en || c.name,
+                code: c.code || '',
+                logo: c.logo || '',
+                email: c.email || '',
+                phone: c.phone || '',
+                commercialRegister: c.commercial_register || '',
+                taxNumber: c.tax_number || '',
+                fraLicense: 'FRA-FIN-2021',
+                creditCeiling: Number(c.credit_ceiling) || 0,
+                usedCredit: Number(c.used_credit) || 0,
+                commissionRate: Number(c.commission_rate) || 3.5,
+                allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
+                requiredDocumentsList: ['بطاقة الرقم القومي'],
+                status: 'ACTIVE',
+                createdAt: c.created_at || new Date().toISOString(),
+                featuresGranted: {
+                  canViewCrobsaDb: true,
+                  canUseAiAnalysis: true,
+                  canExportReports: true,
+                  canManageSubUsers: true,
+                  canManageSharedFiles: true
+                }
+              })));
             }
           }
         )
@@ -1291,6 +1339,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
     setUsers(prev => [...prev, newUser]);
+    if (supabase) {
+      try {
+        await supabase.from('users').upsert({
+          id: newUser.id,
+          name: newUser.name,
+          username: newUser.username,
+          email: newUser.email,
+          role: newUser.role,
+          staff_role: newUser.staffRole || null,
+          company_id: newUser.companyId || null,
+          branch_id: newUser.branchId || null,
+          governorate: newUser.governorate || null,
+          phone: newUser.phone || null,
+          wallet_balance: newUser.walletBalance || 0,
+          commission_rate: newUser.commissionRate || 0,
+          active: true
+        });
+      } catch (err) {
+        console.warn('Supabase createUser fallback:', err);
+      }
+    }
     try {
       await setDoc(doc(db, 'users', newUser.id), newUser);
     } catch (err) {
@@ -1336,6 +1405,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setUsers(prev => [...prev, newStaff]);
+    if (supabase) {
+      try {
+        await supabase.from('users').upsert({
+          id: newStaff.id,
+          name: newStaff.name,
+          username: newStaff.username,
+          email: newStaff.email,
+          role: newStaff.role,
+          staff_role: newStaff.staffRole,
+          company_id: newStaff.companyId,
+          branch_id: newStaff.branchId,
+          governorate: newStaff.governorate,
+          phone: newStaff.phone || null,
+          wallet_balance: 0,
+          commission_rate: 0,
+          active: true
+        });
+      } catch (err) {
+        console.warn('Supabase createCompanyStaff fallback:', err);
+      }
+    }
     try {
       await setDoc(doc(db, 'users', newStaff.id), newStaff);
     } catch (err) {
@@ -1460,6 +1550,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (createdStaffUsers.length > 0) {
       setUsers(prev => [...prev, ...createdStaffUsers]);
+    }
+
+    if (supabase) {
+      try {
+        if (createdBranches.length > 0) {
+          await supabase.from('company_branches').upsert(createdBranches.map(b => ({
+            id: b.id,
+            company_id: b.companyId,
+            name: b.name,
+            governorate: b.governorate,
+            address: b.address || '',
+            phone: b.phone || '',
+            manager_name: b.managerName || '',
+            active: true
+          })));
+        }
+        if (createdStaffUsers.length > 0) {
+          await supabase.from('users').upsert(createdStaffUsers.map(s => ({
+            id: s.id,
+            name: s.name,
+            username: s.username,
+            email: s.email,
+            role: s.role,
+            staff_role: s.staffRole || null,
+            company_id: s.companyId || null,
+            branch_id: s.branchId || null,
+            governorate: s.governorate || null,
+            phone: s.phone || null,
+            wallet_balance: 0,
+            commission_rate: 0,
+            active: true
+          })));
+        }
+      } catch (err) {
+        console.warn('Supabase bulkImportBranchesAndStaff fallback:', err);
+      }
     }
 
     addAuditLog(
@@ -1726,25 +1852,29 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     setClients(prev => [newClient, ...prev]);
     try {
-      await setDoc(doc(db, 'clients', newClient.id), newClient);
-    } catch (err) {
-      console.warn('Firestore addClient fallback:', err);
-    }
-    try {
       if (supabase) {
-        await supabase.from('clients').insert([{
+        await supabase.from('clients').upsert({
           id: newClient.id,
           name: newClient.name,
           national_id: newClient.nationalId,
           phone: newClient.phoneNumber,
           governorate: newClient.governorate,
+          address: clientData.address || '',
           job_title: newClient.profession,
+          monthly_income: clientData.monthlyIncome || 0,
+          iscore_status: clientData.iscoreStatus || 'CLEAN',
           credit_rating: typeof newClient.creditRating === 'number' ? newClient.creditRating : 80,
-          total_financed: newClient.totalApprovedAmount || 0
-        }]);
+          total_financed: newClient.totalApprovedAmount || 0,
+          active_installments_count: clientData.activeInstallmentsCount || 0
+        });
       }
     } catch (err) {
       console.warn('Supabase addClient fallback:', err);
+    }
+    try {
+      await setDoc(doc(db, 'clients', newClient.id), newClient);
+    } catch (err) {
+      console.warn('Firestore addClient fallback:', err);
     }
     addAuditLog('CREATE_CLIENT', `Added client ${newClient.name}`, newClient.id);
   };
@@ -1752,26 +1882,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const updateClient = async (clientId: string, data: Partial<Client>) => {
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, ...data } : c));
     try {
-      await updateDoc(doc(db, 'clients', clientId), data);
-    } catch (err) {
-      console.warn('Firestore updateClient fallback:', err);
-    }
-    try {
       if (supabase) {
         const payload: Record<string, any> = {};
         if (data.name !== undefined) payload.name = data.name;
         if (data.nationalId !== undefined) payload.national_id = data.nationalId;
         if (data.phoneNumber !== undefined) payload.phone = data.phoneNumber;
         if (data.governorate !== undefined) payload.governorate = data.governorate;
+        if (data.address !== undefined) payload.address = data.address;
         if (data.profession !== undefined) payload.job_title = data.profession;
+        if (data.monthlyIncome !== undefined) payload.monthly_income = data.monthlyIncome;
+        if (data.iscoreStatus !== undefined) payload.iscore_status = data.iscoreStatus;
         if (data.creditRating !== undefined) payload.credit_rating = typeof data.creditRating === 'number' ? data.creditRating : 80;
         if (data.totalApprovedAmount !== undefined) payload.total_financed = data.totalApprovedAmount;
+        if (data.activeInstallmentsCount !== undefined) payload.active_installments_count = data.activeInstallmentsCount;
         if (Object.keys(payload).length > 0) {
           await supabase.from('clients').update(payload).eq('id', clientId);
         }
       }
     } catch (err) {
       console.warn('Supabase updateClient fallback:', err);
+    }
+    try {
+      await updateDoc(doc(db, 'clients', clientId), data);
+    } catch (err) {
+      console.warn('Firestore updateClient fallback:', err);
     }
     addAuditLog('UPDATE_CLIENT', `Updated client ${clientId}`, clientId);
   };
@@ -2255,6 +2389,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         ]
       };
       setClients(prev => [newClient, ...prev]);
+      if (supabase) {
+        try {
+          await supabase.from('clients').upsert({
+            id: clientId,
+            name: newClient.name,
+            national_id: newClient.nationalId,
+            phone: newClient.phoneNumber || '',
+            governorate: newClient.governorate || 'القاهرة',
+            job_title: newClient.profession || '',
+            monthly_income: 0,
+            iscore_status: 'CLEAN',
+            credit_rating: 80,
+            total_financed: 0
+          });
+        } catch (e) {
+          console.warn('Supabase create client fallback:', e);
+        }
+      }
       try {
         await setDoc(doc(db, 'clients', clientId), newClient);
       } catch (e) {
@@ -2647,6 +2799,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setApplications(prev => prev.map(a => a.id === appId ? updatedApp : a));
+    if (supabase) {
+      try {
+        await supabase.from('applications').update({
+          company_id: companyIds[0] || null,
+          branch_id: resolvedBranchId || null,
+          assigned_officer_id: resolvedOfficerId || null,
+          status: resolvedStatus
+        }).eq('id', appId);
+      } catch (err) {
+        console.warn('Supabase assignApplication fallback:', err);
+      }
+    }
     try {
       await updateDoc(doc(db, 'applications', appId), {
         assignedCompanyIds: companyIds,
@@ -2701,6 +2865,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setApplications(prev => prev.map(a => a.id === appId ? updatedApp : a));
+    if (supabase) {
+      try {
+        await supabase.from('applications').update({
+          status: ApplicationStatus.PAPER_REVIEW
+        }).eq('id', appId);
+      } catch (err) {
+        console.warn('Supabase acknowledgeApplication fallback:', err);
+      }
+    }
     try {
       await updateDoc(doc(db, 'applications', appId), {
         status: ApplicationStatus.PAPER_REVIEW,
@@ -2783,6 +2956,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setApplications(prev => prev.map(a => a.id === appId ? updatedApp : a));
+    if (supabase) {
+      try {
+        const payload: Record<string, any> = {
+          status: status
+        };
+        if (approvedAmount !== undefined) {
+          payload.financed_amount = approvedAmount;
+        }
+        await supabase.from('applications').update(payload).eq('id', appId);
+      } catch (err) {
+        console.warn('Supabase reviewApplication fallback:', err);
+      }
+    }
     try {
       await updateDoc(doc(db, 'applications', appId), {
         status,
@@ -4052,6 +4238,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setApplications(prev => [newApp, ...prev]);
+    if (supabase) {
+      try {
+        await supabase.from('applications').upsert({
+          id: appId,
+          client_id: client.id,
+          client_name: client.name,
+          client_phone: client.phoneNumber || '',
+          client_national_id: client.nationalId || '',
+          company_id: companyId && companyId.startsWith('comp_') ? companyId : 'comp_01',
+          total_amount: amount,
+          down_payment: 0,
+          financed_amount: amount,
+          monthly_installment: Math.round(amount / (extra?.durationMonths || 12)),
+          duration_months: extra?.durationMonths || 12,
+          status: newApp.status,
+          product_type: 'تجديد تمويل',
+          product_description: newApp.description || ''
+        });
+      } catch (err) {
+        console.warn('Supabase renewInstallment fallback:', err);
+      }
+    }
     try {
       await setDoc(doc(db, 'applications', appId), newApp);
     } catch (err) {
@@ -4214,6 +4422,47 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setApplications(prev => [...newAppsToAdd, ...prev]);
     }
 
+    if (supabase) {
+      try {
+        if (newClientsToAdd.length > 0) {
+          const clientRows = newClientsToAdd.map(nc => ({
+            id: nc.id,
+            name: nc.name,
+            national_id: nc.nationalId,
+            phone: nc.phoneNumber,
+            governorate: nc.governorate,
+            address: nc.address || '',
+            job_title: nc.profession || '',
+            monthly_income: Number(nc.monthlyIncome) || 0,
+            iscore_status: nc.iscoreStatus || 'CLEAN',
+            credit_rating: typeof nc.creditRating === 'number' ? nc.creditRating : 80,
+            total_financed: Number(nc.totalApprovedAmount) || 0
+          }));
+          await supabase.from('clients').upsert(clientRows);
+        }
+        if (newAppsToAdd.length > 0) {
+          const appRows = newAppsToAdd.map(na => ({
+            id: na.id,
+            client_id: na.clientId || na.id,
+            client_name: na.clientName,
+            client_phone: na.phoneNumber || '',
+            client_national_id: na.clientNationalId || '',
+            company_id: na.assignedCompanyIds?.[0] || 'comp_01',
+            total_amount: na.requestedAmount || 0,
+            down_payment: 0,
+            financed_amount: na.approvedAmount || na.requestedAmount || 0,
+            monthly_installment: Math.round((na.approvedAmount || na.requestedAmount || 0) / (na.durationMonths || 12)),
+            duration_months: na.durationMonths || 12,
+            status: na.status || 'APPROVED',
+            product_type: 'سجل مستورد',
+            product_description: na.description || ''
+          }));
+          await supabase.from('applications').upsert(appRows);
+        }
+      } catch (err) {
+        console.warn('Supabase bulkImportClients fallback:', err);
+      }
+    }
     try {
       for (const nc of newClientsToAdd) {
         await setDoc(doc(db, 'clients', nc.id), nc);
