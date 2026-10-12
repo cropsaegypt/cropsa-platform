@@ -16,9 +16,11 @@ import {
   Smartphone,
   Monitor,
   Paintbrush,
-  LayoutGrid
+  LayoutGrid,
+  AlertCircle
 } from 'lucide-react';
 import { SystemBranding } from '../types';
+import { compressImage } from '../utils/imageCompression';
 
 const PRESET_LOGOS = [
   'https://images.unsplash.com/photo-1560472355-536de3962603?w=128&auto=format&fit=crop&q=80',
@@ -114,27 +116,54 @@ export const CropsaSettings: React.FC = () => {
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState<string | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        if (type === 'logo') {
-          setLogoUrl(reader.result);
-        } else {
-          setLoginBannerUrl(reader.result);
-        }
+    try {
+      setCompressing(type === 'logo' ? 'جاري ضغط وتحسين الشعار...' : 'جاري ضغط وتحسين الخلفية...');
+      if (type === 'logo') {
+        const compressed = await compressImage(file, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.9,
+          format: file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+        });
+        setLogoUrl(compressed);
+      } else {
+        const compressed = await compressImage(file, {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.82,
+          format: 'image/jpeg'
+        });
+        setLoginBannerUrl(compressed);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Fallback to direct file reader:', err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          if (type === 'logo') {
+            setLogoUrl(reader.result);
+          } else {
+            setLoginBannerUrl(reader.result);
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setCompressing(null);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     try {
       await updateBranding({
         platformName,
@@ -153,9 +182,10 @@ export const CropsaSettings: React.FC = () => {
         loginBannerDimming
       });
       setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 3500);
-    } catch (err) {
+      setTimeout(() => setSavedSuccess(false), 4000);
+    } catch (err: any) {
       console.error('Failed to update branding:', err);
+      setSaveError(err?.message || 'حدث خطأ أثناء الحفظ في قاعدة البيانات');
     } finally {
       setSaving(false);
     }
@@ -182,17 +212,32 @@ export const CropsaSettings: React.FC = () => {
           <div>
             <h1 className="text-2xl font-black text-white">إعدادات وهوية المنظومة وصفحة تسجيل الدخول</h1>
             <p className="text-xs text-slate-300 mt-1">
-              تخصيص كامل لألوان كروبسا، مربعات اسم المستخدم وكلمة المرور، النصوص، الخلفيات، والشعار مع معاينة حية
+              تخصيص كامل لألوان كروبسا، مربعات اسم المستخدم وكلمة المرور، النصوص، الخلفيات، والشعار مع مزامنة فورية في سوبابيس (Supabase)
             </p>
           </div>
         </div>
 
-        {savedSuccess && (
-          <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <Check className="h-4 w-4 text-emerald-400" />
-            <span>تم حفظ التعديلات ونشرها وتحديث الفايربيز بنجاح!</span>
-          </div>
-        )}
+        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+          {compressing && (
+            <div className="bg-sky-500/20 border border-sky-400/40 text-sky-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
+              <span>{compressing}</span>
+            </div>
+          )}
+
+          {savedSuccess && (
+            <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <Check className="h-4 w-4 text-emerald-400" />
+              <span>تم حفظ التعديلات ونشرها وتحديث قاعدة بيانات سوبابيس (Supabase) بنجاح!</span>
+            </div>
+          )}
+
+          {saveError && (
+            <div className="bg-red-500/20 border border-red-400/40 text-red-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <AlertCircle className="h-4 w-4 text-red-400" />
+              <span>{saveError}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Grid: Settings Form & Live Preview */}
