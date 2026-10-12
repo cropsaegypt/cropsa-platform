@@ -107,6 +107,9 @@ export const CropsaSettings: React.FC = () => {
   const [fontFamily, setFontFamily] = useState<SystemBranding['fontFamily']>(
     systemBranding?.fontFamily || 'Cairo'
   );
+  const [loginBannerDimming, setLoginBannerDimming] = useState<number>(
+    systemBranding?.loginBannerDimming ?? 70
+  );
 
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [saving, setSaving] = useState(false);
@@ -146,7 +149,8 @@ export const CropsaSettings: React.FC = () => {
         loginBgColor,
         loginCardStyle,
         loginInputStyle,
-        fontFamily
+        fontFamily,
+        loginBannerDimming
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3500);
@@ -533,15 +537,74 @@ export const CropsaSettings: React.FC = () => {
               </div>
 
               {/* Banner Management */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">صورة الغلاف لصفحة تسجيل الدخول (Login Banner)</label>
-                <input
-                  type="text"
-                  value={loginBannerUrl}
-                  onChange={e => setLoginBannerUrl(e.target.value)}
-                  placeholder="رابط صورة الغلاف..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-700 block">صورة الغلاف وخلفية صفحة تسجيل الدخول (Login Banner Background)</label>
+
+                {/* Live Preview of Background Banner with Real-time Dimming Level */}
+                <div className="relative rounded-2xl overflow-hidden border-2 border-slate-200 aspect-video max-h-48 shadow-inner bg-slate-900 group">
+                  <img 
+                    src={loginBannerUrl || 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1200&auto=format&fit=crop&q=80'} 
+                    alt="Background Preview" 
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300"
+                  />
+                  {/* Dynamic Dimming Overlay */}
+                  <div 
+                    className="absolute inset-0 bg-[#1e252a] backdrop-blur-[1px] transition-all"
+                    style={{ opacity: loginBannerDimming / 100 }}
+                  />
+                  <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between text-white z-10">
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-emerald-400" />
+                      معاينة حية للخلفية مع التظليل المباشر ({loginBannerDimming}%)
+                    </span>
+                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-mono">
+                      Live Preview
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dimming Level Slider */}
+                <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-[#cce5d4] space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span>مستوى تعتيم وتظليل الخلفية (Dimming Level):</span>
+                    <span className="font-mono text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-[#cce5d4] shadow-xs">
+                      {loginBannerDimming}%
+                    </span>
+                  </div>
+                  <input 
+                    type="range"
+                    min="20"
+                    max="90"
+                    step="5"
+                    value={loginBannerDimming}
+                    onChange={e => setLoginBannerDimming(parseInt(e.target.value, 10))}
+                    className="w-full accent-[#146337] cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-medium">
+                    <span>أكثر إشراقاً ووضوحاً (20%)</span>
+                    <span>أكثر هدوءاً وتعتيماً (90%)</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={loginBannerUrl}
+                    onChange={e => setLoginBannerUrl(e.target.value)}
+                    placeholder="أدخل رابط مباشر أو اضغط زر رفع صورة من جهازك..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <label className="bg-emerald-50 hover:bg-emerald-100 text-[#146337] text-xs font-bold px-3.5 py-2 rounded-xl border border-[#cce5d4] cursor-pointer flex items-center gap-1.5 shrink-0 transition-colors">
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>رفع صورة من جهازك</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={e => handleFileUpload(e, 'banner')} 
+                    />
+                  </label>
+                </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                   {PRESET_BANNERS.map((b, idx) => (
@@ -549,12 +612,12 @@ export const CropsaSettings: React.FC = () => {
                       key={idx}
                       type="button"
                       onClick={() => setLoginBannerUrl(b.url)}
-                      className={`h-16 rounded-xl border-2 overflow-hidden relative cursor-pointer ${
+                      className={`h-16 rounded-xl border-2 overflow-hidden relative cursor-pointer group ${
                         loginBannerUrl === b.url ? 'border-emerald-600 ring-2 ring-emerald-300' : 'border-slate-200'
                       }`}
                     >
-                      <img src={b.url} alt={b.name} className="w-full h-full object-cover" />
-                      <span className="absolute inset-0 bg-slate-950/50 text-white text-[9px] font-bold flex items-center justify-center p-1 text-center">
+                      <img src={b.url} alt={b.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <span className="absolute inset-0 bg-slate-950/60 text-white text-[9px] font-bold flex items-center justify-center p-1 text-center">
                         {b.name}
                       </span>
                     </button>

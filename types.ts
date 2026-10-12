@@ -118,6 +118,7 @@ export interface SystemBranding {
   loginInputStyle?: 'cropsa-bright' | 'cropsa-emerald-dark' | 'glass-outline' | 'clean-white';
   fontFamily?: 'Cairo' | 'Tajawal' | 'IBM Plex Sans Arabic' | 'Almarai' | 'sans-serif';
   loginFooterText?: string;
+  loginBannerDimming?: number;
 }
 
 export interface FinancingProgram {

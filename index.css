@@ -5,39 +5,61 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root {
+  --heroui-sidebar: #f2f8f4;
+  --heroui-sidebar-border: #dae7dd;
+  --heroui-canvas: #f7faf8;
+  --heroui-card: #ffffff;
+  --heroui-card-border: #e2ece5;
+  --heroui-primary: #146337;
+  --heroui-primary-hover: #0f522d;
+  --heroui-primary-light: #edf7f0;
+  --pinterest-primary: #146337;
+  --pinterest-accent: #0fa968;
+  --pinterest-mint-soft: #dcefe3;
+}
+
 body {
-  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+  font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   letter-spacing: normal;
   color: #0f172a;
-  background-color: #f8fafc;
+  background-color: #f7faf8;
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Enhanced Typography & Readability for Arabic */
 .font-arabic {
-  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+  font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 
-/* Ensure strong contrast for labels and captions */
+/* Ensure strong contrast for headings, labels and captions */
+h1, h2, h3, h4, h5, h6 {
+  color: #0f172a;
+  font-weight: 800;
+}
+
 label {
   color: #1e293b;
   font-weight: 700;
 }
 
-/* Cropsa Brand Accents & Modern Glassmorphism */
+/* Cropsa Brand Accents Inspired by Pinterest Design */
 .cropsa-gradient-hero {
-  background: linear-gradient(135deg, #064e3b 0%, #047857 50%, #065f46 100%);
+  background: linear-gradient(135deg, #0e4c29 0%, #146337 50%, #0fa968 100%);
 }
 
-.cropsa-card-modern {
+.cropsa-card-modern, .heroui-card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #dae7dd;
   border-radius: 1.25rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px 0 rgba(14, 56, 32, 0.04), 0 1px 2px -1px rgba(14, 56, 32, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.cropsa-card-modern:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+.cropsa-card-modern:hover, .heroui-card:hover {
+  border-color: #cbe5d3;
+  box-shadow: 0 4px 12px -2px rgba(14, 56, 32, 0.06), 0 2px 4px -2px rgba(14, 56, 32, 0.04);
 }
 
 /* Mobile typography scale & responsive hierarchy */

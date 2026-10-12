@@ -935,17 +935,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
   };
 
   return (
-    <div className={`min-h-screen bg-slate-50 flex ${language === 'ar' ? 'font-arabic' : 'font-sans'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className={`min-h-screen bg-[#f7faf8] flex ${language === 'ar' ? 'font-arabic' : 'font-sans'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 ${language === 'ar' ? 'right-0' : 'left-0'} z-50 shrink-0 bg-slate-900 border-x border-slate-800 text-slate-300 transform transition-all duration-300 ease-in-out flex flex-col shadow-xl
-        ${isCollapsed ? 'lg:w-20' : 'lg:w-72'}
-        w-72
+        fixed lg:static inset-y-0 ${language === 'ar' ? 'right-0' : 'left-0'} z-50 shrink-0 bg-[#f2f8f4] border-x border-[#dae7dd] text-slate-800 transform transition-all duration-300 ease-in-out flex flex-col shadow-[0_0_25px_rgba(14,56,32,0.03)]
+        ${isCollapsed ? 'lg:w-20' : 'lg:w-[310px] xl:w-[320px]'}
+        w-[310px] sm:w-[320px]
         ${sidebarOpen 
           ? 'translate-x-0' 
           : language === 'ar' 
@@ -953,64 +953,64 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Brand Header */}
-        <div className={`h-16 flex items-center border-b border-slate-800/80 bg-slate-950/60 shrink-0 ${
-          isCollapsed ? 'justify-center px-2' : 'justify-between px-4'
+        <div className={`h-16 flex items-center border-b border-[#dae7dd] bg-[#f2f8f4] shrink-0 ${
+          isCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'
         }`}>
           {isCollapsed ? (
             <button
               type="button"
               onClick={toggleSidebarCollapsed}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-slate-800/80 transition-all flex items-center justify-center group"
+              className="p-1.5 rounded-xl text-slate-500 hover:text-[#0f2e18] hover:bg-[#e2ece5] transition-all flex items-center justify-center group"
               title={language === 'ar' ? 'توسيع القائمة الجانبية' : 'Expand Sidebar'}
             >
               {Boolean(systemBranding?.logoUrl?.trim()) ? (
                 <img 
                   src={systemBranding.logoUrl} 
                   alt="Logo" 
-                  className="h-8 w-8 object-contain rounded-xl bg-white p-1 shadow-xs group-hover:scale-105 transition-transform" 
+                  className="h-8 w-8 object-contain rounded-xl bg-white p-1 border border-[#dae7dd] shadow-2xs group-hover:scale-105 transition-transform" 
                 />
               ) : (
-                <div className="h-8 w-8 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-black text-base group-hover:scale-105 transition-transform">
+                <div className="h-8 w-8 rounded-xl bg-emerald-600/15 border border-emerald-600/30 flex items-center justify-center text-emerald-800 font-black text-base group-hover:scale-105 transition-transform">
                   C
                 </div>
               )}
             </button>
           ) : (
             <>
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 {Boolean(systemBranding?.logoUrl?.trim()) ? (
                   <img 
                     src={systemBranding.logoUrl} 
                     alt="Logo" 
-                    className="h-8 w-8 object-contain rounded-xl bg-white p-1 shadow-xs shrink-0" 
+                    className="h-9 w-9 object-contain rounded-xl bg-white p-1 border border-[#dae7dd] shadow-2xs shrink-0" 
                   />
                 ) : (
-                  <div className="h-8 w-8 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-black text-base shrink-0">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-600/15 border border-emerald-600/30 flex items-center justify-center text-emerald-800 font-black text-lg shrink-0">
                     C
                   </div>
                 )}
-                <div className="min-w-0">
-                  <span className="text-sm font-bold tracking-tight text-white flex items-center gap-1 truncate">
+                <div className="min-w-0 flex-1">
+                  <span className="text-[15px] sm:text-base font-black tracking-tight text-[#0f2e18] flex items-center gap-1 leading-tight">
                     {systemBranding?.platformName || 'Cropsa egypt'}
                   </span>
-                  <span className="text-[11px] text-slate-400 block truncate">
+                  <span className="text-xs text-[#276a3d] font-bold block leading-tight mt-0.5">
                     {systemBranding?.platformSubtitle || (language === 'ar' ? 'منظومة التقسيط والتمويل' : 'Financing Platform')}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                 {/* Desktop Collapse Button */}
                 <button
                   type="button"
                   onClick={toggleSidebarCollapsed}
-                  className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  className="hidden lg:flex p-1.5 rounded-lg text-slate-500 hover:text-[#0f2e18] hover:bg-[#e2ece5] transition-colors"
                   title={language === 'ar' ? 'ضم القائمة الجانبية' : 'Collapse Sidebar'}
                 >
-                  <PanelLeftClose className={`h-4.5 w-4.5 ${language === 'ar' ? 'rotate-180' : ''}`} />
+                  <PanelLeftClose className={`h-5 w-5 ${language === 'ar' ? 'rotate-180' : ''}`} />
                 </button>
                 {/* Mobile close button */}
-                <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white p-1">
+                <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-500 hover:text-slate-800 p-1">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -1024,33 +1024,33 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             onClick={() => {
               if (currentUser.role === Role.SUPER_ADMIN) setRoleSwitcherModalOpen(true);
             }}
-            className={`p-2 mx-auto my-2.5 bg-slate-800/50 rounded-xl border border-slate-700/50 transition-all flex flex-col items-center justify-center shrink-0 w-12 h-12 relative group ${
-              currentUser.role === Role.SUPER_ADMIN ? 'cursor-pointer hover:bg-slate-800/80 hover:border-emerald-500/40' : 'cursor-default'
+            className={`p-2 mx-auto my-2.5 bg-white/90 rounded-xl border border-[#dae7dd] shadow-2xs transition-all flex flex-col items-center justify-center shrink-0 w-12 h-12 relative group ${
+              currentUser.role === Role.SUPER_ADMIN ? 'cursor-pointer hover:bg-white hover:border-[#1b6330]/40' : 'cursor-default'
             }`}
             title={`${currentUser.name} (${roleLabels[currentUser.role] || ''})${currentUser.role === Role.SUPER_ADMIN ? ` - ${language === 'ar' ? 'اضغط لتبديل الحساب وتجربة الصلاحيات' : 'Switch Role'}` : ''}`}
           >
-            <div className="h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center font-bold text-xs shrink-0">
+            <div className="h-8 w-8 rounded-lg bg-[#e2f2e7] text-[#1b6330] border border-[#cbe5d3] flex items-center justify-center font-black text-sm shrink-0">
               {currentUser.name.charAt(0)}
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-900" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
           </div>
         ) : (
           <div 
             onClick={() => {
               if (currentUser.role === Role.SUPER_ADMIN) setRoleSwitcherModalOpen(true);
             }}
-            className={`p-3 mx-3 my-2.5 bg-slate-800/50 rounded-xl border border-slate-700/50 transition-all group shrink-0 ${
-              currentUser.role === Role.SUPER_ADMIN ? 'cursor-pointer hover:bg-slate-800/80 hover:border-emerald-500/40' : 'cursor-default'
+            className={`p-3 mx-3 my-2 bg-white/95 rounded-2xl border border-[#dae7dd] shadow-2xs transition-all group shrink-0 ${
+              currentUser.role === Role.SUPER_ADMIN ? 'cursor-pointer hover:bg-white hover:border-[#1b6330]/50 hover:shadow-xs' : 'cursor-default'
             }`}
             title={currentUser.role === Role.SUPER_ADMIN ? (language === 'ar' ? 'اضغط لتغيير الحساب وتجربة الصلاحيات' : 'Switch Role') : undefined}
           >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                <span>{language === 'ar' ? 'الحساب النشط' : 'Active'}</span>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-slate-500 font-bold flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-100" />
+                <span>{language === 'ar' ? 'الحساب النشط' : 'Active Account'}</span>
               </span>
               {currentUser.role === Role.SUPER_ADMIN && (
-                <span className="text-[10px] text-emerald-400/80 group-hover:text-emerald-300 flex items-center gap-1 font-bold">
+                <span className="text-xs text-[#1b6330] group-hover:text-[#165028] flex items-center gap-1 font-bold bg-[#edf7f0] px-2 py-0.5 rounded-md border border-[#cbe5d3]">
                   <ArrowLeftRight className="h-3 w-3" />
                   <span>{language === 'ar' ? 'تبديل' : 'Switch'}</span>
                 </span>
@@ -1058,16 +1058,16 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             </div>
 
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center justify-center font-bold text-xs shrink-0">
+              <div className="h-8 w-8 rounded-xl bg-[#e2f2e7] text-[#1b6330] border border-[#cbe5d3] flex items-center justify-center font-black text-sm shrink-0">
                 {currentUser.name.charAt(0)}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-white leading-tight truncate">{currentUser.name}</p>
-                <p className="text-[11px] text-slate-400 leading-tight truncate mt-0.5">
+                <p className="text-sm font-black text-slate-900 leading-snug">{currentUser.name}</p>
+                <p className="text-xs text-[#276a3d] font-bold leading-tight mt-0.5">
                   {roleLabels[currentUser.role]}
                 </p>
                 {currentUser.branchName && (
-                  <p className="text-[10px] text-emerald-400 font-medium leading-tight truncate mt-0.5">
+                  <p className="text-xs text-[#1b6330] font-bold leading-tight mt-0.5">
                     📍 {currentUser.branchName}
                   </p>
                 )}
@@ -1077,7 +1077,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         )}
 
         {/* Structured Navigation with Dropdowns for Main Sections */}
-        <div className={`flex-1 overflow-y-auto scrollbar-thin py-2 ${isCollapsed ? 'px-2 space-y-2' : 'px-3 space-y-2.5'}`}>
+        <div className={`flex-1 overflow-y-auto scrollbar-thin py-2 ${isCollapsed ? 'px-2 space-y-2' : 'px-2.5 space-y-1.5'}`}>
           {navSections.map(section => {
             const SectionIcon = section.icon;
 
@@ -1118,23 +1118,23 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                       setIsCollapsed(false);
                       setOpenSections(prev => ({ ...prev, [section.id]: true }));
                     }}
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all relative ${
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all relative ${
                       hasActiveChild
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                        ? 'bg-[#1b6330] text-white shadow-sm shadow-[#1b6330]/25'
+                        : 'text-slate-600 hover:text-[#0f2e18] hover:bg-[#e5f2e8]'
                     }`}
                     title={section.title}
                   >
-                    <SectionIcon className={`h-5 w-5 ${hasActiveChild ? 'text-emerald-400' : 'text-slate-300'}`} />
+                    <SectionIcon className={`h-5 w-5 ${hasActiveChild ? 'text-white' : 'text-slate-600'}`} />
                     {sectionTotalCount > 0 && (
-                      <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-900" />
+                      <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
                     )}
                   </button>
                 </div>
               );
             }
 
-            // Expanded Mode Rendering: Main Sections as Collapsible Dropdowns with bold & larger font
+            // Expanded Mode Rendering: Main Sections (القسم الرئيسي بخط واضح ومميز وأكبر من الفرعي)
             return (
               <div key={section.id} className="rounded-xl transition-all">
                 {/* Main Section Header - Dropdown Button */}
@@ -1143,43 +1143,43 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                   onClick={() => toggleSection(section.id)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all text-right group select-none ${
                     hasActiveChild
-                      ? 'bg-slate-800/80 text-emerald-300 border border-slate-700/60 shadow-xs'
-                      : 'text-slate-100 hover:text-white hover:bg-slate-800/60'
+                      ? 'bg-[#e2ece5] text-[#0f2e18] font-black border border-[#cbe5d3] shadow-2xs'
+                      : 'text-slate-800 hover:text-[#0f2e18] hover:bg-[#e8f4ec] font-black'
                   }`}
                 >
-                  {/* Title & Icon: Larger font & bold */}
+                  {/* Title & Icon: Bold & prominent main category header */}
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className={`p-1.5 rounded-lg transition-colors shrink-0 ${
                       hasActiveChild 
-                        ? 'bg-emerald-500/20 text-emerald-400' 
-                        : 'bg-slate-800 text-slate-300 group-hover:text-white'
+                        ? 'bg-[#1b6330] text-white shadow-2xs' 
+                        : 'bg-white text-[#1b6330] border border-[#dae7dd] group-hover:border-[#b7d8c0]'
                     }`}>
                       <SectionIcon className="h-4.5 w-4.5" />
                     </div>
-                    <span className="text-sm font-bold tracking-tight truncate text-slate-100 group-hover:text-white">
+                    <span className="text-[15px] font-black tracking-tight leading-snug text-slate-900 group-hover:text-[#0f2e18]">
                       {section.title}
                     </span>
                   </div>
 
                   {/* Badges & Chevron Arrow */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 mr-1.5">
                     {sectionTotalCount > 0 && (
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-[#edf7f0] text-[#1b6330] border border-[#cbe5d3]">
                         {sectionTotalCount}
                       </span>
                     )}
-                    <div className={`p-0.5 rounded-md text-slate-400 group-hover:text-slate-200 transition-transform duration-200 ${
-                      isOpen ? 'rotate-180 text-slate-200' : 'rotate-0'
+                    <div className={`p-1 rounded-md text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180 text-slate-700' : 'rotate-0'
                     }`}>
                       <ChevronDown className="h-4 w-4" />
                     </div>
                   </div>
                 </button>
 
-                {/* Sub-items (الأقسام الفرعية) */}
+                {/* Sub-items (الأقسام الفرعية - خط واضح دون ترحيل أو بتر) */}
                 {isOpen && (
-                  <div className={`space-y-1 mt-1.5 transition-all ${
-                    language === 'ar' ? 'mr-3.5 pr-2.5 border-r border-slate-800' : 'ml-3.5 pl-2.5 border-l border-slate-800'
+                  <div className={`space-y-1 mt-1 transition-all ${
+                    language === 'ar' ? 'mr-2.5 pr-2 border-r-2 border-[#dae7dd]' : 'ml-2.5 pl-2 border-l-2 border-[#dae7dd]'
                   }`}>
                     {items.map(item => {
                       const ItemIcon = item.icon;
@@ -1197,27 +1197,29 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                             }
                             setSidebarOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all text-right ${
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-[13px] sm:text-[13.5px] transition-all text-right group ${
                             isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shadow-2xs'
-                              : 'text-slate-300 hover:text-white hover:bg-slate-800/60 font-medium'
+                              ? 'bg-[#1b6330] text-white font-black shadow-sm shadow-[#1b6330]/25'
+                              : 'text-slate-700 hover:text-[#0f2e18] hover:bg-[#e5f2e8] font-bold'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <ItemIcon className={`h-4 w-4 shrink-0 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`} />
-                            <span className="truncate">{item.label}</span>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <ItemIcon className={`h-4 w-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-[#1b6330]'}`} />
+                            <span className="leading-snug text-start">{item.label}</span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0 mr-1">
                             {item.count !== undefined && item.count > 0 && (
-                              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                                isActive ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-300'
+                              <span className={`text-[11px] font-mono font-black px-1.5 py-0.5 rounded-full ${
+                                isActive ? 'bg-white/20 text-white' : 'bg-[#e2ece5] text-[#1b6330]'
                               }`}>
                                 {item.count}
                               </span>
                             )}
                             {item.badge && (
-                              <span className="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                isActive ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}>
                                 {item.badge}
                               </span>
                             )}
@@ -1233,21 +1235,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         </div>
 
         {/* Footer: Firestore status, Collapse Toggle & Logout */}
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950/40 space-y-2 shrink-0">
+        <div className="p-3.5 border-t border-[#dae7dd] bg-[#f2f8f4] space-y-2 shrink-0">
           {/* Firestore indicator */}
           {isCollapsed ? (
             <div className="flex items-center justify-center" title={isFirestoreConnected ? (language === 'ar' ? 'سحابة النظام متصلة' : 'Cloud Connected') : (language === 'ar' ? 'جاري الاتصال بالسحابة' : 'Connecting Cloud')}>
-              <span className={`h-2.5 w-2.5 rounded-full ${isFirestoreConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className={`h-2.5 w-2.5 rounded-full ${isFirestoreConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
             </div>
           ) : (
-            <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-1">
               <span className="flex items-center gap-1.5">
-                <span className={`h-2 w-2 rounded-full ${isFirestoreConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span className={`h-2 w-2 rounded-full ${isFirestoreConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
                 {isFirestoreConnected 
                   ? (language === 'ar' ? 'سحابة النظام متصلة' : 'Cloud Connected')
                   : (language === 'ar' ? 'جاري الاتصال بالسحابة' : 'Connecting Cloud')}
               </span>
-              <Database className="h-3.5 w-3.5 text-slate-500" />
+              <Database className="h-4 w-4 text-slate-400" />
             </div>
           )}
 
@@ -1256,19 +1258,19 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             <button 
               type="button"
               onClick={toggleSidebarCollapsed}
-              className="flex items-center justify-center w-12 h-9 mx-auto text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition-colors border border-slate-800"
+              className="flex items-center justify-center w-12 h-10 mx-auto text-sm font-bold text-slate-600 hover:text-[#0f2e18] hover:bg-white rounded-xl transition-colors border border-[#dae7dd]"
               title={language === 'ar' ? 'توسيع القائمة الجانبية' : 'Expand Sidebar'}
             >
-              <PanelLeftOpen className={`h-4.5 w-4.5 ${language === 'ar' ? 'rotate-180' : ''}`} />
+              <PanelLeftOpen className={`h-5 w-5 ${language === 'ar' ? 'rotate-180' : ''}`} />
             </button>
           ) : (
             <button 
               type="button"
               onClick={toggleSidebarCollapsed}
-              className="flex items-center justify-center gap-2 w-full px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition-colors border border-slate-800"
+              className="flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-bold text-slate-700 hover:text-[#0f2e18] hover:bg-white rounded-xl transition-colors border border-[#dae7dd]"
               title={language === 'ar' ? 'ضم القائمة الجانبية' : 'Collapse Sidebar'}
             >
-              <PanelLeftClose className={`h-4 w-4 ${language === 'ar' ? 'rotate-180' : ''}`} />
+              <PanelLeftClose className={`h-4.5 w-4.5 ${language === 'ar' ? 'rotate-180' : ''}`} />
               <span>{language === 'ar' ? 'ضم القائمة الجانبية' : 'Collapse Sidebar'}</span>
             </button>
           )}
@@ -1278,17 +1280,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             <button 
               type="button"
               onClick={logout}
-              className="flex items-center justify-center w-12 h-9 mx-auto text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-500/20 rounded-xl transition-colors border border-rose-500/20"
+              className="flex items-center justify-center w-12 h-10 mx-auto text-sm font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200"
               title={t('logout')}
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-4.5 w-4.5" />
             </button>
           ) : (
             <button 
               onClick={logout}
-              className="flex items-center justify-center gap-2 w-full px-3 py-2 text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-500/20 rounded-xl transition-colors border border-rose-500/20"
+              className="flex items-center justify-center gap-2 w-full px-3.5 py-2.5 text-sm font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200"
             >
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className="h-4 w-4" />
               {t('logout')}
             </button>
           )}
@@ -1298,9 +1300,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header Bar */}
-        <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 h-16 flex items-center justify-between px-4 lg:px-6 shadow-2xs z-20">
+        <header className="bg-white/85 backdrop-blur-md border-b border-[#dae7dd] h-16 flex items-center justify-between px-4 lg:px-6 shadow-2xs z-20">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-700">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 rounded-lg hover:bg-[#f2f8f4] text-slate-700">
               <Menu className="h-5 w-5" />
             </button>
 
@@ -1308,7 +1310,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             <button 
               type="button"
               onClick={toggleSidebarCollapsed} 
-              className="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors border border-slate-200 shadow-2xs"
+              className="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-600 hover:text-[#0f2e18] hover:bg-[#f2f8f4] transition-colors border border-[#dae7dd] shadow-2xs"
               title={isCollapsed ? (language === 'ar' ? 'توسيع القائمة الجانبية' : 'Expand Sidebar') : (language === 'ar' ? 'ضم القائمة الجانبية' : 'Collapse Sidebar')}
             >
               {isCollapsed ? (
@@ -1319,10 +1321,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             </button>
 
             <div>
-              <h2 className="text-base lg:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <h2 className="text-base lg:text-lg font-black text-[#0f2415] flex items-center gap-2">
                 <span>{getPageTitle()}</span>
                 {currentUser.role === Role.BRANCH_MANAGER && currentUser.branchName && (
-                  <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.2 rounded-md">
+                  <span className="text-xs font-bold text-[#1b6330] bg-[#edf7f0] border border-[#cbe5d3] px-2.5 py-0.5 rounded-lg">
                     {currentUser.branchName}
                   </span>
                 )}
@@ -1336,7 +1338,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             {(currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) && (
               <button
                 onClick={() => setClientFollowUpOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors shadow-2xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[#1b6330] hover:bg-[#165028] text-white rounded-xl transition-all shadow-xs active:scale-95"
                 title={language === 'ar' ? 'متابعة العملاء وسجل الإجراءات' : 'Client Follow-Up'}
               >
                 <Users className="h-3.5 w-3.5" />
@@ -1349,7 +1351,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             {/* Language Toggle Button */}
             <button
               onClick={toggleLanguage}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-[#f2f8f4] hover:bg-[#e2ece5] border border-[#dae7dd] rounded-xl transition-colors"
               title="Toggle Language"
             >
               <Globe className="h-3.5 w-3.5 text-slate-500" />
@@ -1360,7 +1362,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             <div className="relative">
               <button 
                 onClick={() => setNotifOpen(!notifOpen)}
-                className="p-2 rounded-xl hover:bg-slate-100 relative transition-colors text-slate-600"
+                className="p-2 rounded-xl hover:bg-[#f2f8f4] border border-transparent hover:border-[#dae7dd] relative transition-colors text-slate-600"
               >
                 <Bell className="h-4.5 w-4.5" />
                 {unreadCount > 0 && (
@@ -1372,10 +1374,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
               
               {/* Notifications Dropdown */}
               {notifOpen && (
-                <div className={`absolute ${language === 'ar' ? 'left-0' : 'right-0'} mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 max-h-[480px] flex flex-col overflow-hidden animate-in fade-in`}>
-                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div className={`absolute ${language === 'ar' ? 'left-0' : 'right-0'} mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-[#dae7dd] z-50 max-h-[480px] flex flex-col overflow-hidden animate-in fade-in`}>
+                  <div className="p-4 border-b border-[#dae7dd] flex justify-between items-center bg-[#f2f8f4]">
                     <div className="flex items-center gap-2">
-                      <Bell className="h-4 w-4 text-crobsa-600" />
+                      <Bell className="h-4 w-4 text-[#1b6330]" />
                       <h3 className="text-sm font-bold text-slate-900">{t('notifications')}</h3>
                       {unreadCount > 0 && (
                         <span className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-bold">
@@ -1388,7 +1390,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                     </button>
                   </div>
 
-                  <div className="divide-y divide-slate-100 overflow-y-auto flex-1">
+                  <div className="divide-y divide-[#dae7dd]/60 overflow-y-auto flex-1">
                     {myNotifications.length === 0 ? (
                       <div className="p-8 text-center text-slate-400 text-xs">
                         {t('noNotifications')}
@@ -1402,8 +1404,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                         return (
                           <div 
                             key={notif.id} 
-                            className={`p-3.5 text-xs hover:bg-slate-50 cursor-pointer transition-colors ${
-                              notif.read ? 'opacity-70 bg-white' : 'bg-sky-50/60 border-r-4 border-sky-500 font-medium'
+                            className={`p-3.5 text-xs hover:bg-[#f2f8f4]/60 cursor-pointer transition-colors ${
+                              notif.read ? 'opacity-70 bg-white' : 'bg-[#eef6f0] border-r-4 border-[#1b6330] font-medium'
                             }`}
                             onClick={() => handleNotificationClick(notif)}
                           >
@@ -1441,7 +1443,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             </div>
 
             {/* Profile Avatar & Quick Logout */}
-            <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
+            <div className="flex items-center gap-2 pr-2 border-r border-[#dae7dd]">
               <div 
                 onClick={() => {
                   if (currentUser.role === Role.SUPER_ADMIN) {
@@ -1453,12 +1455,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                 }`}
                 title={currentUser.role === Role.SUPER_ADMIN ? "تبديل الحساب أو فحص الصلاحيات (خاص بمدير النظام)" : undefined}
               >
-                <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-emerald-800 to-cropsa-600 flex items-center justify-center text-white font-bold text-xs shadow-xs">
+                <div className="h-9 w-9 rounded-xl bg-[#1b6330] flex items-center justify-center text-white font-bold text-xs shadow-xs">
                   {currentUser.name.charAt(0)}
                 </div>
                 <div className="hidden md:block text-right">
                   <p className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[130px]">{currentUser.name}</p>
-                  <p className="text-[10px] text-emerald-800 font-semibold leading-tight">{roleLabels[currentUser.role]}</p>
+                  <p className="text-[10px] text-[#1b6330] font-bold leading-tight">{roleLabels[currentUser.role]}</p>
                 </div>
               </div>
 
@@ -1479,7 +1481,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
               <button
                 type="button"
                 onClick={logout}
-                className="p-2 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition-all flex items-center gap-1 text-xs font-bold"
+                className="p-2 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-[#dae7dd] hover:border-rose-200 transition-all flex items-center gap-1 text-xs font-bold"
                 title="تسجيل الخروج من المنصة"
               >
                 <LogOut className="h-3.5 w-3.5 text-rose-500" />
@@ -1497,7 +1499,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
         {/* Mobile Bottom App Navigation Bar (تجربة تطبيق الهاتف الذكي مع شريط أيقونات سفلي تفاعلي) */}
         <nav 
           aria-label="Mobile Navigation"
-          className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200/90 shadow-[0_-4px_25px_rgba(0,0,0,0.08)] px-2 py-1.5 flex items-center justify-around safe-bottom"
+          className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-lg border-t border-[#dae7dd] shadow-[0_-4px_25px_rgba(0,0,0,0.06)] px-2 py-1.5 flex items-center justify-around safe-bottom"
         >
           {mobileNavItems.map(item => {
             const Icon = item.icon;
@@ -1510,13 +1512,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                 >
                   <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shadow-lg transition-transform active:scale-95 ${
                     item.active 
-                      ? 'bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white ring-4 ring-emerald-100' 
+                      ? 'bg-[#1b6330] text-white ring-4 ring-[#e2ece5]' 
                       : 'bg-slate-900 text-white hover:bg-slate-800'
                   }`}>
                     <Icon className="h-6 w-6" />
                   </div>
                   <span className={`text-[10px] font-bold mt-1 ${
-                    item.active ? 'text-emerald-700 font-black' : 'text-slate-600'
+                    item.active ? 'text-[#1b6330] font-black' : 'text-slate-600'
                   }`}>
                     {item.label}
                   </span>
@@ -1529,14 +1531,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                 key={item.id}
                 onClick={() => item.isAction ? item.action?.() : onNavigate(item.id)}
                 className={`relative flex-1 py-1 flex flex-col items-center justify-center transition-all active:scale-95 ${
-                  item.active ? 'text-emerald-600 font-black' : 'text-slate-500 hover:text-slate-800 font-medium'
+                  item.active ? 'text-[#1b6330] font-black' : 'text-slate-500 hover:text-slate-800 font-medium'
                 }`}
               >
                 <div className="relative">
-                  <Icon className={`h-5 w-5 transition-colors ${item.active ? 'text-emerald-600 stroke-[2.5]' : 'text-slate-500'}`} />
+                  <Icon className={`h-5 w-5 transition-colors ${item.active ? 'text-[#1b6330] stroke-[2.5]' : 'text-slate-500'}`} />
                   {item.badge && (
                     <span className={`absolute -top-1.5 -right-2 text-[9px] font-black px-1.5 py-0.2 rounded-full min-w-4 text-center ring-2 ring-white text-white ${
-                      item.badgeColor === 'rose' ? 'bg-rose-500' : item.badgeColor === 'sky' ? 'bg-sky-600' : 'bg-emerald-600'
+                      item.badgeColor === 'rose' ? 'bg-rose-500' : item.badgeColor === 'sky' ? 'bg-sky-600' : 'bg-[#1b6330]'
                     }`}>
                       {item.badge}
                     </span>
@@ -1546,7 +1548,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                   {item.label}
                 </span>
                 {item.active && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-crobsa-700 mt-1 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1b6330] mt-1 animate-pulse" />
                 )}
               </button>
             );
