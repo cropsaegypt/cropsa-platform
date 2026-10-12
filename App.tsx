@@ -25,7 +25,7 @@ import { SmartCreditCalculator } from './components/SmartCreditCalculator';
 import { Role } from './types';
 
 const AppContent: React.FC = () => {
-  const { currentUser, pendingNavigation, setNavigation } = useStore();
+  const { currentUser, isInitialSyncComplete, pendingNavigation, setNavigation } = useStore();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [portalTab, setPortalTab] = useState<string>('applications');
 
@@ -96,6 +96,28 @@ const AppContent: React.FC = () => {
       handleNavigate('dashboard');
     }
   }, [currentUser?.id]);
+
+  if (!isInitialSyncComplete) {
+    return (
+      <div 
+        className="min-h-screen bg-[#031d12] flex flex-col items-center justify-center p-4 selection:bg-[#0fa968] selection:text-white" 
+        dir="rtl"
+      >
+        <div className="flex flex-col items-center max-w-sm text-center space-y-4 animate-in fade-in duration-200">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shadow-lg shadow-emerald-950/40 animate-pulse">
+              <span className="text-3xl font-black text-emerald-400">C</span>
+            </div>
+            <div className="absolute -inset-1 rounded-2xl border-2 border-emerald-500/30 animate-spin border-t-transparent" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-lg font-bold text-white tracking-wide">منظومة كروبسا مصر الرقمية</h1>
+            <p className="text-xs text-emerald-300/70 font-medium">جاري مزامنة بيانات النظام السحابية المحدثة...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <Login />;

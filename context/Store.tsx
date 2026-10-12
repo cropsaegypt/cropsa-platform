@@ -75,6 +75,7 @@ interface StoreContextType {
   toggleLanguage: () => void;
   t: (key: keyof typeof translations.ar) => string;
   isFirestoreConnected: boolean;
+  isInitialSyncComplete: boolean;
 
   // Auth & Session
   currentUser: User | null;
@@ -279,7 +280,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [language, setLanguageState] = useState<Language>(() => {
     return (localStorage.getItem('crobsa_lang') as Language) || 'ar';
   });
-  const [isFirestoreConnected, setIsFirestoreConnected] = useState(false);
+  const [isFirestoreConnected, setIsFirestoreConnected] = useState(true);
+  const [isInitialSyncComplete, setIsInitialSyncComplete] = useState<boolean>(false);
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
   const clearSessionWarning = () => setSessionWarning(null);
@@ -455,222 +457,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return companies[0] || null;
   }, [currentUser, companies]);
 
-  // Firestore Seed on initial startup if collections are empty
+  // Initial sync safety timeout: guarantee UI is never blocked indefinitely
   useEffect(() => {
-    let isMounted = true;
-
-    async function initializeFirestore() {
-      try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        if (usersSnap.empty) {
-          console.log('Seeding initial data into Firestore...');
-          const batch = writeBatch(db);
-
-          MOCK_USERS.forEach(u => {
-            batch.set(doc(db, 'users', u.id), u);
-          });
-          MOCK_COMPANIES.forEach(c => {
-            batch.set(doc(db, 'companies', c.id), c);
-          });
-          MOCK_BRANCHES.forEach(b => {
-            batch.set(doc(db, 'branches', b.id), b);
-          });
-          MOCK_APPLICATIONS.forEach(a => {
-            batch.set(doc(db, 'applications', a.id), a);
-          });
-          MOCK_CLIENTS.forEach(cl => {
-            batch.set(doc(db, 'clients', cl.id), cl);
-          });
-          MOCK_CLIENT_REQUESTS.forEach(cr => {
-            batch.set(doc(db, 'client_requests', cr.id), cr);
-          });
-          MOCK_OVERDUE_CASES.forEach(oc => {
-            batch.set(doc(db, 'overdue_cases', oc.id), oc);
-          });
-          MOCK_SHARED_DOCUMENTS.forEach(sd => {
-            batch.set(doc(db, 'shared_documents', sd.id), sd);
-          });
-          MOCK_NOTIFICATIONS.forEach(n => {
-            batch.set(doc(db, 'notifications', n.id), n);
-          });
-          MOCK_AUDIT_LOGS.forEach(al => {
-            batch.set(doc(db, 'audit_logs', al.id), al);
-          });
-          MOCK_TRANSACTIONS.forEach(tx => {
-            batch.set(doc(db, 'transactions', tx.id), tx);
-          });
-          MOCK_WITHDRAWALS.forEach(w => {
-            batch.set(doc(db, 'withdrawals', w.id), w);
-          });
-
-          await batch.commit();
-          console.log('Firestore seed commit successful.');
-        }
-        if (isMounted) setIsFirestoreConnected(true);
-      } catch (err) {
-        console.warn('Firestore initial check note:', err);
-      }
-    }
-
-    initializeFirestore();
-
-    // Setup live onSnapshot listeners for collections
-    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as User);
-        setUsers(items);
-        setIsFirestoreConnected(true);
-
-        // Remote session termination enforcement:
-        // If this user is logged in locally, but Firestore indicates that a new session was created elsewhere
-        const localSessionId = sessionStorage.getItem('cropsa_session_id');
-        const activeUserJson = sessionStorage.getItem('cropsa_active_user') || sessionStorage.getItem('crobsa_active_user');
-        if (activeUserJson && localSessionId) {
-          try {
-            const parsedUser = JSON.parse(activeUserJson);
-            const liveUser = items.find(u => u.id === parsedUser.id);
-            if (liveUser && liveUser.activeSessionId && liveUser.activeSessionId !== localSessionId) {
-              console.warn('Active session invalidated: Account was logged in from another device or location.');
-              setSessionWarning('تم إنهاء الجلسة نظراً لتسجيل الدخول من جهاز آخر أو انتهاء صلاحية الجلسة.');
-              setCurrentUser(null);
-              sessionStorage.removeItem('cropsa_active_user');
-              sessionStorage.removeItem('crobsa_active_user');
-              sessionStorage.removeItem('cropsa_session_id');
-              localStorage.removeItem('cropsa_active_user');
-              localStorage.removeItem('crobsa_active_user');
-            }
-          } catch (e) {
-            // ignore JSON parse error
-          }
-        }
-      }
-    }, err => console.warn('Users listener:', err));
-
-    const unsubCompanies = onSnapshot(collection(db, 'companies'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as InstallmentCompany);
-        setCompanies(items);
-      }
-    }, err => console.warn('Companies listener:', err));
-
-    const unsubBranches = onSnapshot(collection(db, 'branches'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as CompanyBranch);
-        setBranches(items);
-      }
-    }, err => console.warn('Branches listener:', err));
-
-    const unsubApps = onSnapshot(collection(db, 'applications'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as Application);
-        setApplications(items);
-      }
-    }, err => console.warn('Applications listener:', err));
-
-    const unsubClients = onSnapshot(collection(db, 'clients'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as Client);
-        setClients(items);
-      }
-    }, err => console.warn('Clients listener:', err));
-
-    const unsubRequests = onSnapshot(collection(db, 'client_requests'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as ClientAccessRequest);
-        setClientRequests(items);
-      }
-    }, err => console.warn('Client requests listener:', err));
-
-    const unsubOverdue = onSnapshot(collection(db, 'overdue_cases'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as OverdueCase);
-        setOverdueCases(items);
-      }
-    }, err => console.warn('Overdue cases listener:', err));
-
-    const unsubSharedDocs = onSnapshot(collection(db, 'shared_documents'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as SharedDocument);
-        setSharedDocuments(items);
-      }
-    }, err => console.warn('Shared docs listener:', err));
-
-    const unsubAi = onSnapshot(collection(db, 'ai_analyses'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as AiCreditAnalysis);
-        setAiAnalyses(items);
-      }
-    }, err => console.warn('AI analyses listener:', err));
-
-    const unsubNotifs = onSnapshot(collection(db, 'notifications'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as Notification);
-        setNotifications(items);
-      }
-    }, err => console.warn('Notifs listener:', err));
-
-    const unsubAudit = onSnapshot(collection(db, 'audit_logs'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as AuditLog);
-        setAuditLogs(items);
-      }
-    }, err => console.warn('Audit logs listener:', err));
-
-    const unsubTx = onSnapshot(collection(db, 'transactions'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as Transaction);
-        setTransactions(items);
-      }
-    }, err => console.warn('Transactions listener:', err));
-
-    const unsubW = onSnapshot(collection(db, 'withdrawals'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as WithdrawalRequest);
-        setWithdrawalRequests(items);
-      }
-    }, err => console.warn('Withdrawals listener:', err));
-
-    const unsubQuestions = onSnapshot(collection(db, 'application_questions'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as ApplicationQuestion);
-        setApplicationQuestions(items);
-      }
-    }, err => console.warn('Questions listener:', err));
-
-    const unsubPrograms = onSnapshot(collection(db, 'financing_programs'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => d.data() as FinancingProgram);
-        setFinancingPrograms(items);
-      }
-    }, err => console.warn('Programs listener:', err));
-
-    const unsubTemplates = onSnapshot(collection(db, 'notification_templates'), snap => {
-      if (!snap.empty) {
-        const items = snap.docs.map(d => ({ ...d.data(), id: d.id } as CommentNotificationTemplate));
-        setNotificationTemplates(items);
-        localStorage.setItem('crobsa_notification_templates', JSON.stringify(items));
-      }
-    }, err => console.warn('Notification templates listener:', err));
-
-    return () => {
-      isMounted = false;
-      unsubUsers();
-      unsubCompanies();
-      unsubBranches();
-      unsubApps();
-      unsubClients();
-      unsubRequests();
-      unsubOverdue();
-      unsubSharedDocs();
-      unsubAi();
-      unsubNotifs();
-      unsubAudit();
-      unsubTx();
-      unsubW();
-      unsubQuestions();
-      unsubPrograms();
-      unsubTemplates();
-    };
+    const timer = setTimeout(() => {
+      setIsInitialSyncComplete(true);
+    }, 3500);
+    return () => clearTimeout(timer);
   }, []);
 
   // Supabase Data Layer: Initial sync, automatic seeding, and real-time subscriptions
@@ -682,15 +474,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     async function syncSupabaseInitialData() {
       try {
-        // 1. Fetch Branding from Supabase system_settings
-        const { data: brandingRow } = await supabase!
-          .from('system_settings')
-          .select('data')
-          .eq('id', 'branding')
-          .maybeSingle();
+        // Fetch all primary database collections concurrently for instant rendering
+        const [
+          brandingRes,
+          companiesRes,
+          branchRes,
+          clientRes,
+          userRes,
+          appRes,
+          appSettingRes
+        ] = await Promise.all([
+          supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
+          supabase!.from('companies').select('*'),
+          supabase!.from('company_branches').select('*'),
+          supabase!.from('clients').select('*'),
+          supabase!.from('users').select('*'),
+          supabase!.from('applications').select('*'),
+          supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle()
+        ]);
 
-        if (brandingRow?.data) {
-          const remoteBranding = brandingRow.data as SystemBranding;
+        // 1. Process Platform Branding
+        if (brandingRes?.data?.data) {
+          const remoteBranding = brandingRes.data.data as SystemBranding;
           if (isMounted) {
             setSystemBranding(prev => ({ ...prev, ...remoteBranding }));
             try {
@@ -699,14 +504,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               console.warn('LocalStorage branding cache skipped:', e);
             }
           }
-        } else {
-          const currentLocal = localStorage.getItem('crobsa_branding');
-          const toSave = currentLocal ? JSON.parse(currentLocal) : DEFAULT_BRANDING;
-          await supabase!.from('system_settings').upsert({
-            id: 'branding',
-            data: toSave,
-            updated_at: new Date().toISOString()
-          });
         }
 
         // Helper to reliably map application rows into full Application entities
@@ -775,12 +572,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           };
         };
 
-        // 2. Fetch Companies directly from companies table
-        const { data: companiesRows } = await supabase!.from('companies').select('*');
+        // 2. Process Companies
         const companyMap = new Map<string, InstallmentCompany>();
         MOCK_COMPANIES.forEach(m => companyMap.set(m.id, m));
-        if (companiesRows && companiesRows.length > 0) {
-          companiesRows.forEach((c: any) => {
+        if (companiesRes?.data && companiesRes.data.length > 0) {
+          companiesRes.data.forEach((c: any) => {
             const existingMock = MOCK_COMPANIES.find(m => m.id === c.id);
             companyMap.set(c.id, {
               id: c.id,
@@ -816,12 +612,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         if (isMounted) setCompanies(Array.from(companyMap.values()));
 
-        // 3. Fetch Company Branches directly from company_branches table
-        const { data: branchRows } = await supabase!.from('company_branches').select('*');
+        // 3. Process Company Branches
         const branchMap = new Map<string, CompanyBranch>();
         MOCK_BRANCHES.forEach(m => branchMap.set(m.id, m));
-        if (branchRows && branchRows.length > 0) {
-          branchRows.forEach((b: any) => {
+        if (branchRes?.data && branchRes.data.length > 0) {
+          branchRes.data.forEach((b: any) => {
             branchMap.set(b.id, {
               id: b.id,
               companyId: b.company_id,
@@ -836,12 +631,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         if (isMounted) setBranches(Array.from(branchMap.values()));
 
-        // 4. Fetch Clients directly from clients table
-        const { data: clientRows } = await supabase!.from('clients').select('*');
+        // 4. Process Clients
         const clientMap = new Map<string, Client>();
         MOCK_CLIENTS.forEach(m => clientMap.set(m.id, m));
-        if (clientRows && clientRows.length > 0) {
-          clientRows.forEach((cl: any) => {
+        if (clientRes?.data && clientRes.data.length > 0) {
+          clientRes.data.forEach((cl: any) => {
             const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id || m.nationalId === cl.national_id);
             clientMap.set(cl.id, {
               id: cl.id,
@@ -869,12 +663,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         if (isMounted) setClients(Array.from(clientMap.values()));
 
-        // 5. Fetch Users directly from users table
-        const { data: userRows } = await supabase!.from('users').select('*');
+        // 5. Process Users & Sync active session
         const userMap = new Map<string, User>();
         MOCK_USERS.forEach(m => userMap.set(m.id, m));
-        if (userRows && userRows.length > 0) {
-          userRows.forEach((u: any) => {
+        if (userRes?.data && userRes.data.length > 0) {
+          userRes.data.forEach((u: any) => {
             const existingMock = MOCK_USERS.find(m => m.id === u.id || m.username === u.username);
             const branchObj = Array.from(branchMap.values()).find(b => b.id === (u.branch_id || existingMock?.branchId));
             userMap.set(u.id, {
@@ -897,21 +690,49 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             });
           });
         }
-        if (isMounted) setUsers(Array.from(userMap.values()));
+        if (isMounted) {
+          const freshUsersList = Array.from(userMap.values());
+          setUsers(freshUsersList);
 
-        // 6. Fetch Applications directly from applications table
-        const { data: appRows } = await supabase!.from('applications').select('*');
+          // Update active session user with database truth if currently logged in
+          setCurrentUser(prev => {
+            if (!prev) return null;
+            const liveUser = userMap.get(prev.id);
+            if (liveUser) {
+              const merged = { ...prev, ...liveUser, activeSessionId: prev.activeSessionId };
+              try {
+                sessionStorage.setItem('cropsa_active_user', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            }
+            return prev;
+          });
+        }
+
+        // 6. Process Applications
         const appMap = new Map<string, Application>();
         MOCK_APPLICATIONS.forEach(m => appMap.set(m.id, m));
-        if (appRows && appRows.length > 0) {
-          appRows.forEach((a: any) => {
+        if (appRes?.data && appRes.data.length > 0) {
+          appRes.data.forEach((a: any) => {
             const existingMock = MOCK_APPLICATIONS.find(m => m.id === a.id);
             appMap.set(a.id, mapApplicationRow(a, existingMock));
+          });
+        }
+        if (appSettingRes?.data?.data && Array.isArray(appSettingRes.data.data)) {
+          appSettingRes.data.data.forEach((a: Application) => {
+            if (!appMap.has(a.id)) {
+              appMap.set(a.id, a);
+            }
           });
         }
         if (isMounted) setApplications(Array.from(appMap.values()));
       } catch (err) {
         console.warn('Supabase initial sync error:', err);
+      } finally {
+        if (isMounted) {
+          setIsInitialSyncComplete(true);
+          setIsFirestoreConnected(true);
+        }
       }
     }
 
@@ -1177,10 +998,47 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // Auth: Login with either email or username with session isolation and tracking
   const login = async (identifier: string, password: string): Promise<boolean> => {
     const cleanId = identifier.trim().toLowerCase();
-    const user = users.find(u => 
+    let user = users.find(u => 
       u.email.toLowerCase() === cleanId || 
       (u.username && u.username.toLowerCase() === cleanId)
     );
+
+    // Fallback: Query Supabase users directly if not in initial local state
+    if (!user && supabase) {
+      try {
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('*')
+          .or(`email.ilike.${cleanId},username.ilike.${cleanId}`)
+          .maybeSingle();
+
+        if (dbUser) {
+          const existingMock = MOCK_USERS.find(m => m.id === dbUser.id || m.username === dbUser.username);
+          user = {
+            id: dbUser.id,
+            name: dbUser.name,
+            username: dbUser.username || existingMock?.username || dbUser.id,
+            email: dbUser.email,
+            role: (dbUser.role as Role) || existingMock?.role,
+            staffRole: dbUser.staff_role || existingMock?.staffRole,
+            companyId: dbUser.company_id || existingMock?.companyId,
+            branchId: dbUser.branch_id || existingMock?.branchId,
+            branchName: existingMock?.branchName,
+            governorate: dbUser.governorate || existingMock?.governorate,
+            phone: dbUser.phone || existingMock?.phone,
+            walletBalance: Number(dbUser.wallet_balance) || existingMock?.walletBalance || 0,
+            commissionRate: Number(dbUser.commission_rate) || existingMock?.commissionRate || 0,
+            password: existingMock?.password || 'password',
+            permissions: existingMock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff'],
+            createdAt: dbUser.created_at || existingMock?.createdAt
+          };
+          setUsers(prev => prev.some(u => u.id === user!.id) ? prev : [user!, ...prev]);
+        }
+      } catch (e) {
+        console.warn('Supabase fallback user lookup:', e);
+      }
+    }
+
     if (user && (user.password === password || password === 'password' || password === '123456')) {
       const sessionId = `cropsa_sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const updatedUser = { ...user, activeSessionId: sessionId };
@@ -1198,11 +1056,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       localStorage.removeItem('crobsa_active_user');
       localStorage.removeItem('cropsa_session_id');
 
-      // Update Firestore user with the new activeSessionId
-      try {
-        await updateDoc(doc(db, 'users', user.id), { activeSessionId: sessionId });
-      } catch (err) {
-        console.warn('Firestore update session error:', err);
+      // Update Supabase user with the new activeSessionId
+      if (supabase) {
+        try {
+          await supabase.from('users').update({ active_session_id: sessionId }).eq('id', user.id);
+        } catch (err) {
+          console.warn('Supabase update session note:', err);
+        }
       }
 
       addAuditLog('LOGIN', `${user.name} logged in`);
@@ -1212,9 +1072,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const logout = () => {
-    if (currentUser?.id) {
+    if (currentUser?.id && supabase) {
       try {
-        updateDoc(doc(db, 'users', currentUser.id), { activeSessionId: '' }).catch(() => {});
+        supabase.from('users').update({ active_session_id: '' }).eq('id', currentUser.id).catch(() => {});
       } catch (e) {}
     }
     setCurrentUser(null);
@@ -4640,6 +4500,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       toggleLanguage,
       t,
       isFirestoreConnected,
+      isInitialSyncComplete,
       currentUser,
       currentCompany,
       sessionWarning,
