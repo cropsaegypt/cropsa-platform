@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/Store';
 import { 
   Settings, 
@@ -112,6 +112,25 @@ export const CropsaSettings: React.FC = () => {
   const [loginBannerDimming, setLoginBannerDimming] = useState<number>(
     systemBranding?.loginBannerDimming ?? 70
   );
+
+  useEffect(() => {
+    if (systemBranding) {
+      if (systemBranding.platformName) setPlatformName(systemBranding.platformName);
+      if (systemBranding.platformSubtitle) setPlatformSubtitle(systemBranding.platformSubtitle);
+      if (systemBranding.logoUrl !== undefined) setLogoUrl(systemBranding.logoUrl);
+      if (systemBranding.loginBannerUrl) setLoginBannerUrl(systemBranding.loginBannerUrl);
+      if (systemBranding.loginHeadline) setLoginHeadline(systemBranding.loginHeadline);
+      if (systemBranding.loginSubheadline) setLoginSubheadline(systemBranding.loginSubheadline);
+      if (systemBranding.loginFooterText) setLoginFooterText(systemBranding.loginFooterText);
+      if (systemBranding.themeColor) setThemeColor(systemBranding.themeColor);
+      if (systemBranding.loginBgStyle) setLoginBgStyle(systemBranding.loginBgStyle);
+      if (systemBranding.loginBgColor !== undefined) setLoginBgColor(systemBranding.loginBgColor);
+      if (systemBranding.loginCardStyle) setLoginCardStyle(systemBranding.loginCardStyle);
+      if (systemBranding.loginInputStyle) setLoginInputStyle(systemBranding.loginInputStyle);
+      if (systemBranding.fontFamily) setFontFamily(systemBranding.fontFamily);
+      if (systemBranding.loginBannerDimming !== undefined) setLoginBannerDimming(systemBranding.loginBannerDimming);
+    }
+  }, [systemBranding]);
 
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [saving, setSaving] = useState(false);

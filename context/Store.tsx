@@ -352,22 +352,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   });
 
   const updateBranding = async (updates: Partial<SystemBranding>) => {
-    let latestBranding: SystemBranding = DEFAULT_BRANDING;
-    setSystemBranding(prev => {
-      latestBranding = { ...prev, ...updates };
-      localStorage.setItem('crobsa_branding', JSON.stringify(latestBranding));
-      return latestBranding;
-    });
+    const nextBranding: SystemBranding = {
+      ...systemBranding,
+      ...updates
+    };
+
+    setSystemBranding(nextBranding);
+    localStorage.setItem('crobsa_branding', JSON.stringify(nextBranding));
 
     if (supabase) {
       try {
-        await supabase.from('system_settings').upsert({
+        const { error } = await supabase.from('system_settings').upsert({
           id: 'branding',
-          data: latestBranding,
+          data: nextBranding,
           updated_at: new Date().toISOString()
         });
-      } catch (err) {
-        console.warn('Supabase updateBranding fallback:', err);
+        if (error) {
+          console.error('Supabase updateBranding error:', error);
+          throw new Error('Supabase error: ' + error.message);
+        }
+      } catch (err: any) {
+        console.error('Supabase updateBranding failed:', err);
+        throw err;
       }
     }
 
