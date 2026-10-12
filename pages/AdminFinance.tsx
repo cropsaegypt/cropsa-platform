@@ -29,7 +29,7 @@ export const AdminFinance: React.FC = () => {
     });
 
     approvedApps.forEach(app => {
-        const companyId = app.reviewedBy || app.assignedCompanyIds[0];
+        const companyId = app.reviewedBy || (app.assignedCompanyIds && app.assignedCompanyIds[0]) || app.companyId || 'comp_01';
         if (companyId && companyStats[companyId]) {
             companyStats[companyId].volume += (app.approvedAmount || 0);
             companyStats[companyId].count += 1;

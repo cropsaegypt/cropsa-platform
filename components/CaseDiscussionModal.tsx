@@ -147,7 +147,7 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
 
   // Filter companies available for re-routing (exclude current assigned company)
   const availableCompanies = companies.filter(
-    c => !application.assignedCompanyIds.includes(c.id) && c.status === 'ACTIVE'
+    c => !(application.assignedCompanyIds || []).includes(c.id) && c.status === 'ACTIVE'
   );
 
   const comments = application.comments || [];

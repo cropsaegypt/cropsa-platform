@@ -709,61 +709,120 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
         }
 
+        // Helper to reliably map application rows into full Application entities
+        const mapApplicationRow = (a: any, existingMock?: Application): Application => {
+          const compId = a.company_id || existingMock?.companyId || existingMock?.assignedCompanyIds?.[0] || 'comp_01';
+          const mockCompIds = existingMock?.assignedCompanyIds || [compId];
+          const assignedCompanyIds = Array.from(new Set([compId, ...mockCompIds].filter(Boolean)));
+          const branchId = a.branch_id || existingMock?.assignedBranchId || 'br_01';
+          const branchName = existingMock?.assignedBranchName || 'فرع مدينة نصر الرئيسي';
+          const finAmt = Number(a.financed_amount) || Number(a.total_amount) || existingMock?.requestedAmount || 0;
+          const appAmt = (a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED)
+            ? (Number(a.financed_amount) || existingMock?.approvedAmount || finAmt)
+            : (existingMock?.approvedAmount || 0);
+          const usedAmt = (a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED)
+            ? (Number(a.financed_amount) || existingMock?.usedAmount || appAmt)
+            : (existingMock?.usedAmount || 0);
+
+          return {
+            id: a.id,
+            clientId: a.client_id || existingMock?.clientId || `c_${a.id}`,
+            clientName: a.client_name || existingMock?.clientName || 'عميل',
+            clientPhone: a.client_phone || existingMock?.phoneNumber || existingMock?.clientPhone || '',
+            clientNationalId: a.client_national_id || existingMock?.clientNationalId || '',
+            phoneNumber: a.client_phone || existingMock?.phoneNumber || existingMock?.clientPhone || '',
+            whatsappNumber: a.client_phone || existingMock?.whatsappNumber || existingMock?.phoneNumber || '',
+            governorate: existingMock?.governorate || 'القاهرة',
+            companyId: compId,
+            assignedCompanyIds,
+            supplierId: a.supplier_id || existingMock?.supplierId || 'u_sup1',
+            salesmanId: a.salesman_id || existingMock?.salesmanId || 'u_sales1',
+            assignedOfficerId: a.assigned_officer_id || existingMock?.assignedOfficerId,
+            assignedOfficerName: existingMock?.assignedOfficerName,
+            branchId: branchId,
+            assignedBranchId: branchId,
+            assignedBranchName: branchName,
+            totalAmount: Number(a.total_amount) || finAmt,
+            downPayment: Number(a.down_payment) || 0,
+            financedAmount: finAmt,
+            requestedAmount: Number(a.total_amount) || finAmt,
+            approvedAmount: appAmt,
+            usedAmount: usedAmt,
+            monthlyInstallment: Number(a.monthly_installment) || Math.round(finAmt / (Number(a.duration_months) || 12)),
+            durationMonths: Number(a.duration_months) || existingMock?.durationMonths || 12,
+            status: (a.status as ApplicationStatus) || existingMock?.status || ApplicationStatus.RECEIVED,
+            productType: a.product_type || existingMock?.productType || 'منتج زراعي',
+            productDescription: a.product_description || existingMock?.description || existingMock?.productDescription || '',
+            profession: existingMock?.profession || 'MERCHANT',
+            financeType: existingMock?.financeType || 'INSTALLMENT',
+            hasRecentInstallment: existingMock?.hasRecentInstallment ?? true,
+            hasRecentReceipt: existingMock?.hasRecentReceipt ?? false,
+            recentReceiptAmount: existingMock?.recentReceiptAmount,
+            createdAt: a.created_at || existingMock?.createdAt || new Date().toISOString(),
+            submittedAt: a.created_at || existingMock?.submittedAt || new Date().toISOString(),
+            submittedBy: a.salesman_id || a.supplier_id || existingMock?.submittedBy || 'u_sup1',
+            comments: existingMock?.comments || [],
+            documents: existingMock?.documents || [],
+            history: existingMock?.history || [
+              {
+                action: 'CREATED',
+                timestamp: a.created_at || new Date().toISOString(),
+                performedBy: a.salesman_id || a.supplier_id || 'u_sup1',
+                performedByName: a.client_name,
+                details: 'تقديم طلب التمويل عبر المنصة'
+              }
+            ]
+          };
+        };
+
         // 2. Fetch Companies directly from companies table
         const { data: companiesRows } = await supabase!.from('companies').select('*');
+        const companyMap = new Map<string, InstallmentCompany>();
+        MOCK_COMPANIES.forEach(m => companyMap.set(m.id, m));
         if (companiesRows && companiesRows.length > 0) {
-          const mapped: InstallmentCompany[] = companiesRows.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            nameEn: c.name_en || c.name,
-            code: c.code || '',
-            logo: c.logo || '',
-            email: c.email || '',
-            phone: c.phone || '',
-            commercialRegister: c.commercial_register || '',
-            taxNumber: c.tax_number || '',
-            fraLicense: 'FRA-FIN-2021',
-            creditCeiling: Number(c.credit_ceiling) || 0,
-            usedCredit: Number(c.used_credit) || 0,
-            commissionRate: Number(c.commission_rate) || 3.5,
-            allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
-            requiredDocumentsList: ['بطاقة الرقم القومي'],
-            status: 'ACTIVE',
-            createdAt: c.created_at || new Date().toISOString(),
-            featuresGranted: {
-              canViewCrobsaDb: true,
-              canUseAiAnalysis: true,
-              canExportReports: true,
-              canManageSubUsers: true,
-              canManageSharedFiles: true
-            }
-          }));
-          if (isMounted) setCompanies(mapped);
-        } else {
-          for (const comp of MOCK_COMPANIES) {
-            await supabase!.from('companies').upsert({
-              id: comp.id,
-              name: comp.name,
-              name_en: comp.nameEn || '',
-              code: comp.code,
-              logo: comp.logo || '',
-              email: comp.email || '',
-              phone: comp.phone || '',
-              commercial_register: comp.commercialRegister || '',
-              tax_number: comp.taxNumber || '',
-              credit_ceiling: comp.creditCeiling || 0,
-              used_credit: comp.usedCredit || 0,
-              commission_rate: comp.commissionRate || 0,
-              allowed_governorates: comp.allowedGovernorates || []
+          companiesRows.forEach((c: any) => {
+            const existingMock = MOCK_COMPANIES.find(m => m.id === c.id);
+            companyMap.set(c.id, {
+              id: c.id,
+              name: c.name,
+              nameEn: c.name_en || c.name,
+              code: c.code || existingMock?.code || '',
+              logo: c.logo || existingMock?.logo || '',
+              coverImage: existingMock?.coverImage,
+              email: c.email || existingMock?.email || '',
+              phone: c.phone || existingMock?.phone || '',
+              commercialRegister: c.commercial_register || existingMock?.commercialRegister || '',
+              taxNumber: c.tax_number || existingMock?.taxNumber || '',
+              fraLicense: 'FRA-FIN-2021',
+              creditCeiling: Number(c.credit_ceiling) || existingMock?.creditCeiling || 25000000,
+              usedCredit: Number(c.used_credit) || existingMock?.usedCredit || 0,
+              commissionRate: Number(c.commission_rate) || existingMock?.commissionRate || 3.5,
+              allowedGovernorates: c.allowed_governorates || existingMock?.allowedGovernorates || ['القاهرة', 'الجيزة'],
+              requiredDocumentsList: existingMock?.requiredDocumentsList || ['بطاقة الرقم القومي سارية للمشتري والضامن', 'إيصال مرافق حديث'],
+              rejectionReasons: existingMock?.rejectionReasons || [],
+              workflowConfig: existingMock?.workflowConfig,
+              financingPrograms: existingMock?.financingPrograms || [],
+              status: 'ACTIVE',
+              createdAt: c.created_at || new Date().toISOString(),
+              featuresGranted: {
+                canViewCrobsaDb: true,
+                canUseAiAnalysis: true,
+                canExportReports: true,
+                canManageSubUsers: true,
+                canManageSharedFiles: true
+              }
             });
-          }
+          });
         }
+        if (isMounted) setCompanies(Array.from(companyMap.values()));
 
         // 3. Fetch Company Branches directly from company_branches table
         const { data: branchRows } = await supabase!.from('company_branches').select('*');
+        const branchMap = new Map<string, CompanyBranch>();
+        MOCK_BRANCHES.forEach(m => branchMap.set(m.id, m));
         if (branchRows && branchRows.length > 0) {
-          if (isMounted) {
-            setBranches(branchRows.map((b: any) => ({
+          branchRows.forEach((b: any) => {
+            branchMap.set(b.id, {
               id: b.id,
               companyId: b.company_id,
               name: b.name,
@@ -772,167 +831,85 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               phone: b.phone || '',
               managerName: b.manager_name || '',
               active: b.active ?? true
-            })));
-          }
-        } else {
-          for (const br of MOCK_BRANCHES) {
-            await supabase!.from('company_branches').upsert({
-              id: br.id,
-              company_id: br.companyId,
-              name: br.name,
-              governorate: br.governorate,
-              address: br.address || '',
-              phone: br.phone || '',
-              manager_name: br.managerName || '',
-              active: br.active ?? true
             });
-          }
+          });
         }
+        if (isMounted) setBranches(Array.from(branchMap.values()));
 
         // 4. Fetch Clients directly from clients table
         const { data: clientRows } = await supabase!.from('clients').select('*');
+        const clientMap = new Map<string, Client>();
+        MOCK_CLIENTS.forEach(m => clientMap.set(m.id, m));
         if (clientRows && clientRows.length > 0) {
-          const mappedClients: Client[] = clientRows.map((cl: any) => {
-            const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id);
-            return {
+          clientRows.forEach((cl: any) => {
+            const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id || m.nationalId === cl.national_id);
+            clientMap.set(cl.id, {
               id: cl.id,
               name: cl.name,
               nationalId: cl.national_id,
-              phoneNumber: cl.phone,
-              governorate: cl.governorate || 'القاهرة',
-              address: cl.address || '',
-              profession: cl.job_title || 'موظف',
-              monthlyIncome: Number(cl.monthly_income) || 0,
-              iscoreStatus: cl.iscore_status || 'CLEAN',
-              creditRating: Number(cl.credit_rating) || 80,
-              totalApprovedAmount: Number(cl.total_financed) || 0,
-              activeInstallmentsCount: Number(cl.active_installments_count) || 0,
+              phoneNumber: cl.phone || existingMock?.phoneNumber || '',
+              governorate: cl.governorate || existingMock?.governorate || 'القاهرة',
+              address: cl.address || existingMock?.address || '',
+              profession: (cl.job_title as any) || existingMock?.profession || 'MERCHANT',
+              addedBy: existingMock?.addedBy || 'u_sup1',
+              addedAt: cl.created_at || existingMock?.addedAt || new Date().toISOString(),
+              monthlyIncome: Number(cl.monthly_income) || existingMock?.monthlyIncome || 0,
+              iscoreStatus: cl.iscore_status || existingMock?.iscoreStatus || 'CLEAN',
+              creditRating: (existingMock?.creditRating as any) || 'A',
+              totalApprovedAmount: Number(cl.total_financed) || existingMock?.totalApprovedAmount || 0,
+              disbursedAmount: Number(cl.total_financed) || existingMock?.disbursedAmount || 0,
+              activeInstallmentsCount: Number(cl.active_installments_count) || existingMock?.activeInstallmentsCount || 0,
               isBlacklisted: existingMock?.isBlacklisted || false,
               isDelinquent: existingMock?.isDelinquent || false,
               authorizedCompanies: existingMock?.authorizedCompanies || ['comp_01'],
+              aiSolvencyScore: existingMock?.aiSolvencyScore || 85,
               timeline: existingMock?.timeline || []
-            };
-          });
-          if (isMounted) setClients(mappedClients);
-        } else {
-          for (const cl of MOCK_CLIENTS) {
-            await supabase!.from('clients').upsert({
-              id: cl.id,
-              name: cl.name,
-              national_id: cl.nationalId,
-              phone: cl.phoneNumber,
-              governorate: cl.governorate,
-              address: cl.address || '',
-              job_title: cl.profession || '',
-              monthly_income: cl.monthlyIncome || 0,
-              iscore_status: cl.iscoreStatus || 'CLEAN',
-              credit_rating: cl.creditRating || 80,
-              total_financed: cl.totalApprovedAmount || 0,
-              active_installments_count: cl.activeInstallmentsCount || 0
             });
-          }
+          });
         }
+        if (isMounted) setClients(Array.from(clientMap.values()));
 
         // 5. Fetch Users directly from users table
         const { data: userRows } = await supabase!.from('users').select('*');
+        const userMap = new Map<string, User>();
+        MOCK_USERS.forEach(m => userMap.set(m.id, m));
         if (userRows && userRows.length > 0) {
-          if (isMounted) {
-            setUsers(userRows.map((u: any) => {
-              const mock = MOCK_USERS.find(m => m.id === u.id || m.username === u.username);
-              return {
-                id: u.id,
-                name: u.name,
-                username: u.username,
-                email: u.email,
-                role: u.role as Role,
-                staffRole: u.staff_role,
-                companyId: u.company_id,
-                branchId: u.branch_id,
-                governorate: u.governorate,
-                phone: u.phone,
-                walletBalance: Number(u.wallet_balance) || 0,
-                commissionRate: Number(u.commission_rate) || 0,
-                password: mock?.password || 'password123',
-                permissions: mock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps'],
-                createdAt: u.created_at
-              };
-            }));
-          }
-        } else {
-          for (const u of MOCK_USERS) {
-            await supabase!.from('users').upsert({
+          userRows.forEach((u: any) => {
+            const existingMock = MOCK_USERS.find(m => m.id === u.id || m.username === u.username);
+            const branchObj = Array.from(branchMap.values()).find(b => b.id === (u.branch_id || existingMock?.branchId));
+            userMap.set(u.id, {
               id: u.id,
               name: u.name,
-              username: u.username || u.id,
+              username: u.username || existingMock?.username || u.id,
               email: u.email,
-              role: u.role,
-              staff_role: u.staffRole || null,
-              company_id: u.companyId || null,
-              branch_id: u.branchId || null,
-              governorate: u.governorate || null,
-              phone: u.phone || null,
-              wallet_balance: u.walletBalance || 0,
-              commission_rate: u.commissionRate || 0,
-              active: true
+              role: (u.role as Role) || existingMock?.role,
+              staffRole: u.staff_role || existingMock?.staffRole,
+              companyId: u.company_id || existingMock?.companyId,
+              branchId: u.branch_id || existingMock?.branchId,
+              branchName: branchObj?.name || existingMock?.branchName,
+              governorate: u.governorate || existingMock?.governorate,
+              phone: u.phone || existingMock?.phone,
+              walletBalance: Number(u.wallet_balance) || existingMock?.walletBalance || 0,
+              commissionRate: Number(u.commission_rate) || existingMock?.commissionRate || 0,
+              password: existingMock?.password || 'password',
+              permissions: existingMock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff'],
+              createdAt: u.created_at || existingMock?.createdAt
             });
-          }
+          });
         }
+        if (isMounted) setUsers(Array.from(userMap.values()));
 
         // 6. Fetch Applications directly from applications table
         const { data: appRows } = await supabase!.from('applications').select('*');
+        const appMap = new Map<string, Application>();
+        MOCK_APPLICATIONS.forEach(m => appMap.set(m.id, m));
         if (appRows && appRows.length > 0) {
-          const mappedApps: Application[] = appRows.map((a: any) => {
+          appRows.forEach((a: any) => {
             const existingMock = MOCK_APPLICATIONS.find(m => m.id === a.id);
-            return {
-              id: a.id,
-              clientId: a.client_id,
-              clientName: a.client_name,
-              clientPhone: a.client_phone || '',
-              clientNationalId: a.client_national_id || '',
-              companyId: a.company_id || undefined,
-              supplierId: a.supplier_id || undefined,
-              salesmanId: a.salesman_id || undefined,
-              assignedOfficerId: a.assigned_officer_id || undefined,
-              branchId: a.branch_id || undefined,
-              totalAmount: Number(a.total_amount) || 0,
-              downPayment: Number(a.down_payment) || 0,
-              financedAmount: Number(a.financed_amount) || 0,
-              monthlyInstallment: Number(a.monthly_installment) || 0,
-              durationMonths: Number(a.duration_months) || 12,
-              status: (a.status as ApplicationStatus) || ApplicationStatus.RECEIVED,
-              productType: a.product_type || 'منتج زراعي',
-              productDescription: a.product_description || '',
-              createdAt: a.created_at || new Date().toISOString(),
-              comments: existingMock?.comments || [],
-              documents: existingMock?.documents || [],
-              statusHistory: existingMock?.statusHistory || []
-            };
+            appMap.set(a.id, mapApplicationRow(a, existingMock));
           });
-          if (isMounted) setApplications(mappedApps);
-        } else {
-          for (const a of MOCK_APPLICATIONS) {
-            await supabase!.from('applications').upsert({
-              id: a.id,
-              client_id: a.clientId,
-              client_name: a.clientName,
-              client_phone: a.clientPhone || '',
-              client_national_id: a.clientNationalId || '',
-              company_id: a.companyId || null,
-              supplier_id: a.supplierId || null,
-              salesman_id: a.salesmanId || null,
-              assigned_officer_id: a.assignedOfficerId || null,
-              branch_id: a.branchId || null,
-              total_amount: a.totalAmount,
-              down_payment: a.downPayment || 0,
-              financed_amount: a.financedAmount,
-              monthly_installment: a.monthlyInstallment,
-              duration_months: a.durationMonths,
-              status: a.status,
-              product_type: a.productType || '',
-              product_description: a.productDescription || ''
-            });
-          }
         }
+        if (isMounted) setApplications(Array.from(appMap.values()));
       } catch (err) {
         console.warn('Supabase initial sync error:', err);
       }
@@ -962,27 +939,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           async () => {
             const { data } = await supabase!.from('clients').select('*');
             if (data && data.length > 0 && isMounted) {
-              setClients(data.map((cl: any) => {
-                const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id);
-                return {
-                  id: cl.id,
-                  name: cl.name,
-                  nationalId: cl.national_id,
-                  phoneNumber: cl.phone,
-                  governorate: cl.governorate || 'القاهرة',
-                  address: cl.address || '',
-                  profession: cl.job_title || 'موظف',
-                  monthlyIncome: Number(cl.monthly_income) || 0,
-                  iscoreStatus: cl.iscore_status || 'CLEAN',
-                  creditRating: Number(cl.credit_rating) || 80,
-                  totalApprovedAmount: Number(cl.total_financed) || 0,
-                  activeInstallmentsCount: Number(cl.active_installments_count) || 0,
-                  isBlacklisted: existingMock?.isBlacklisted || false,
-                  isDelinquent: existingMock?.isDelinquent || false,
-                  authorizedCompanies: existingMock?.authorizedCompanies || ['comp_01'],
-                  timeline: existingMock?.timeline || []
-                };
-              }));
+              setClients(prev => {
+                const cMap = new Map<string, Client>();
+                prev.forEach(c => cMap.set(c.id, c));
+                data.forEach((cl: any) => {
+                  const existingMock = prev.find(m => m.id === cl.id) || MOCK_CLIENTS.find(m => m.id === cl.id);
+                  cMap.set(cl.id, {
+                    id: cl.id,
+                    name: cl.name,
+                    nationalId: cl.national_id,
+                    phoneNumber: cl.phone || existingMock?.phoneNumber || '',
+                    governorate: cl.governorate || existingMock?.governorate || 'القاهرة',
+                    address: cl.address || existingMock?.address || '',
+                    profession: (cl.job_title as any) || existingMock?.profession || 'MERCHANT',
+                    addedBy: existingMock?.addedBy || 'u_sup1',
+                    addedAt: cl.created_at || existingMock?.addedAt || new Date().toISOString(),
+                    monthlyIncome: Number(cl.monthly_income) || existingMock?.monthlyIncome || 0,
+                    iscoreStatus: cl.iscore_status || existingMock?.iscoreStatus || 'CLEAN',
+                    creditRating: (existingMock?.creditRating as any) || 'A',
+                    totalApprovedAmount: Number(cl.total_financed) || existingMock?.totalApprovedAmount || 0,
+                    disbursedAmount: Number(cl.total_financed) || existingMock?.disbursedAmount || 0,
+                    activeInstallmentsCount: Number(cl.active_installments_count) || existingMock?.activeInstallmentsCount || 0,
+                    isBlacklisted: existingMock?.isBlacklisted || false,
+                    isDelinquent: existingMock?.isDelinquent || false,
+                    authorizedCompanies: existingMock?.authorizedCompanies || ['comp_01'],
+                    aiSolvencyScore: existingMock?.aiSolvencyScore || 85,
+                    timeline: existingMock?.timeline || []
+                  });
+                });
+                return Array.from(cMap.values());
+              });
             }
           }
         )
@@ -992,16 +978,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           async () => {
             const { data } = await supabase!.from('company_branches').select('*');
             if (data && data.length > 0 && isMounted) {
-              setBranches(data.map((b: any) => ({
-                id: b.id,
-                companyId: b.company_id,
-                name: b.name,
-                governorate: b.governorate,
-                address: b.address || '',
-                phone: b.phone || '',
-                managerName: b.manager_name || '',
-                active: b.active ?? true
-              })));
+              setBranches(prev => {
+                const bMap = new Map<string, CompanyBranch>();
+                prev.forEach(b => bMap.set(b.id, b));
+                data.forEach((b: any) => {
+                  bMap.set(b.id, {
+                    id: b.id,
+                    companyId: b.company_id,
+                    name: b.name,
+                    governorate: b.governorate,
+                    address: b.address || '',
+                    phone: b.phone || '',
+                    managerName: b.manager_name || '',
+                    active: b.active ?? true
+                  });
+                });
+                return Array.from(bMap.values());
+              });
             }
           }
         )
@@ -1011,32 +1004,97 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           async () => {
             const { data } = await supabase!.from('companies').select('*');
             if (data && data.length > 0 && isMounted) {
-              setCompanies(data.map((c: any) => ({
-                id: c.id,
-                name: c.name,
-                nameEn: c.name_en || c.name,
-                code: c.code || '',
-                logo: c.logo || '',
-                email: c.email || '',
-                phone: c.phone || '',
-                commercialRegister: c.commercial_register || '',
-                taxNumber: c.tax_number || '',
-                fraLicense: 'FRA-FIN-2021',
-                creditCeiling: Number(c.credit_ceiling) || 0,
-                usedCredit: Number(c.used_credit) || 0,
-                commissionRate: Number(c.commission_rate) || 3.5,
-                allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
-                requiredDocumentsList: ['بطاقة الرقم القومي'],
-                status: 'ACTIVE',
-                createdAt: c.created_at || new Date().toISOString(),
-                featuresGranted: {
-                  canViewCrobsaDb: true,
-                  canUseAiAnalysis: true,
-                  canExportReports: true,
-                  canManageSubUsers: true,
-                  canManageSharedFiles: true
-                }
-              })));
+              setCompanies(prev => {
+                const compMap = new Map<string, InstallmentCompany>();
+                prev.forEach(c => compMap.set(c.id, c));
+                data.forEach((c: any) => {
+                  const existingMock = prev.find(m => m.id === c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
+                  compMap.set(c.id, {
+                    id: c.id,
+                    name: c.name,
+                    nameEn: c.name_en || c.name,
+                    code: c.code || existingMock?.code || '',
+                    logo: c.logo || existingMock?.logo || '',
+                    coverImage: existingMock?.coverImage,
+                    email: c.email || existingMock?.email || '',
+                    phone: c.phone || existingMock?.phone || '',
+                    commercialRegister: c.commercial_register || existingMock?.commercialRegister || '',
+                    taxNumber: c.tax_number || existingMock?.taxNumber || '',
+                    fraLicense: 'FRA-FIN-2021',
+                    creditCeiling: Number(c.credit_ceiling) || existingMock?.creditCeiling || 25000000,
+                    usedCredit: Number(c.used_credit) || existingMock?.usedCredit || 0,
+                    commissionRate: Number(c.commission_rate) || existingMock?.commissionRate || 3.5,
+                    allowedGovernorates: c.allowed_governorates || existingMock?.allowedGovernorates || ['القاهرة', 'الجيزة'],
+                    requiredDocumentsList: existingMock?.requiredDocumentsList || ['بطاقة الرقم القومي'],
+                    rejectionReasons: existingMock?.rejectionReasons || [],
+                    workflowConfig: existingMock?.workflowConfig,
+                    financingPrograms: existingMock?.financingPrograms || [],
+                    status: 'ACTIVE',
+                    createdAt: c.created_at || new Date().toISOString(),
+                    featuresGranted: {
+                      canViewCrobsaDb: true,
+                      canUseAiAnalysis: true,
+                      canExportReports: true,
+                      canManageSubUsers: true,
+                      canManageSharedFiles: true
+                    }
+                  });
+                });
+                return Array.from(compMap.values());
+              });
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'users' },
+          async () => {
+            const { data } = await supabase!.from('users').select('*');
+            if (data && data.length > 0 && isMounted) {
+              setUsers(prev => {
+                const uMap = new Map<string, User>();
+                prev.forEach(u => uMap.set(u.id, u));
+                data.forEach((u: any) => {
+                  const existingMock = prev.find(m => m.id === u.id) || MOCK_USERS.find(m => m.id === u.id || m.username === u.username);
+                  uMap.set(u.id, {
+                    id: u.id,
+                    name: u.name,
+                    username: u.username || existingMock?.username || u.id,
+                    email: u.email,
+                    role: (u.role as Role) || existingMock?.role,
+                    staffRole: u.staff_role || existingMock?.staffRole,
+                    companyId: u.company_id || existingMock?.companyId,
+                    branchId: u.branch_id || existingMock?.branchId,
+                    branchName: existingMock?.branchName,
+                    governorate: u.governorate || existingMock?.governorate,
+                    phone: u.phone || existingMock?.phone,
+                    walletBalance: Number(u.wallet_balance) || existingMock?.walletBalance || 0,
+                    commissionRate: Number(u.commission_rate) || existingMock?.commissionRate || 0,
+                    password: existingMock?.password || 'password',
+                    permissions: existingMock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps'],
+                    createdAt: u.created_at || existingMock?.createdAt
+                  });
+                });
+                return Array.from(uMap.values());
+              });
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'applications' },
+          async () => {
+            const { data } = await supabase!.from('applications').select('*');
+            if (data && data.length > 0 && isMounted) {
+              setApplications(prev => {
+                const aMap = new Map<string, Application>();
+                prev.forEach(a => aMap.set(a.id, a));
+                data.forEach((a: any) => {
+                  const existing = prev.find(p => p.id === a.id) || MOCK_APPLICATIONS.find(m => m.id === a.id);
+                  aMap.set(a.id, mapApplicationRow(a, existing));
+                });
+                return Array.from(aMap.values());
+              });
             }
           }
         )

@@ -424,8 +424,9 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
   // Applications belonging to this company with role-based visibility scoping
   const companyApps = useMemo(() => {
     const baseApps = applications.filter(a => 
-      a.assignedCompanyIds.includes(companyId) || 
-      a.assignedCompanyIds.includes(currentUser?.id || '')
+      (a.assignedCompanyIds || []).includes(companyId) || 
+      (a.assignedCompanyIds || []).includes(currentUser?.id || '') ||
+      a.companyId === companyId
     );
 
     // 1. Employee / Credit Officer / Collection Agent:

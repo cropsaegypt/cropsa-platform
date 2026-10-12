@@ -1076,14 +1076,14 @@ export const Applications: React.FC = () => {
                  )}
 
                  {/* Assigned Companies List (Visible to Admin/SuperAdmin) */}
-                 {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && selectedApp.assignedCompanyIds.length > 0 && (
+                 {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && (selectedApp.assignedCompanyIds || []).length > 0 && (
                      <div className="bg-white border border-gray-200 rounded-xl p-4">
                          <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center">
                              <Building className="h-4 w-4 ml-2" />
                              الشركات المعينة
                          </h4>
                          <div className="flex flex-wrap gap-2">
-                             {selectedApp.assignedCompanyIds.map(id => (
+                             {(selectedApp.assignedCompanyIds || []).map(id => (
                                  <span key={id} className="px-3 py-1 bg-gray-100 rounded-full text-sm flex items-center">
                                      {getUserName(id)}
                                  </span>
@@ -1194,7 +1194,7 @@ export const Applications: React.FC = () => {
                       {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && (
                         <div className="space-y-4 mb-6 pb-6 border-b border-gray-200">
                           <label className="text-sm font-medium text-gray-700 block">
-                              {selectedApp.assignedCompanyIds.length > 0 ? 'إضافة شركات أخرى' : 'تعيين لشركة تقسيط'}
+                              {(selectedApp.assignedCompanyIds || []).length > 0 ? 'إضافة شركات أخرى' : 'تعيين لشركة تقسيط'}
                           </label>
                           <div className="space-y-2">
                             <div className="flex flex-wrap gap-2">
@@ -1203,13 +1203,13 @@ export const Applications: React.FC = () => {
                                         key={u.id}
                                         onClick={() => toggleCompanySelection(u.id)}
                                         className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                                            selectedCompanyIds.includes(u.id) || selectedApp.assignedCompanyIds.includes(u.id)
+                                            selectedCompanyIds.includes(u.id) || (selectedApp.assignedCompanyIds || []).includes(u.id)
                                                 ? 'bg-blue-600 text-white border-blue-600'
                                                 : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                                        } ${selectedApp.assignedCompanyIds.includes(u.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        disabled={selectedApp.assignedCompanyIds.includes(u.id)}
+                                        } ${(selectedApp.assignedCompanyIds || []).includes(u.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        disabled={(selectedApp.assignedCompanyIds || []).includes(u.id)}
                                     >
-                                        {u.name} {selectedApp.assignedCompanyIds.includes(u.id) && '(معين)'}
+                                        {u.name} {(selectedApp.assignedCompanyIds || []).includes(u.id) && '(معين)'}
                                     </button>
                                 ))}
                             </div>
