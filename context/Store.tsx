@@ -32,6 +32,7 @@ import {
   ApplicationComment,
   ApplicationDocument,
   ApplicationQuestion,
+  ApplicationHistoryItem,
   FinancingProgram,
   SystemBranding,
   CommentNotificationType,
@@ -41,7 +42,10 @@ import {
   CommentNotificationTemplate,
   DEFAULT_COMMENT_NOTIFICATION_TEMPLATES,
   RecipientNotificationTemplate,
-  ALL_KNOWN_INSTALLMENT_COMPANIES
+  ALL_KNOWN_INSTALLMENT_COMPANIES,
+  ExternalDispatchTemplate,
+  ExternalDispatchRecord,
+  SmtpConfig
 } from '../types';
 import { 
   MOCK_USERS, 
@@ -57,7 +61,9 @@ import {
   MOCK_TRANSACTIONS, 
   MOCK_WITHDRAWALS,
   MOCK_APPLICATION_QUESTIONS,
-  DEFAULT_BRANDING
+  DEFAULT_BRANDING,
+  DEFAULT_EXTERNAL_DISPATCH_TEMPLATES,
+  DEFAULT_SMTP_CONFIG
 } from '../services/mockData';
 import { translations } from '../services/translations';
 import { supabase } from '../services/supabase';
@@ -266,6 +272,30 @@ interface StoreContextType {
   createNotificationTemplate: (template: Omit<CommentNotificationTemplate, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   deleteNotificationTemplate: (templateId: string) => Promise<void>;
   resetNotificationTemplatesToDefault: () => Promise<void>;
+
+  // External Company Dispatch Templates & Corporate SMTP
+  externalDispatchTemplates: ExternalDispatchTemplate[];
+  smtpConfig: SmtpConfig;
+  updateSmtpConfig: (config: Partial<SmtpConfig>) => Promise<void>;
+  updateExternalDispatchTemplate: (templateId: string, updates: Partial<ExternalDispatchTemplate>) => Promise<void>;
+  createExternalDispatchTemplate: (template: Partial<ExternalDispatchTemplate>) => Promise<string>;
+  deleteExternalDispatchTemplate: (templateId: string) => Promise<void>;
+  resetExternalDispatchTemplatesToDefault: () => Promise<void>;
+  dispatchApplicationToExternalCompany: (
+    appId: string, 
+    payload: {
+      companyId: string;
+      companyName?: string;
+      channel: 'WHATSAPP' | 'EMAIL';
+      templateCategory: ExternalDispatchTemplate['category'];
+      templateName?: string;
+      targetContact: string;
+      driveLink?: string;
+      subject?: string;
+      content: string;
+      deliveryMethod?: 'DIRECT_SMTP' | 'CLIENT_MAILTO' | 'WHATSAPP_LINK';
+    }
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -350,6 +380,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return saved ? JSON.parse(saved) : DEFAULT_COMMENT_NOTIFICATION_TEMPLATES;
     } catch {
       return DEFAULT_COMMENT_NOTIFICATION_TEMPLATES;
+    }
+  });
+
+  const [externalDispatchTemplates, setExternalDispatchTemplates] = useState<ExternalDispatchTemplate[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_external_dispatch_templates');
+      return saved ? JSON.parse(saved) : DEFAULT_EXTERNAL_DISPATCH_TEMPLATES;
+    } catch {
+      return DEFAULT_EXTERNAL_DISPATCH_TEMPLATES;
+    }
+  });
+
+  const [smtpConfig, setSmtpConfig] = useState<SmtpConfig>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_smtp_config');
+      return saved ? JSON.parse(saved) : DEFAULT_SMTP_CONFIG;
+    } catch {
+      return DEFAULT_SMTP_CONFIG;
     }
   });
 
@@ -465,6 +513,75 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return () => clearTimeout(timer);
   }, []);
 
+  // Helper to reliably map application rows into full Application entities
+  const mapApplicationRow = (a: any, existingMock?: Application): Application => {
+    const compId = a.company_id || existingMock?.companyId || existingMock?.assignedCompanyIds?.[0] || 'comp_01';
+    const mockCompIds = existingMock?.assignedCompanyIds || [compId];
+    const assignedCompanyIds = Array.from(new Set([compId, ...mockCompIds].filter(Boolean)));
+    const branchId = a.branch_id || existingMock?.assignedBranchId || 'br_01';
+    const branchName = existingMock?.assignedBranchName || 'فرع مدينة نصر الرئيسي';
+    const finAmt = Number(a.financed_amount) || Number(a.total_amount) || existingMock?.requestedAmount || 0;
+    const appAmt = (a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED)
+      ? (Number(a.financed_amount) || existingMock?.approvedAmount || finAmt)
+      : (existingMock?.approvedAmount || 0);
+    const usedAmt = (a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED)
+      ? (Number(a.financed_amount) || existingMock?.usedAmount || appAmt)
+      : (existingMock?.usedAmount || 0);
+
+    return {
+      id: a.id,
+      clientId: a.client_id || existingMock?.clientId || `c_${a.id}`,
+      clientName: a.client_name || existingMock?.clientName || 'عميل',
+      clientPhone: a.client_phone || existingMock?.phoneNumber || existingMock?.clientPhone || '',
+      clientNationalId: a.client_national_id || existingMock?.clientNationalId || '',
+      phoneNumber: a.client_phone || existingMock?.phoneNumber || existingMock?.clientPhone || '',
+      whatsappNumber: a.client_phone || existingMock?.whatsappNumber || existingMock?.phoneNumber || '',
+      governorate: existingMock?.governorate || 'القاهرة',
+      companyId: compId,
+      assignedCompanyIds,
+      supplierId: a.supplier_id || existingMock?.supplierId || 'u_sup1',
+      salesmanId: a.salesman_id || existingMock?.salesmanId || 'u_sales1',
+      assignedOfficerId: a.assigned_officer_id || existingMock?.assignedOfficerId,
+      assignedOfficerName: existingMock?.assignedOfficerName,
+      branchId: branchId,
+      assignedBranchId: branchId,
+      assignedBranchName: branchName,
+      totalAmount: Number(a.total_amount) || finAmt,
+      downPayment: Number(a.down_payment) || 0,
+      financedAmount: finAmt,
+      requestedAmount: Number(a.total_amount) || finAmt,
+      approvedAmount: appAmt,
+      usedAmount: usedAmt,
+      monthlyInstallment: Number(a.monthly_installment) || Math.round(finAmt / (Number(a.duration_months) || 12)),
+      durationMonths: Number(a.duration_months) || existingMock?.durationMonths || 12,
+      status: (a.status as ApplicationStatus) || existingMock?.status || ApplicationStatus.RECEIVED,
+      productType: a.product_type || existingMock?.productType || 'منتج زراعي',
+      productDescription: a.product_description || existingMock?.description || existingMock?.productDescription || '',
+      profession: existingMock?.profession || 'MERCHANT',
+      financeType: existingMock?.financeType || 'INSTALLMENT',
+      hasRecentInstallment: existingMock?.hasRecentInstallment ?? true,
+      hasRecentReceipt: existingMock?.hasRecentReceipt ?? false,
+      recentReceiptAmount: existingMock?.recentReceiptAmount,
+      createdAt: a.created_at || existingMock?.createdAt || new Date().toISOString(),
+      submittedAt: a.created_at || existingMock?.submittedAt || new Date().toISOString(),
+      submittedBy: a.salesman_id || a.supplier_id || existingMock?.submittedBy || 'u_sup1',
+      description: a.product_description || existingMock?.description || existingMock?.productDescription || 'طلب تمويل وتقسيط',
+      comments: existingMock?.comments || [],
+      documents: existingMock?.documents || [],
+      driveLink: a.drive_link || existingMock?.driveLink || '',
+      externalDispatches: a.external_dispatches || existingMock?.externalDispatches || [],
+      history: existingMock?.history || [
+        {
+          action: 'CREATED',
+          timestamp: a.created_at || new Date().toISOString(),
+          performedBy: a.salesman_id || a.supplier_id || 'u_sup1',
+          performedByName: a.client_name,
+          details: 'تقديم طلب التمويل عبر المنصة'
+        }
+      ]
+    };
+  };
+
   // Supabase Data Layer: Initial sync, automatic seeding, and real-time subscriptions
   useEffect(() => {
     let isMounted = true;
@@ -482,7 +599,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           clientRes,
           userRes,
           appRes,
-          appSettingRes
+          appSettingRes,
+          smtpRes,
+          extTmplRes
         ] = await Promise.all([
           supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
           supabase!.from('companies').select('*'),
@@ -490,7 +609,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supabase!.from('clients').select('*'),
           supabase!.from('users').select('*'),
           supabase!.from('applications').select('*'),
-          supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle()
+          supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'smtp_config').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'external_dispatch_templates').maybeSingle()
         ]);
 
         // 1. Process Platform Branding
@@ -506,71 +627,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         }
 
-        // Helper to reliably map application rows into full Application entities
-        const mapApplicationRow = (a: any, existingMock?: Application): Application => {
-          const compId = a.company_id || existingMock?.companyId || existingMock?.assignedCompanyIds?.[0] || 'comp_01';
-          const mockCompIds = existingMock?.assignedCompanyIds || [compId];
-          const assignedCompanyIds = Array.from(new Set([compId, ...mockCompIds].filter(Boolean)));
-          const branchId = a.branch_id || existingMock?.assignedBranchId || 'br_01';
-          const branchName = existingMock?.assignedBranchName || 'فرع مدينة نصر الرئيسي';
-          const finAmt = Number(a.financed_amount) || Number(a.total_amount) || existingMock?.requestedAmount || 0;
-          const appAmt = (a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED)
-            ? (Number(a.financed_amount) || existingMock?.approvedAmount || finAmt)
-            : (existingMock?.approvedAmount || 0);
-          const usedAmt = (a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED)
-            ? (Number(a.financed_amount) || existingMock?.usedAmount || appAmt)
-            : (existingMock?.usedAmount || 0);
+        // Process Corporate SMTP Config
+        if (smtpRes?.data?.data && isMounted) {
+          const remoteSmtp = smtpRes.data.data as SmtpConfig;
+          setSmtpConfig(prev => ({ ...prev, ...remoteSmtp }));
+          try {
+            localStorage.setItem('cropsa_smtp_config', JSON.stringify(remoteSmtp));
+          } catch (e) {}
+        }
 
-          return {
-            id: a.id,
-            clientId: a.client_id || existingMock?.clientId || `c_${a.id}`,
-            clientName: a.client_name || existingMock?.clientName || 'عميل',
-            clientPhone: a.client_phone || existingMock?.phoneNumber || existingMock?.clientPhone || '',
-            clientNationalId: a.client_national_id || existingMock?.clientNationalId || '',
-            phoneNumber: a.client_phone || existingMock?.phoneNumber || existingMock?.clientPhone || '',
-            whatsappNumber: a.client_phone || existingMock?.whatsappNumber || existingMock?.phoneNumber || '',
-            governorate: existingMock?.governorate || 'القاهرة',
-            companyId: compId,
-            assignedCompanyIds,
-            supplierId: a.supplier_id || existingMock?.supplierId || 'u_sup1',
-            salesmanId: a.salesman_id || existingMock?.salesmanId || 'u_sales1',
-            assignedOfficerId: a.assigned_officer_id || existingMock?.assignedOfficerId,
-            assignedOfficerName: existingMock?.assignedOfficerName,
-            branchId: branchId,
-            assignedBranchId: branchId,
-            assignedBranchName: branchName,
-            totalAmount: Number(a.total_amount) || finAmt,
-            downPayment: Number(a.down_payment) || 0,
-            financedAmount: finAmt,
-            requestedAmount: Number(a.total_amount) || finAmt,
-            approvedAmount: appAmt,
-            usedAmount: usedAmt,
-            monthlyInstallment: Number(a.monthly_installment) || Math.round(finAmt / (Number(a.duration_months) || 12)),
-            durationMonths: Number(a.duration_months) || existingMock?.durationMonths || 12,
-            status: (a.status as ApplicationStatus) || existingMock?.status || ApplicationStatus.RECEIVED,
-            productType: a.product_type || existingMock?.productType || 'منتج زراعي',
-            productDescription: a.product_description || existingMock?.description || existingMock?.productDescription || '',
-            profession: existingMock?.profession || 'MERCHANT',
-            financeType: existingMock?.financeType || 'INSTALLMENT',
-            hasRecentInstallment: existingMock?.hasRecentInstallment ?? true,
-            hasRecentReceipt: existingMock?.hasRecentReceipt ?? false,
-            recentReceiptAmount: existingMock?.recentReceiptAmount,
-            createdAt: a.created_at || existingMock?.createdAt || new Date().toISOString(),
-            submittedAt: a.created_at || existingMock?.submittedAt || new Date().toISOString(),
-            submittedBy: a.salesman_id || a.supplier_id || existingMock?.submittedBy || 'u_sup1',
-            comments: existingMock?.comments || [],
-            documents: existingMock?.documents || [],
-            history: existingMock?.history || [
-              {
-                action: 'CREATED',
-                timestamp: a.created_at || new Date().toISOString(),
-                performedBy: a.salesman_id || a.supplier_id || 'u_sup1',
-                performedByName: a.client_name,
-                details: 'تقديم طلب التمويل عبر المنصة'
-              }
-            ]
-          };
-        };
+        // Process External Dispatch Templates
+        if (extTmplRes?.data?.data && Array.isArray(extTmplRes.data.data) && isMounted) {
+          setExternalDispatchTemplates(extTmplRes.data.data as ExternalDispatchTemplate[]);
+          try {
+            localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(extTmplRes.data.data));
+          } catch (e) {}
+        }
 
         // 2. Process Companies
         const companyMap = new Map<string, InstallmentCompany>();
@@ -587,6 +659,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               coverImage: existingMock?.coverImage,
               email: c.email || existingMock?.email || '',
               phone: c.phone || existingMock?.phone || '',
+              receivingChannel: c.receiving_channel || c.receivingChannel || existingMock?.receivingChannel || 'PORTAL',
+              whatsappNumber: c.whatsapp_number || c.whatsappNumber || existingMock?.whatsappNumber || '',
+              dispatchEmail: c.dispatch_email || c.dispatchEmail || existingMock?.dispatchEmail || '',
+              contactPersonName: c.contact_person_name || c.contactPersonName || existingMock?.contactPersonName || '',
               commercialRegister: c.commercial_register || existingMock?.commercialRegister || '',
               taxNumber: c.tax_number || existingMock?.taxNumber || '',
               fraLicense: 'FRA-FIN-2021',
@@ -839,6 +915,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     coverImage: existingMock?.coverImage,
                     email: c.email || existingMock?.email || '',
                     phone: c.phone || existingMock?.phone || '',
+                    receivingChannel: c.receiving_channel || c.receivingChannel || existingMock?.receivingChannel || 'PORTAL',
+                    whatsappNumber: c.whatsapp_number || c.whatsappNumber || existingMock?.whatsappNumber || '',
+                    dispatchEmail: c.dispatch_email || c.dispatchEmail || existingMock?.dispatchEmail || '',
+                    contactPersonName: c.contact_person_name || c.contactPersonName || existingMock?.contactPersonName || '',
                     commercialRegister: c.commercial_register || existingMock?.commercialRegister || '',
                     taxNumber: c.tax_number || existingMock?.taxNumber || '',
                     fraLicense: 'FRA-FIN-2021',
@@ -916,6 +996,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 });
                 return Array.from(aMap.values());
               });
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'system_settings' },
+          (payload: any) => {
+            if (!isMounted) return;
+            const updatedRow = payload.new;
+            if (!updatedRow || !updatedRow.id) return;
+            if (updatedRow.id === 'branding' && updatedRow.data) {
+              setSystemBranding(prev => ({ ...prev, ...updatedRow.data }));
+              try { localStorage.setItem('crobsa_branding', JSON.stringify(updatedRow.data)); } catch (e) {}
+            } else if (updatedRow.id === 'smtp_config' && updatedRow.data) {
+              setSmtpConfig(prev => ({ ...prev, ...updatedRow.data }));
+              try { localStorage.setItem('cropsa_smtp_config', JSON.stringify(updatedRow.data)); } catch (e) {}
+            } else if (updatedRow.id === 'external_dispatch_templates' && Array.isArray(updatedRow.data)) {
+              setExternalDispatchTemplates(updatedRow.data);
+              try { localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(updatedRow.data)); } catch (e) {}
+            } else if (updatedRow.id === 'applications_data' && Array.isArray(updatedRow.data)) {
+              setApplications(updatedRow.data);
             }
           }
         )
@@ -1074,7 +1175,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const logout = () => {
     if (currentUser?.id && supabase) {
       try {
-        supabase.from('users').update({ active_session_id: '' }).eq('id', currentUser.id).catch(() => {});
+        void supabase.from('users').update({ active_session_id: '' }).eq('id', currentUser.id);
       } catch (e) {}
     }
     setCurrentUser(null);
@@ -1530,6 +1631,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       coverImage: companyData.coverImage || 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1600&q=80',
       email: companyData.email || 'info@company.eg',
       phone: companyData.phone || '19000',
+      receivingChannel: companyData.receivingChannel || 'PORTAL',
+      whatsappNumber: companyData.whatsappNumber || '',
+      dispatchEmail: companyData.dispatchEmail || '',
+      contactPersonName: companyData.contactPersonName || '',
       commercialRegister: companyData.commercialRegister || '000000',
       taxNumber: companyData.taxNumber || '000-000-000',
       fraLicense: companyData.fraLicense || 'FRA-FIN-PENDING',
@@ -4493,6 +4598,296 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addAuditLog('RESET_NOTIFICATION_TEMPLATES', 'Reset all notification templates to system defaults');
   };
 
+  const updateSmtpConfig = async (configUpdates: Partial<SmtpConfig>) => {
+    const nextConfig: SmtpConfig = {
+      ...smtpConfig,
+      ...configUpdates
+    };
+    setSmtpConfig(nextConfig);
+    try {
+      localStorage.setItem('cropsa_smtp_config', JSON.stringify(nextConfig));
+    } catch (e) {
+      console.warn('LocalStorage smtpConfig cache error:', e);
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'smtp_config',
+          data: nextConfig,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase updateSmtpConfig error:', err);
+      }
+    }
+
+    try {
+      await setDoc(doc(db, 'system_settings', 'smtp_config'), nextConfig, { merge: true });
+    } catch (err) {
+      console.warn('Firestore updateSmtpConfig fallback:', err);
+    }
+    addAuditLog('UPDATE_SMTP_CONFIG', `Updated corporate SMTP configuration (Host: ${nextConfig.host})`);
+  };
+
+  const updateExternalDispatchTemplate = async (templateId: string, updates: Partial<ExternalDispatchTemplate>) => {
+    const nowStr = new Date().toISOString();
+    let nextTemplates: ExternalDispatchTemplate[] = [];
+    setExternalDispatchTemplates(prev => {
+      nextTemplates = prev.map(t => t.id === templateId ? { ...t, ...updates, updatedAt: nowStr } : t);
+      try {
+        localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(nextTemplates));
+      } catch (e) {}
+      return nextTemplates;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'external_dispatch_templates',
+          data: nextTemplates,
+          updated_at: nowStr
+        });
+      } catch (err) {
+        console.warn('Supabase updateExternalDispatchTemplate error:', err);
+      }
+    }
+    try {
+      await setDoc(doc(db, 'external_dispatch_templates', templateId), { ...updates, updatedAt: nowStr }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore updateExternalDispatchTemplate error:', e);
+    }
+    addAuditLog('UPDATE_EXTERNAL_TEMPLATE', `Updated external template ${templateId}`, templateId);
+  };
+
+  const createExternalDispatchTemplate = async (template: Partial<ExternalDispatchTemplate>): Promise<string> => {
+    const nowStr = new Date().toISOString();
+    const newId = `ext_tmpl_${Date.now()}`;
+    const newTmpl: ExternalDispatchTemplate = {
+      id: newId,
+      type: template.type || template.channel || 'WHATSAPP',
+      channel: template.channel || template.type || 'WHATSAPP',
+      nameAr: template.nameAr || template.name || 'نموذج مراسلة جديد',
+      nameEn: template.nameEn || template.name || 'New Template',
+      name: template.name || template.nameAr || 'نموذج مراسلة جديد',
+      category: template.category || 'NEW_APPLICATION',
+      subjectTemplate: template.subjectTemplate || '',
+      bodyTemplate: template.bodyTemplate || '',
+      placeholders: template.placeholders || ['{clientName}', '{nationalId}', '{driveLink}'],
+      active: template.active !== undefined ? template.active : true,
+      isDefault: false,
+      createdAt: nowStr,
+      updatedAt: nowStr
+    };
+
+    let nextTemplates: ExternalDispatchTemplate[] = [];
+    setExternalDispatchTemplates(prev => {
+      nextTemplates = [newTmpl, ...prev];
+      try {
+        localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(nextTemplates));
+      } catch (e) {}
+      return nextTemplates;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'external_dispatch_templates',
+          data: nextTemplates,
+          updated_at: nowStr
+        });
+      } catch (err) {
+        console.warn('Supabase createExternalDispatchTemplate error:', err);
+      }
+    }
+    try {
+      await setDoc(doc(db, 'external_dispatch_templates', newId), newTmpl);
+    } catch (e) {
+      console.warn('Firestore createExternalDispatchTemplate error:', e);
+    }
+    addAuditLog('CREATE_EXTERNAL_TEMPLATE', `Created external template: ${newTmpl.nameAr || newTmpl.name}`, newId);
+    return newId;
+  };
+
+  const deleteExternalDispatchTemplate = async (templateId: string) => {
+    let nextTemplates: ExternalDispatchTemplate[] = [];
+    setExternalDispatchTemplates(prev => {
+      nextTemplates = prev.filter(t => t.id !== templateId);
+      try {
+        localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(nextTemplates));
+      } catch (e) {}
+      return nextTemplates;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'external_dispatch_templates',
+          data: nextTemplates,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase deleteExternalDispatchTemplate error:', err);
+      }
+    }
+    try {
+      await deleteDoc(doc(db, 'external_dispatch_templates', templateId));
+    } catch (e) {
+      console.warn('Firestore deleteExternalDispatchTemplate error:', e);
+    }
+    addAuditLog('DELETE_EXTERNAL_TEMPLATE', `Deleted external template ${templateId}`, templateId);
+  };
+
+  const resetExternalDispatchTemplatesToDefault = async () => {
+    setExternalDispatchTemplates(DEFAULT_EXTERNAL_DISPATCH_TEMPLATES);
+    try {
+      localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(DEFAULT_EXTERNAL_DISPATCH_TEMPLATES));
+    } catch (e) {}
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'external_dispatch_templates',
+          data: DEFAULT_EXTERNAL_DISPATCH_TEMPLATES,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase resetExternalDispatchTemplates error:', err);
+      }
+    }
+    addAuditLog('RESET_EXTERNAL_TEMPLATES', 'Reset external dispatch templates to system defaults');
+  };
+
+  const dispatchApplicationToExternalCompany = async (
+    appId: string, 
+    payload: {
+      companyId: string;
+      companyName?: string;
+      channel: 'WHATSAPP' | 'EMAIL';
+      templateCategory: ExternalDispatchTemplate['category'];
+      templateName?: string;
+      targetContact: string;
+      driveLink?: string;
+      subject?: string;
+      content: string;
+      deliveryMethod?: 'DIRECT_SMTP' | 'CLIENT_MAILTO' | 'WHATSAPP_LINK';
+    }
+  ): Promise<{ success: boolean; message: string }> => {
+    const targetApp = applications.find(a => a.id === appId);
+    if (!targetApp) return { success: false, message: 'الطلب غير موجود' };
+
+    const comp = companies.find(c => c.id === payload.companyId);
+    const companyName = payload.companyName || comp?.name || 'شركة تقسيط خارجية';
+    const nowStr = new Date().toISOString();
+
+    const record: ExternalDispatchRecord = {
+      id: `disp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      applicationId: appId,
+      companyId: payload.companyId,
+      companyName,
+      channel: payload.channel,
+      templateCategory: payload.templateCategory,
+      templateName: payload.templateName,
+      targetContact: payload.targetContact,
+      driveLink: payload.driveLink || targetApp.driveLink,
+      subject: payload.subject,
+      content: payload.content,
+      deliveryMethod: payload.deliveryMethod,
+      status: 'SENT',
+      sentAt: nowStr,
+      sentBy: currentUser?.id || 'SYSTEM',
+      sentByName: currentUser?.name || 'النظام'
+    };
+
+    const channelLabel = payload.channel === 'WHATSAPP' ? 'واتساب' : 'البريد الإلكتروني';
+    const isExpedite = payload.templateCategory === 'EXPEDITE' || payload.templateCategory === 'EXPEDITE_URGENT';
+    const actionLabel = isExpedite
+      ? `استعجال خارجي عبر ${channelLabel}` 
+      : payload.templateCategory === 'NEW_APPLICATION'
+      ? `إرسال ملف الطلب عبر ${channelLabel}`
+      : `مراسلة خارجية عبر ${channelLabel}`;
+
+    const historyItem: ApplicationHistoryItem = {
+      action: 'EXTERNAL_DISPATCH',
+      timestamp: nowStr,
+      performedBy: currentUser?.id || 'SYSTEM',
+      performedByName: currentUser?.name || 'النظام',
+      details: `${actionLabel} إلى ${companyName} (${payload.targetContact})${payload.driveLink ? ` - رابط درايف: ${payload.driveLink}` : ''}`
+    };
+
+    // Add comment in discussion timeline
+    const newComment: ApplicationComment = {
+      id: `c_disp_${Date.now()}`,
+      authorId: currentUser?.id || 'SYSTEM',
+      authorName: currentUser?.name || 'النظام',
+      authorRole: currentUser?.role || Role.SUPER_ADMIN,
+      companyName: 'منصة كروبسا',
+      message: `📢 [${actionLabel}] تم إرسال المراسلة بنجاح إلى ${companyName} (${payload.targetContact}):\n\n${payload.content.slice(0, 300)}${payload.content.length > 300 ? '...' : ''}${payload.driveLink ? `\n📁 رابط الملفات: ${payload.driveLink}` : ''}`,
+      createdAt: nowStr,
+      isUrgent: isExpedite,
+      notificationType: isExpedite ? 'URGENT_INQUIRY' : 'DOCS_REQUIRED'
+    };
+
+    const existingDispatches = targetApp.externalDispatches || [];
+    const updatedDispatches = [record, ...existingDispatches];
+    const updatedComments = [...(targetApp.comments || []), newComment];
+    const updatedHistory = [...(targetApp.history || []), historyItem];
+
+    const appUpdates: Partial<Application> = {
+      externalDispatches: updatedDispatches,
+      comments: updatedComments,
+      history: updatedHistory,
+      ...(payload.driveLink ? { driveLink: payload.driveLink } : {})
+    };
+
+    // Update in state
+    let updatedAppsList: Application[] = [];
+    setApplications(prev => {
+      updatedAppsList = prev.map(a => a.id === appId ? { ...a, ...appUpdates } : a);
+      return updatedAppsList;
+    });
+
+    // Log in client timeline
+    if (targetApp.clientId) {
+      addClientTimelineEvent(targetApp.clientId, {
+        action: `${actionLabel} - ${companyName}`,
+        actionType: 'NOTE',
+        performedBy: currentUser?.id || 'SYSTEM',
+        performedByName: currentUser?.name || 'النظام',
+        details: `تم توجيه المراسلة إلى ${payload.targetContact}. ${payload.templateName ? `[${payload.templateName}]` : ''}`,
+        badgeColor: payload.templateCategory === 'EXPEDITE' ? 'red' : 'blue'
+      });
+    }
+
+    // Audit Log
+    addAuditLog(
+      'EXTERNAL_DISPATCH', 
+      `Dispatched application ${appId} via ${payload.channel} to ${companyName} (${payload.targetContact})`, 
+      appId
+    );
+
+    // Sync with Supabase applications_data
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: updatedAppsList,
+          updated_at: nowStr
+        });
+      } catch (e) {
+        console.warn('Supabase sync external dispatch error:', e);
+      }
+    }
+
+    try {
+      await updateDoc(doc(db, 'applications', appId), appUpdates);
+    } catch (e) {
+      console.warn('Firestore sync external dispatch error:', e);
+    }
+
+    return { success: true, message: `تم تسجيل المراسلة إلى ${companyName} بنجاح` };
+  };
+
   return (
     <StoreContext.Provider value={{
       language,
@@ -4512,6 +4907,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       transactions,
       notifications,
       notificationTemplates,
+      externalDispatchTemplates,
+      smtpConfig,
       auditLogs,
       clients,
       clientRequests,
@@ -4594,7 +4991,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       updateNotificationTemplate,
       createNotificationTemplate,
       deleteNotificationTemplate,
-      resetNotificationTemplatesToDefault
+      resetNotificationTemplatesToDefault,
+      updateSmtpConfig,
+      updateExternalDispatchTemplate,
+      createExternalDispatchTemplate,
+      deleteExternalDispatchTemplate,
+      resetExternalDispatchTemplatesToDefault,
+      dispatchApplicationToExternalCompany
     }}>
       {children}
     </StoreContext.Provider>

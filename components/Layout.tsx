@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/Store';
-import { Role, ApplicationStatus, COMMENT_NOTIFICATION_CONFIG } from '../types';
+import { Role, ApplicationStatus, Application, COMMENT_NOTIFICATION_CONFIG } from '../types';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -342,7 +342,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
       }
       sysChildren.push({
         id: 'notification-templates',
-        label: isAr ? 'قوالب إشعارات التعليقات' : 'Notification Templates',
+        label: isAr ? 'مكتبة النماذج والإشعارات' : 'Templates & Notifications',
         icon: BellRing
       });
       sysChildren.push({

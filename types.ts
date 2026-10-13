@@ -140,6 +140,8 @@ export interface FinancingProgram {
   createdAt?: string;
 }
 
+export type CompanyReceivingChannel = 'PORTAL' | 'WHATSAPP' | 'EMAIL' | 'WHATSAPP_AND_EMAIL';
+
 export interface InstallmentCompany {
   id: string;
   name: string;
@@ -162,6 +164,13 @@ export interface InstallmentCompany {
   workflowConfig?: CompanyWorkflowConfig; // مخطط ومراحل مسار دراسة الطلبات الخاص بالشركة
   status: 'ACTIVE' | 'SUSPENDED' | 'PENDING_APPROVAL';
   createdAt: string;
+  
+  // External Company Dispatch & Channel Configuration
+  receivingChannel?: CompanyReceivingChannel; // 'PORTAL' (default) | 'WHATSAPP' | 'EMAIL' | 'WHATSAPP_AND_EMAIL'
+  whatsappNumber?: string; // رقم واتساب مخصص لاستقبال ملفات التمويل والاستعجال
+  dispatchEmail?: string; // بريد إلكتروني مخصص لاستقبال طلبات التمويل الرسمية
+  contactPersonName?: string; // اسم مسؤول الائتمان أو نقطة الاتصال بالشركة
+
   featuresGranted: {
     canViewCrobsaDb: boolean;
     canUseAiAnalysis: boolean;
@@ -525,10 +534,14 @@ export const DEFAULT_COMPANY_WORKFLOW_STAGES: WorkflowStageConfig[] = [
 
 export interface ApplicationComment {
   id: string;
-  applicationId: string;
-  senderId: string;
-  senderName: string;
-  senderRole: string; // 'SALESMAN' | 'ADMIN' | 'SUPER_ADMIN' | 'INSTALLMENT_COMPANY'
+  applicationId?: string;
+  authorId?: string;
+  authorName?: string;
+  authorRole?: any;
+  companyName?: string;
+  senderId?: string;
+  senderName?: string;
+  senderRole?: string;
   senderCompanyName?: string;
   message: string;
   createdAt: string;
@@ -573,13 +586,27 @@ export interface ApplicationHistoryItem {
 
 export interface Application {
   id: string;
+  clientId?: string;
+  companyId?: string;
   clientName: string;
   clientNationalId: string;
   phoneNumber: string;
+  clientPhone?: string;
   whatsappNumber: string;
   governorate: string;
   assignedBranchId?: string;
   assignedBranchName?: string;
+  branchId?: string;
+  supplierId?: string;
+  salesmanId?: string;
+  totalAmount?: number;
+  downPayment?: number;
+  financedAmount?: number;
+  monthlyInstallment?: number;
+  productType?: string;
+  productDescription?: string;
+  createdAt?: string;
+  archivedReason?: string;
   
   // Internal staff assignment within installment company
   assignedOfficerId?: string;
@@ -662,10 +689,62 @@ export interface Application {
   // Archiving (Auto-archive for rejected or >6 months old)
   isArchived?: boolean;
   archivedAt?: string;
-  archivedReason?: string;
+  // External Company Dispatch & Google Drive Documents Link
+  driveLink?: string; // رابط درايف لأوراق ومستندات العميل
+  externalDispatches?: ExternalDispatchRecord[];
 
   description: string;
   history: ApplicationHistoryItem[];
+}
+
+export interface ExternalDispatchRecord {
+  id: string;
+  applicationId?: string;
+  channel: 'WHATSAPP' | 'EMAIL';
+  companyId: string;
+  companyName: string;
+  targetContact: string; // WhatsApp phone or Email address
+  templateCategory: 'NEW_APPLICATION' | 'EXPEDITE_URGENT' | 'DOCS_UPDATE' | 'STATUS_INQUIRY' | 'CUSTOM' | 'EXPEDITE' | 'DOCS_REQUEST';
+  templateName?: string;
+  sentAt: string;
+  sentBy: string;
+  sentByName: string;
+  driveLink?: string;
+  subject?: string;
+  content: string;
+  deliveryMethod?: 'DIRECT_SMTP' | 'CLIENT_MAILTO' | 'WHATSAPP_LINK';
+  status?: 'SENT' | 'PENDING' | 'FAILED';
+}
+
+export interface ExternalDispatchTemplate {
+  id: string;
+  type: 'WHATSAPP' | 'EMAIL';
+  channel?: 'WHATSAPP' | 'EMAIL';
+  category: 'NEW_APPLICATION' | 'EXPEDITE_URGENT' | 'DOCS_UPDATE' | 'STATUS_INQUIRY' | 'CUSTOM' | 'EXPEDITE' | 'DOCS_REQUEST';
+  nameAr: string;
+  nameEn?: string;
+  name?: string;
+  subjectTemplate?: string; // For Email
+  bodyTemplate: string;
+  placeholders?: string[];
+  active?: boolean;
+  isDefault?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SmtpConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  fromName: string;
+  fromEmail: string;
+  lastTestedAt?: string;
+  lastTestStatus?: 'SUCCESS' | 'ERROR';
+  lastTestMessage?: string;
 }
 
 export interface ClientTimelineItem {
@@ -852,6 +931,11 @@ export interface Client {
   lastFinanceDate?: string; // تاريخ آخر تمويل أو صرف
   isHistoricalOnly?: boolean; // مستورد من سجلات شركات سابقة
   notes?: string;
+  address?: string;
+  iscoreStatus?: 'CLEAN' | 'CAUTION' | 'DEFAULT' | string;
+  activeInstallmentsCount?: number;
+  isBlacklisted?: boolean;
+  isDelinquent?: boolean;
   authorizedCompanies?: string[]; // Company IDs that have unlocked this client
   
   // AI Solvency Assessment & Metrics

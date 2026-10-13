@@ -31,12 +31,14 @@ import {
   ShieldAlert,
   HelpCircle,
   Wallet,
-  FileCheck
+  FileCheck,
+  Send
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
 import { ClientDetailModal } from '../components/ClientDetailModal';
 import { CaseDiscussionModal } from '../components/CaseDiscussionModal';
 import { DisbursementModal } from '../components/DisbursementModal';
+import { ExternalCompanyDispatchModal } from '../components/ExternalCompanyDispatchModal';
 
 const REJECTION_REASONS = [
   "درجة الائتمان منخفضة جداً",
@@ -98,6 +100,7 @@ export const Applications: React.FC = () => {
   // Discussion Modal state
   const [discussionApp, setDiscussionApp] = useState<Application | null>(null);
   const [discussionTab, setDiscussionTab] = useState<'comments' | 'documents' | 'reroute'>('comments');
+  const [externalDispatchApp, setExternalDispatchApp] = useState<Application | null>(null);
 
   // Modals state
   const [deductAmount, setDeductAmount] = useState<number>(0);
@@ -723,6 +726,19 @@ export const Applications: React.FC = () => {
                     )}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExternalDispatchApp(app);
+                    }}
+                    className="p-1.5 text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border border-emerald-200"
+                    title="مراسلة واستعجال الشركة خارجياً (واتساب / إيميل)"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>استعجال</span>
+                  </button>
+
                   <button 
                     type="button"
                     onClick={() => { setSelectedApp(app); setIsEditing(false); setNextStatus(''); setIsRejecting(false); }}
@@ -842,6 +858,19 @@ export const Applications: React.FC = () => {
                         <Zap className="h-3.5 w-3.5" />
                       </button>
                     )}
+
+                    {/* External Company Dispatch / Expedite (واتساب / إيميل) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExternalDispatchApp(app);
+                      }}
+                      className="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors border border-emerald-200"
+                      title="مراسلة واستعجال الشركة خارجياً (واتساب / بريد إلكتروني)"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
 
                     {currentUser.role === Role.INSTALLMENT_COMPANY && app.status === ApplicationStatus.PENDING_ADMIN && (
                       <button
@@ -970,6 +999,17 @@ export const Applications: React.FC = () => {
                           طلب معجل
                         </span>
                       )}
+
+                      <button
+                        onClick={() => {
+                          setExternalDispatchApp(selectedApp);
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+                        title="مراسلة واستعجال شركة التقسيط خارجياً (واتساب / بريد إلكتروني)"
+                      >
+                        <Send className="h-4 w-4" />
+                        <span>مراسلة / استعجال خارجي</span>
+                      </button>
 
                       {(currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) && (
                         <button
@@ -1497,6 +1537,16 @@ export const Applications: React.FC = () => {
           onSuccess={() => {
             setShowDisburseModal(false);
           }}
+        />
+      )}
+
+      {/* External Company Dispatch & Expedite Modal (واتساب / إيميل) */}
+      {externalDispatchApp && (
+        <ExternalCompanyDispatchModal
+          isOpen={!!externalDispatchApp}
+          onClose={() => setExternalDispatchApp(null)}
+          application={externalDispatchApp}
+          initialCategory="NEW_APPLICATION"
         />
       )}
     </div>

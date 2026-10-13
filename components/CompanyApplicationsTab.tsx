@@ -51,6 +51,7 @@ import {
 import { SmartCaseAssignmentModal } from './SmartCaseAssignmentModal';
 import { InternalDocViewerModal } from './InternalDocViewerModal';
 import { DisbursementModal } from './DisbursementModal';
+import { ExternalCompanyDispatchModal } from './ExternalCompanyDispatchModal';
 
 interface CompanyApplicationsTabProps {
   applications: Application[];
@@ -123,6 +124,7 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
   // Inline follow-up tracking states (متابعة في نفس الصفحة دون فتح بوب أب)
   const [inlineFollowupAppId, setInlineFollowupAppId] = useState<string | null>(null);
   const [inlineFollowupTab, setInlineFollowupTab] = useState<Record<string, 'comments' | 'documents' | 'workflow'>>({});
+  const [dispatchingApp, setDispatchingApp] = useState<Application | null>(null);
   const [inlineCommentMap, setInlineCommentMap] = useState<Record<string, string>>({});
   const [inlineCommentTypeMap, setInlineCommentTypeMap] = useState<Record<string, CommentNotificationType>>({});
   const [inlineUrgentMap, setInlineUrgentMap] = useState<Record<string, boolean>>({});
@@ -1186,6 +1188,17 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
                         </>
                       )}
 
+                      {/* زر المراسلة والاستعجال الخارجي للشركات (واتساب / إيميل) */}
+                      <button
+                        type="button"
+                        onClick={() => setDispatchingApp(app)}
+                        className="py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
+                        title="مراسلة واستعجال شركة التقسيط خارجياً (واتساب / بريد إلكتروني)"
+                      >
+                        <Send className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>استعجال خارجي</span>
+                      </button>
+
                       {app.isArchived ? (
                         <button
                           type="button"
@@ -2246,6 +2259,16 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
           application={disbursingApp}
           onClose={() => setDisbursingApp(null)}
           onSuccess={() => setDisbursingApp(null)}
+        />
+      )}
+
+      {/* External Company Dispatch & Expedite Modal (واتساب / إيميل) */}
+      {dispatchingApp && (
+        <ExternalCompanyDispatchModal
+          isOpen={!!dispatchingApp}
+          onClose={() => setDispatchingApp(null)}
+          application={dispatchingApp}
+          initialCategory={dispatchingApp.isUrgent ? 'EXPEDITE_URGENT' : 'NEW_APPLICATION'}
         />
       )}
     </div>

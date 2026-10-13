@@ -20,7 +20,8 @@ import {
   LogIn, 
   CheckCircle2,
   Briefcase,
-  Users as UsersIcon
+  Users as UsersIcon,
+  ShieldCheck
 } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {

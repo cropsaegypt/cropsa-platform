@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/Store';
-import { InstallmentCompany, User, Role, InstallmentCompanyStaffRole, EGYPT_GOVERNORATES } from '../types';
+import { InstallmentCompany, User, Role, InstallmentCompanyStaffRole, EGYPT_GOVERNORATES, CompanyReceivingChannel } from '../types';
 import { 
   X, 
   Building2, 
@@ -20,7 +20,8 @@ import {
   KeyRound,
   Trash2,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  MessageSquare
 } from 'lucide-react';
 
 interface CompanyProfileSettingsModalProps {
@@ -73,6 +74,10 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
   const [commercialRegister, setCommercialRegister] = useState(company.commercialRegister || '');
   const [taxNumber, setTaxNumber] = useState(company.taxNumber || '');
   const [fraLicense, setFraLicense] = useState(company.fraLicense || '');
+  const [receivingChannel, setReceivingChannel] = useState<CompanyReceivingChannel>(company.receivingChannel || 'PORTAL');
+  const [whatsappNumber, setWhatsappNumber] = useState(company.whatsappNumber || '');
+  const [dispatchEmail, setDispatchEmail] = useState(company.dispatchEmail || '');
+  const [contactPersonName, setContactPersonName] = useState(company.contactPersonName || '');
 
   // Branding Form
   const [logo, setLogo] = useState(company.logo || '');
@@ -113,6 +118,10 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
         nameEn: companyNameEn,
         phone,
         email,
+        receivingChannel,
+        whatsappNumber,
+        dispatchEmail,
+        contactPersonName,
         commercialRegister,
         taxNumber,
         fraLicense
@@ -384,6 +393,71 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
                   onChange={(e) => setFraLicense(e.target.value)}
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 font-mono font-bold text-emerald-800"
                 />
+              </div>
+
+              {/* Receiving Channel Section */}
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-emerald-600" />
+                    <span>{isAr ? 'قناة استقبال طلبات التمويل والمراسلات:' : 'Application Receiving Channel:'}</span>
+                  </label>
+                  <select
+                    value={receivingChannel}
+                    onChange={(e) => setReceivingChannel(e.target.value as CompanyReceivingChannel)}
+                    className="w-full p-2.5 text-xs font-bold bg-white border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="PORTAL">🌐 داخل بوابة المنصة فقط (Internal Portal)</option>
+                    <option value="WHATSAPP">📲 خارج البورتال - عبر رسائل الواتساب المباشرة (WhatsApp Only)</option>
+                    <option value="EMAIL">📧 خارج البورتال - عبر البريد الإلكتروني الرسمي (Email Only)</option>
+                    <option value="WHATSAPP_AND_EMAIL">🔄 خارج البورتال - واتساب وبريد إلكتروني معاً (WhatsApp & Email)</option>
+                  </select>
+                </div>
+
+                {receivingChannel !== 'PORTAL' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-emerald-200/60">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {isAr ? 'رقم هاتف الواتساب:' : 'WhatsApp Number:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={whatsappNumber}
+                        onChange={(e) => setWhatsappNumber(e.target.value)}
+                        placeholder="01012345678"
+                        className="w-full p-2 text-xs bg-white border border-emerald-300 rounded-lg font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {isAr ? 'بريد استقبال الطلبات:' : 'Dispatch Email:'}
+                      </label>
+                      <input
+                        type="email"
+                        value={dispatchEmail}
+                        onChange={(e) => setDispatchEmail(e.target.value)}
+                        placeholder="credit@company.eg"
+                        className="w-full p-2 text-xs bg-white border border-emerald-300 rounded-lg font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {isAr ? 'مسؤول التواصل / الائتمان:' : 'Contact Person:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={contactPersonName}
+                        onChange={(e) => setContactPersonName(e.target.value)}
+                        placeholder="أ. أحمد ممدوح"
+                        className="w-full p-2 text-xs bg-white border border-emerald-300 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 flex justify-end">

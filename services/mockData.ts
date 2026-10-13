@@ -16,7 +16,9 @@ import {
   InstallmentCompanyStaffRole,
   ApplicationQuestion,
   WorkflowStageConfig,
-  CompanyWorkflowConfig
+  CompanyWorkflowConfig,
+  ExternalDispatchTemplate,
+  SmtpConfig
 } from '../types';
 
 export const DEFAULT_WORKFLOW_STAGES: WorkflowStageConfig[] = [
@@ -450,6 +452,167 @@ export const DEFAULT_BRANDING = {
   fontFamily: 'Cairo' as const,
   loginFooterText: 'منظومة كروبسا مصر الرقمية © 2026 | جميع الحقوق محفوظة'
 };
+
+export const DEFAULT_SMTP_CONFIG: SmtpConfig = {
+  enabled: false,
+  host: 'mail.cropsa-finance.eg',
+  port: 465,
+  secure: true,
+  user: 'operations@cropsa-finance.eg',
+  pass: '',
+  fromName: 'منظومة كروبسا مصر للتمويل الرقمي',
+  fromEmail: 'operations@cropsa-finance.eg'
+};
+
+export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
+  // ===================== WHATSAPP TEMPLATES =====================
+  {
+    id: 'tmpl_wa_new_app',
+    type: 'WHATSAPP',
+    category: 'NEW_APPLICATION',
+    nameAr: 'تقديم طلب تمويل جديد (متضمن رابط المستندات)',
+    nameEn: 'Submit New Application (Drive Link Included)',
+    isDefault: true,
+    bodyTemplate: `السلام عليكم، عناية إدارة الائتمان بشركة {companyName} المحترمين 🤝
+يرجى التكرم بفحص ودراسة طلب تمويل جديد وارد عبر منظومة كروبسا:
+📄 رقم الطلب: #{appId}
+👤 اسم العميل: {clientName}
+🆔 الرقم القومي: {clientNationalId}
+📱 رقم الهاتف: {clientPhone}
+📍 المحافظة: {governorate}
+💰 مبلغ التمويل المطلوب: {requestedAmount} جنيه
+⏱️ مدة السداد: {durationMonths} شهر
+💵 القسط الشهري المتوقع: {monthlyInstallment} جنيه
+📦 السلعة / النشاط: {productType}
+
+📁 رابط ملف المستندات والأوراق الرسمية (Google Drive):
+{driveLink}
+
+شاكرين حسن تعاونكم وسرعة إفادتنا بالقرار الائتماني.
+فريق عمليات كروبسا - {senderName}`
+  },
+  {
+    id: 'tmpl_wa_expedite',
+    type: 'WHATSAPP',
+    category: 'EXPEDITE_URGENT',
+    nameAr: 'استعجال فحص طلب تمويل ⚡',
+    nameEn: 'Urgent Decision Expedite ⚡',
+    isDefault: true,
+    bodyTemplate: `عاجل - استعجال رد وتقرير ائتماني ⚡
+عناية مسؤولي الائتمان بشركة {companyName}:
+نرجو التكرم بسرعة موافاتنا بالقرار الائتماني لطلب العميل:
+👤 {clientName} (طلب #{appId} - مبلغ {requestedAmount} ج.م - محافظة {governorate})
+العميل والمورد بانتظار الإفادة لتوقيع العقود واستلام البضاعة.
+📁 رابط أوراق العميل:
+{driveLink}
+
+شاكرين اهتمامكم وسرعة المتابعة.`
+  },
+  {
+    id: 'tmpl_wa_docs_update',
+    type: 'WHATSAPP',
+    category: 'DOCS_UPDATE',
+    nameAr: 'استيفاء وتحديث مستندات العميل',
+    nameEn: 'Client Documents Update',
+    isDefault: true,
+    bodyTemplate: `تحية طيبة شركة {companyName} 📄
+بخصوص طلب التمويل #{appId} للعميل: {clientName}:
+تم تحديث ملف المستندات وإرفاق الأوراق الإضافية المطلوبة عبر الرابط التالي:
+📁 رابط Google Drive:
+{driveLink}
+
+يرجى استكمال الفحص وموافاتنا بتمام الاعتماد.`
+  },
+  {
+    id: 'tmpl_wa_inquiry',
+    type: 'WHATSAPP',
+    category: 'STATUS_INQUIRY',
+    nameAr: 'استفسار عن موقف دراسة الطلب',
+    nameEn: 'Case Status Inquiry',
+    isDefault: true,
+    bodyTemplate: `مرحباً شركة {companyName}،
+نستفسر عن الموقف الحالي لطلب التمويل #{appId} للعميل {clientName} (مبلغ {requestedAmount} جنيه).
+هل توجد أي ملاحظات أو أوراق إضافية مطلوبة من العميل؟
+📁 ملف الأوراق: {driveLink}`
+  },
+
+  // ===================== EMAIL TEMPLATES =====================
+  {
+    id: 'tmpl_mail_new_app',
+    type: 'EMAIL',
+    category: 'NEW_APPLICATION',
+    nameAr: 'تقديم ملف طلب تمويل رسمي جديد',
+    nameEn: 'Official Financing Application Submission',
+    isDefault: true,
+    subjectTemplate: `[طلب تمويل جديد] #{appId} - العميل: {clientName} - مبلغ: {requestedAmount} ج.م`,
+    bodyTemplate: `السادة / مسؤولي إدارة الائتمان والمخاطر بشركة {companyName} المحترمين،
+تحية طيبة وبعد،،
+
+تهديكم منصة كروبسا مصر أطيب التحيات، ونود إحاطتكم بتقديم طلب تمويل جديد لفحصه ودراسته ائتمانياً وفقاً للبيانات التالية:
+
+• رقم الطلب بالمنصة: #{appId}
+• اسم العميل الثلاثي: {clientName}
+• الرقم القومي: {clientNationalId}
+• رقم الهاتف: {clientPhone}
+• المحافظة والمنطقة: {governorate}
+• المبلغ المطلوب تمويله: {requestedAmount} جنيه مصري
+• فترة السداد: {durationMonths} شهراً
+• القسط الشهري المتوقع: {monthlyInstallment} جنيه مصري
+• نوع المنتج / النشاط: {productType}
+
+📁 رابط ملف الوثائق والمستندات الرسمية (Google Drive):
+{driveLink}
+
+يرجى التكرم بدراسة الطلب وموافاتنا بقرار الائتمان والحد المعتمد في أقرب وقت ممكن.
+
+وتفضلوا بقبول فائق الاحترام والتقدير،،
+فريق العمليات والائتمان - منصة كروبسا مصر
+{senderName}
+تاريخ الإرسال: {date}`
+  },
+  {
+    id: 'tmpl_mail_expedite',
+    type: 'EMAIL',
+    category: 'EXPEDITE_URGENT',
+    nameAr: 'استعجال رسمي لسرعة إصدار القرار الائتماني ⚡',
+    nameEn: 'Official Case Decision Expedite ⚡',
+    isDefault: true,
+    subjectTemplate: `⚡ [عاجل - استعجال قرار ائتماني] طلب #{appId} - العميل: {clientName}`,
+    bodyTemplate: `السادة / إدارة الائتمان بشركة {companyName}،
+تحية طيبة وبعد،،
+
+نلفت عنايتكم الكريمة بخصوص طلب التمويل المسند إليكم برقم #{appId} والخاص بالعميل: {clientName} بمبلغ {requestedAmount} جنيه مصري.
+نحيطكم علماً بأن أوراق وملف العميل مستوفاة بالكامل، ونرجو سرعة موافاتنا بالإفادة النهائية والقرار الائتماني نظراً لجاهزية العميل والمورد لتوقيع العقود واستلام المنتج.
+
+📁 رابط المستندات للمراجعة السريعة:
+{driveLink}
+
+شاكرين لسيادتكم دوام التعاون المثمر،،
+إدارة المتابعة والائتمان - منصة كروبسا مصر
+{senderName}`
+  },
+  {
+    id: 'tmpl_mail_docs_update',
+    type: 'EMAIL',
+    category: 'DOCS_UPDATE',
+    nameAr: 'إشعار استيفاء وإرفاق مستندات إضافية',
+    nameEn: 'Additional Documents Submission Notice',
+    isDefault: true,
+    subjectTemplate: `[استيفاء مستندات] طلب #{appId} - العميل: {clientName}`,
+    bodyTemplate: `السادة / مسؤولي الفحص والائتمان بشركة {companyName}،
+تحية طيبة وبعد،،
+
+بالإشارة إلى طلب التمويل رقم #{appId} للعميل {clientName}، نفيدكم بأنه تم استيفاء الأوراق والضمانات المطلوبة وتم تحديث الملف على الرابط التالي:
+
+📁 رابط Google Drive المحدث:
+{driveLink}
+
+يرجى التكرم باستكمال إجراءات الاعتماد وإصدار الموافقة الائتمانية.
+
+وتفضلوا بقبول فائق التقدير،،
+{senderName}`
+  }
+];
 
 const now = new Date();
 const dateAgo = (days: number) => new Date(now.getTime() - days * 86400000).toISOString();

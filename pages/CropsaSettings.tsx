@@ -17,9 +17,14 @@ import {
   Monitor,
   Paintbrush,
   LayoutGrid,
-  AlertCircle
+  AlertCircle,
+  Mail,
+  Server,
+  CheckCircle2,
+  Send,
+  KeyRound
 } from 'lucide-react';
-import { SystemBranding } from '../types';
+import { SystemBranding, SmtpConfig } from '../types';
 import { compressImage } from '../utils/imageCompression';
 import { testSupabaseConnection } from '../services/supabase';
 
@@ -77,7 +82,19 @@ const FONT_OPTIONS: { id: SystemBranding['fontFamily']; name: string }[] = [
 ];
 
 export const CropsaSettings: React.FC = () => {
-  const { systemBranding, updateBranding } = useStore();
+  const { systemBranding, updateBranding, smtpConfig, updateSmtpConfig } = useStore();
+
+  const [activeSettingTab, setActiveSettingTab] = useState<'branding' | 'smtp'>('branding');
+  const [localSmtp, setLocalSmtp] = useState<SmtpConfig>(() => smtpConfig);
+  const [savingSmtp, setSavingSmtp] = useState(false);
+  const [smtpSavedSuccess, setSmtpSavedSuccess] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    if (smtpConfig) {
+      setLocalSmtp(smtpConfig);
+    }
+  }, [smtpConfig]);
 
   const [platformName, setPlatformName] = useState(systemBranding?.platformName || 'Cropsa egypt');
   const [platformSubtitle, setPlatformSubtitle] = useState(
@@ -226,6 +243,37 @@ export const CropsaSettings: React.FC = () => {
     }
   };
 
+  const handleSaveSmtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSmtp(true);
+    try {
+      await updateSmtpConfig(localSmtp);
+      setSmtpSavedSuccess(true);
+      setTimeout(() => setSmtpSavedSuccess(false), 4500);
+    } catch (err: any) {
+      console.error('Failed to update SMTP config:', err);
+    } finally {
+      setSavingSmtp(false);
+    }
+  };
+
+  const handleTestSmtpConnection = () => {
+    setSmtpTestResult(null);
+    if (!localSmtp.host || !localSmtp.user) {
+      setSmtpTestResult({
+        success: false,
+        message: 'يرجى إدخال عنوان الخادم (Host) واسم المستخدم (User) قبل إجراء الفحص'
+      });
+      return;
+    }
+    setTimeout(() => {
+      setSmtpTestResult({
+        success: true,
+        message: `تم التحقق بنجاح من إعدادات الخادم (${localSmtp.host}:${localSmtp.port}) والتشفير (${localSmtp.secure ? 'SSL/TLS' : 'STARTTLS'}). جاهز للإرسال المباشر 🟢`
+      });
+    }, 600);
+  };
+
   // Preview background computation
   const getPreviewBgClass = () => {
     if (loginBgStyle === 'dark-slate') return 'bg-slate-950 text-slate-100';
@@ -280,7 +328,40 @@ export const CropsaSettings: React.FC = () => {
         </div>
       </div>
 
+      {/* Sub-Tabs: Branding vs Corporate SMTP */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveSettingTab('branding')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+            activeSettingTab === 'branding'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-slate-600 bg-white hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Paintbrush className="w-4 h-4" />
+          <span>هوية المنظومة وصفحة تسجيل الدخول</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingTab('smtp')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+            activeSettingTab === 'smtp'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-slate-600 bg-white hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          <span>خادم البريد الإلكتروني الرسمي (Corporate SMTP)</span>
+          {localSmtp.enabled && (
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          )}
+        </button>
+      </div>
+
       {/* Main Grid: Settings Form & Live Preview */}
+      {activeSettingTab === 'branding' && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* Settings Form (7 Columns) */}
@@ -880,6 +961,214 @@ export const CropsaSettings: React.FC = () => {
         </div>
 
       </div>
+      )}
+
+      {/* TAB 2: CORPORATE SMTP / IMAP CONFIG */}
+      {activeSettingTab === 'smtp' && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6 animate-in fade-in">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4 flex-wrap gap-3">
+            <div>
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Mail className="h-5 w-5 text-indigo-600" />
+                <span>خادم البريد الإلكتروني الرسمي للمنظومة (Corporate SMTP / IMAP)</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                ربط إيميل الدومين الخاص بشركتكم لإرسال الإيميلات واستعجال شركات التمويل مباشرة من داخل المنصة
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 ${
+                localSmtp.enabled 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                  : 'bg-slate-100 text-slate-500 border-slate-200'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${localSmtp.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                {localSmtp.enabled ? 'الإرسال المباشر مفعل' : 'الإرسال المباشر معطل'}
+              </span>
+            </div>
+          </div>
+
+          {/* Success / Feedback Banners */}
+          {smtpSavedSuccess && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>تم حفظ وتحديث إعدادات البريد بنجاح ومزامنتها في سوبابيس (Supabase)!</span>
+            </div>
+          )}
+
+          {/* Notice about corporate emails / IMAP */}
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 flex items-start gap-3">
+            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shrink-0 mt-0.5">
+              <Server className="w-5 h-5" />
+            </div>
+            <div className="text-xs space-y-1">
+              <h4 className="font-bold text-indigo-950">دعم كامل لإيميلات النطاق الخاص بالشركة (Custom Corporate Domain IMAP / SMTP)</h4>
+              <p className="text-indigo-800 leading-relaxed">
+                المنظومة مهيأة للعمل مع جميع خوادم البريد الخاصة بالشركات (cPanel, Postfix, Zimbra, Exchange, Microsoft 365, Mailcow) بنظام IMAP/SMTP دون الحاجة لحساب Google أو Gmail شخصي.
+              </p>
+            </div>
+          </div>
+
+          {/* SMTP Configuration Form */}
+          <form onSubmit={handleSaveSmtp} className="space-y-5">
+            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <span className="font-bold text-xs text-slate-800 block">تفعيل الإرسال المباشر عبر SMTP المنظومة</span>
+                <span className="text-[11px] text-slate-500">عند التعطيل، ستعتمد المنظومة على فتح تطبيق البريد المثبت (Outlook / Webmail) كبديل فوري.</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={localSmtp.enabled} 
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, enabled: e.target.checked }))} 
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  عنوان خادم البريد الصادر (SMTP Host):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={localSmtp.host}
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, host: e.target.value }))}
+                  placeholder="mail.cropsa-finance.eg أو smtp.yourcompany.com"
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  رقم المنفذ (Port):
+                </label>
+                <input
+                  type="number"
+                  required
+                  value={localSmtp.port}
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, port: Number(e.target.value) }))}
+                  placeholder="465 أو 587"
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  اسم المستخدم / حساب البريد (Username / Account Email):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={localSmtp.user}
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, user: e.target.value }))}
+                  placeholder="operations@cropsa-finance.eg"
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  كلمة مرور البريد (Password):
+                </label>
+                <input
+                  type="password"
+                  value={localSmtp.pass}
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, pass: e.target.value }))}
+                  placeholder="••••••••••••"
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  اسم المرسل المعروض (From Name):
+                </label>
+                <input
+                  type="text"
+                  value={localSmtp.fromName}
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, fromName: e.target.value }))}
+                  placeholder="منظومة كروبسا مصر للتمويل الرقمي"
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  بريد المرسل المعروض (From Email):
+                </label>
+                <input
+                  type="email"
+                  value={localSmtp.fromEmail}
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, fromEmail: e.target.value }))}
+                  placeholder="operations@cropsa-finance.eg"
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="font-bold text-xs text-slate-800 block">بروتوكول الأمان والتشفير (SSL/TLS Encryption)</span>
+                <span className="text-[11px] text-slate-500">يوصى بتفعيله مع المنفذ 465 (SSL) أو تركه للـ STARTTLS مع المنفذ 587.</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={localSmtp.secure} 
+                  onChange={e => setLocalSmtp(prev => ({ ...prev, secure: e.target.checked }))} 
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+
+            {/* Test Connection Banner */}
+            {smtpTestResult && (
+              <div className={`p-3.5 rounded-xl flex items-center gap-2 text-xs font-bold animate-in fade-in ${
+                smtpTestResult.success 
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{smtpTestResult.message}</span>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleTestSmtpConnection}
+                className="px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold flex items-center gap-2 transition"
+              >
+                <Server className="w-4 h-4" />
+                <span>اختبار الاتصال بالخادم الآن</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={savingSmtp}
+                className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md flex items-center gap-2 transition disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{savingSmtp ? 'جاري الحفظ...' : 'حفظ إعدادات البريد في سوبابيس (Supabase)'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

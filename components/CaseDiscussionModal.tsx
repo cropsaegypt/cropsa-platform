@@ -32,17 +32,20 @@ import {
   Search
 } from 'lucide-react';
 import { InternalDocViewerModal } from './InternalDocViewerModal';
+import { ExternalCompanyDispatchModal } from './ExternalCompanyDispatchModal';
 
 interface CaseDiscussionModalProps {
   application: Application;
   onClose: () => void;
   defaultTab?: 'comments' | 'documents' | 'reroute';
+  initialTab?: 'comments' | 'documents' | 'reroute';
 }
 
 export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
   application,
   onClose,
-  defaultTab = 'comments'
+  defaultTab = 'comments',
+  initialTab
 }) => {
   const { 
     currentUser, 
@@ -54,7 +57,8 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
     reRouteApplication 
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<'comments' | 'documents' | 'reroute'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'comments' | 'documents' | 'reroute'>(initialTab || defaultTab || 'comments');
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
   
   // Comment state
   const [commentText, setCommentText] = useState('');
@@ -182,6 +186,16 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDispatchModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
+              title="مراسلة واستعجال الشركة خارجياً (واتساب / بريد إلكتروني)"
+            >
+              <Send className="h-4 w-4" />
+              <span>مراسلة واستعجال خارجي</span>
+            </button>
+
             {!application.isUrgent && (
               <button
                 onClick={handleExpedite}
@@ -746,6 +760,15 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
           document={previewDoc}
           clientName={application.clientName}
           onClose={() => setPreviewDoc(null)}
+        />
+      )}
+
+      {showDispatchModal && (
+        <ExternalCompanyDispatchModal
+          isOpen={showDispatchModal}
+          onClose={() => setShowDispatchModal(false)}
+          application={application}
+          initialCategory={application.isUrgent ? 'EXPEDITE_URGENT' : 'NEW_APPLICATION'}
         />
       )}
     </div>

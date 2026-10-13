@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../context/Store';
-import { InstallmentCompany, EGYPT_GOVERNORATES, Role, FinancingProgram } from '../types';
+import { InstallmentCompany, EGYPT_GOVERNORATES, Role, FinancingProgram, CompanyReceivingChannel } from '../types';
 import { 
   Building2, 
   Plus, 
@@ -23,7 +23,9 @@ import {
   Check,
   Upload,
   Camera,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 
 export const CompaniesManagement: React.FC = () => {
@@ -130,6 +132,10 @@ export const CompaniesManagement: React.FC = () => {
     fraLicense: '',
     creditCeiling: 20000000,
     commissionRate: 3.5,
+    receivingChannel: 'PORTAL' as CompanyReceivingChannel,
+    whatsappNumber: '',
+    dispatchEmail: '',
+    contactPersonName: '',
     allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية'],
     requiredDocumentsList: [
       'بطاقة الرقم القومي سارية للمشتري والضامن',
@@ -200,6 +206,10 @@ export const CompaniesManagement: React.FC = () => {
       coverImage: companyForm.coverImage,
       email: companyForm.email,
       phone: companyForm.phone,
+      receivingChannel: companyForm.receivingChannel,
+      whatsappNumber: companyForm.whatsappNumber,
+      dispatchEmail: companyForm.dispatchEmail,
+      contactPersonName: companyForm.contactPersonName,
       commercialRegister: companyForm.commercialRegister,
       taxNumber: companyForm.taxNumber,
       fraLicense: companyForm.fraLicense,
@@ -224,6 +234,10 @@ export const CompaniesManagement: React.FC = () => {
       fraLicense: '',
       creditCeiling: 20000000,
       commissionRate: 3.5,
+      receivingChannel: 'PORTAL' as CompanyReceivingChannel,
+      whatsappNumber: '',
+      dispatchEmail: '',
+      contactPersonName: '',
       allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية'],
       requiredDocumentsList: [
         'بطاقة الرقم القومي سارية للمشتري والضامن',
@@ -306,13 +320,36 @@ export const CompaniesManagement: React.FC = () => {
                     </div>
                   </div>
 
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                    company.status === 'ACTIVE' 
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}>
-                    {company.status === 'ACTIVE' ? (language === 'ar' ? 'نشطة' : 'Active') : company.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                      company.status === 'ACTIVE' 
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {company.status === 'ACTIVE' ? (language === 'ar' ? 'نشطة' : 'Active') : company.status}
+                    </span>
+
+                    {/* Receiving Channel Badge */}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${
+                      company.receivingChannel === 'WHATSAPP'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : company.receivingChannel === 'EMAIL'
+                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                        : company.receivingChannel === 'WHATSAPP_AND_EMAIL'
+                        ? 'bg-purple-50 text-purple-800 border-purple-200'
+                        : 'bg-sky-50 text-sky-800 border-sky-200'
+                    }`}>
+                      {company.receivingChannel === 'WHATSAPP' ? (
+                        <><MessageSquare className="w-3 h-3 text-emerald-600" /> واتساب</>
+                      ) : company.receivingChannel === 'EMAIL' ? (
+                        <><Mail className="w-3 h-3 text-indigo-600" /> إيميل</>
+                      ) : company.receivingChannel === 'WHATSAPP_AND_EMAIL' ? (
+                        <><MessageSquare className="w-3 h-3 text-purple-600" /> واتساب وإيميل</>
+                      ) : (
+                        <><Building2 className="w-3 h-3 text-sky-600" /> بورتال</>
+                      )}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Company Details */}
@@ -653,6 +690,72 @@ export const CompaniesManagement: React.FC = () => {
                 <p className="text-[11px] text-sky-700 mt-1">
                   {language === 'ar' ? 'سيتم إنشاء حساب تلقائي لمدير الشركة باسم مستخدم مشتق من كود الشركة.' : 'An admin account will be generated automatically.'}
                 </p>
+              </div>
+
+              {/* Receiving Channel & External Dispatch Details */}
+              <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200 space-y-3">
+                <div>
+                  <label className="block font-bold text-slate-800 text-xs mb-1.5 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-emerald-600" />
+                    <span>آلية وقناة استقبال الطلبات للشركة:</span>
+                  </label>
+                  <select
+                    value={companyForm.receivingChannel}
+                    onChange={e => setCompanyForm({ ...companyForm, receivingChannel: e.target.value as CompanyReceivingChannel })}
+                    className="w-full text-sm font-semibold border border-emerald-300 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    <option value="PORTAL">🌐 داخل بوابة المنصة فقط (Internal Portal)</option>
+                    <option value="WHATSAPP">📲 خارج البورتال - عبر رسائل الواتساب المباشرة (WhatsApp Only)</option>
+                    <option value="EMAIL">📧 خارج البورتال - عبر البريد الإلكتروني الرسمي (Email Only)</option>
+                    <option value="WHATSAPP_AND_EMAIL">🔄 خارج البورتال - واتساب وبريد إلكتروني معاً (WhatsApp & Email)</option>
+                  </select>
+                  <p className="text-[11px] text-emerald-800 mt-1">
+                    للشركات الخارجية خارج البورتال، ستتيح المنصة إرسال وتوجيه أوراق العميل برابط درايف والاستعجال بضغطة زر.
+                  </p>
+                </div>
+
+                {companyForm.receivingChannel !== 'PORTAL' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/60">
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">
+                        رقم هاتف الواتساب:
+                      </label>
+                      <input
+                        type="text"
+                        value={companyForm.whatsappNumber}
+                        onChange={e => setCompanyForm({ ...companyForm, whatsappNumber: e.target.value })}
+                        placeholder="01012345678"
+                        className="w-full text-xs border border-emerald-300 rounded-lg px-2.5 py-1.5 bg-white font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">
+                        بريد استقبال الطلبات:
+                      </label>
+                      <input
+                        type="email"
+                        value={companyForm.dispatchEmail}
+                        onChange={e => setCompanyForm({ ...companyForm, dispatchEmail: e.target.value })}
+                        placeholder="credit@company.eg"
+                        className="w-full text-xs border border-emerald-300 rounded-lg px-2.5 py-1.5 bg-white font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">
+                        مسؤول التواصل / الائتمان:
+                      </label>
+                      <input
+                        type="text"
+                        value={companyForm.contactPersonName}
+                        onChange={e => setCompanyForm({ ...companyForm, contactPersonName: e.target.value })}
+                        placeholder="أ. أحمد ممدوح"
+                        className="w-full text-xs border border-emerald-300 rounded-lg px-2.5 py-1.5 bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Allowed Governorates */}
