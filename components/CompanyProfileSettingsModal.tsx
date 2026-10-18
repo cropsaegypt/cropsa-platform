@@ -24,9 +24,11 @@ import {
   MessageSquare,
   MapPin,
   FileSpreadsheet,
-  ExternalLink
+  ExternalLink,
+  Crop
 } from 'lucide-react';
 import { CompanyBranchesManagerModal } from './CompanyBranchesManagerModal';
+import { CompanyCoverCropperModal } from './CompanyCoverCropperModal';
 
 interface CompanyProfileSettingsModalProps {
   company: InstallmentCompany;
@@ -88,6 +90,8 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
   // Branding Form
   const [logo, setLogo] = useState(company.logo || '');
   const [coverImage, setCoverImage] = useState(company.coverImage || '');
+  const [coverPosition, setCoverPosition] = useState(company.coverPosition || '50% 50%');
+  const [showCropperModal, setShowCropperModal] = useState(false);
 
   // Director Password Form
   const [newPassword, setNewPassword] = useState('');
@@ -148,7 +152,8 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
     try {
       await updateCompany(company.id, {
         logo,
-        coverImage
+        coverImage,
+        coverPosition
       });
       setSaveSuccessMsg(isAr ? 'تم تحديث لوجو وكافر الشركة بنجاح' : 'Logo & Cover updated');
       setTimeout(() => setSaveSuccessMsg(''), 3000);
@@ -488,17 +493,32 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
               {/* Live Preview Card */}
               <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-md relative">
                 <div 
-                  className="h-40 w-full bg-cover bg-center relative"
-                  style={{ backgroundImage: coverImage?.trim() ? `url(${coverImage})` : undefined }}
+                  className="h-40 w-full bg-cover relative"
+                  style={{ 
+                    backgroundImage: coverImage?.trim() ? `url(${coverImage})` : undefined,
+                    backgroundPosition: coverPosition || '50% 50%'
+                  }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/30 to-transparent" />
                   
-                  {/* Change cover button overlay */}
-                  <label className="absolute top-3 left-3 bg-black/60 hover:bg-black/80 text-white text-xs font-bold px-3 py-1.5 rounded-xl backdrop-blur-md cursor-pointer flex items-center gap-1.5 border border-white/20 transition-all">
-                    <Camera className="h-3.5 w-3.5 text-sky-400" />
-                    <span>{isAr ? 'رفع غلاف مخصص' : 'Upload Cover'}</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'cover')} />
-                  </label>
+                  {/* Action buttons overlay */}
+                  <div className="absolute top-3 left-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCropperModal(true)}
+                      className="bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl backdrop-blur-md flex items-center gap-1.5 border border-white/20 transition-all shadow-md cursor-pointer"
+                      title="تحديد الجزء الظاهر من الغلاف"
+                    >
+                      <Crop className="h-3.5 w-3.5 text-white" />
+                      <span>{isAr ? 'ضبط موضع الكافر' : 'Adjust Focus'}</span>
+                    </button>
+
+                    <label className="bg-black/60 hover:bg-black/80 text-white text-xs font-bold px-3 py-1.5 rounded-xl backdrop-blur-md cursor-pointer flex items-center gap-1.5 border border-white/20 transition-all">
+                      <Camera className="h-3.5 w-3.5 text-sky-400" />
+                      <span>{isAr ? 'رفع غلاف مخصص' : 'Upload Cover'}</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'cover')} />
+                    </label>
+                  </div>
                 </div>
 
                 <div className="p-4 bg-white flex items-center justify-between">
@@ -1008,6 +1028,25 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
           company={company}
           onClose={() => setShowBranchesModal(false)}
           initialTab={branchesModalInitialTab}
+        />
+      )}
+
+      {/* Embedded Cover Focal Point Cropper Modal */}
+      {showCropperModal && (
+        <CompanyCoverCropperModal
+          isOpen={showCropperModal}
+          onClose={() => setShowCropperModal(false)}
+          coverImageUrl={coverImage?.trim() || company.coverImage || 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1600&auto=format&fit=crop&q=80'}
+          currentPosition={coverPosition}
+          companyName={companyName}
+          companyLogo={logo}
+          onSave={async (newPos) => {
+            setCoverPosition(newPos);
+            await updateCompany(company.id, { coverPosition: newPos });
+            setShowCropperModal(false);
+            setSaveSuccessMsg(isAr ? 'تم ضبط وحفظ موضع الكافر بنجاح' : 'Cover position saved');
+            setTimeout(() => setSaveSuccessMsg(''), 3000);
+          }}
         />
       )}
     </div>

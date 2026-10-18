@@ -75,6 +75,8 @@ export interface CompanyBranch {
   phone: string;
   managerName?: string;
   active: boolean;
+  username?: string; // اسم المستخدم للدخول الخاص بالفرع
+  password?: string; // كلمة مرور دخول الفرع
 }
 
 export interface User {
@@ -149,6 +151,7 @@ export interface InstallmentCompany {
   code: string;
   logo: string;
   coverImage?: string; // صورة غلاف / كافر الشركة
+  coverPosition?: string; // موضع وضبط جزء الغلاف الظاهر e.g. "center 30%"
   email: string;
   phone: string;
   commercialRegister: string; // السجل التجاري

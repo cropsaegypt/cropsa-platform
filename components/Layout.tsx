@@ -42,10 +42,12 @@ import {
   CheckCircle2,
   MessageSquare,
   BellRing,
-  Calculator
+  Calculator,
+  Compass
 } from 'lucide-react';
 import { RoleSwitcherModal } from './RoleSwitcherModal';
 import { ClientFollowUpModal } from './ClientFollowUpModal';
+import { PortalOnboardingTour } from './PortalOnboardingTour';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -98,6 +100,20 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
   const [notifOpen, setNotifOpen] = useState(false);
   const [roleSwitcherModalOpen, setRoleSwitcherModalOpen] = useState(false);
   const [clientFollowUpOpen, setClientFollowUpOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // Check if onboarding tour should be launched (on force password change or first visit)
+  useEffect(() => {
+    if (currentUser) {
+      const launchNow = localStorage.getItem('cropsa_launch_tour_now') === 'true';
+      const completed = localStorage.getItem(`cropsa_tour_completed_${currentUser.id}`) === 'true';
+
+      if (launchNow || (!completed && (currentUser.role === Role.INSTALLMENT_COMPANY || currentUser.role === Role.BRANCH_MANAGER))) {
+        setTourOpen(true);
+        localStorage.removeItem('cropsa_launch_tour_now');
+      }
+    }
+  }, [currentUser?.id]);
 
   // Collapsible sidebar state (desktop collapse / expand)
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -1477,6 +1493,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
                 </button>
               )}
 
+              {/* Portal Onboarding Tour Button */}
+              <button
+                type="button"
+                onClick={() => setTourOpen(true)}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 rounded-xl transition-all cursor-pointer shadow-2xs"
+                title="جولة إرشادية وتوضيح صفحات النظام"
+              >
+                <Compass className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="hidden lg:inline text-[11px]">جولة تعريفية</span>
+              </button>
+
               {/* Direct Header Logout Button */}
               <button
                 type="button"
@@ -1569,6 +1596,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
           onNavigate={onNavigate}
         />
       )}
+
+      {/* Role-tailored Portal Onboarding Tour */}
+      <PortalOnboardingTour
+        isOpen={tourOpen}
+        onClose={() => {
+          setTourOpen(false);
+          if (currentUser) {
+            localStorage.setItem(`cropsa_tour_completed_${currentUser.id}`, 'true');
+          }
+        }}
+        currentUser={currentUser}
+      />
     </div>
   );
 };

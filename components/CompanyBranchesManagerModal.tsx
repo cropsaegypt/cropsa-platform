@@ -21,7 +21,13 @@ import {
   ClipboardPaste,
   RefreshCw,
   SlidersHorizontal,
-  ChevronRight
+  ChevronRight,
+  KeyRound,
+  Copy,
+  Eye,
+  EyeOff,
+  Lock,
+  Zap
 } from 'lucide-react';
 
 interface CompanyBranchesManagerModalProps {
@@ -52,6 +58,7 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
     updateBranch, 
     deleteBranch, 
     bulkImportCompanyBranches,
+    updateBranchPassword,
     language 
   } = useStore();
 
@@ -60,6 +67,19 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
   const [searchTerm, setSearchTerm] = useState('');
   const [govFilter, setGovFilter] = useState('ALL');
   const [toastMsg, setToastMsg] = useState('');
+
+  // Password & Credentials State
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [changingPassBranchId, setChangingPassBranchId] = useState<string | null>(null);
+  const [newPassInput, setNewPassInput] = useState('');
+  const [isSimpleMode, setIsSimpleMode] = useState(false);
+
+  const toggleRevealPassword = (branchId: string) => {
+    setRevealedPasswords(prev => ({
+      ...prev,
+      [branchId]: !prev[branchId]
+    }));
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -198,8 +218,8 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
   const [isImportingExcel, setIsImportingExcel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sample CSV content for download and demo fill
-  const sampleCsvContent = `اسم الفرع,المحافظة,عنوان الفرع,هاتف الفرع,اسم مدير الفرع
+  // Sample CSV contents (Full vs Simple Mode)
+  const fullSampleCsvContent = `اسم الفرع,المحافظة,عنوان الفرع,هاتف الفرع,اسم مدير الفرع
 فرع التجمع الخامس,القاهرة,شارع التسعين الشمالي مبنى 45,0228100100,محمد عبد الرحمن
 فرع المهندسين,الجيزة,شارع جامعة الدول العربية 12,0237400200,ياسر الشناوي
 فرع سموحة,الإسكندرية,ميدان فيكتور عمانويل برج الأطباء,034200300,خالد السعدني
@@ -207,13 +227,25 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
 فرع طنطا,الغربية,شارع الجيش بجوار المحطة,0403300600,سامح الشربيني
 فرع الزقازيق,الشرقية,شارع وادي النيل برج السلام,0552300500,عمرو عبد العظيم`;
 
+  const simpleSampleCsvContent = `اسم الفرع
+فرع التجمع الخامس
+فرع المهندسين
+فرع سموحة
+فرع المنصورة
+فرع طنطا
+فرع الزقازيق
+فرع أسيوط
+فرع سوهاج`;
+
+  const activeSampleCsvContent = isSimpleMode ? simpleSampleCsvContent : fullSampleCsvContent;
+
   // Download official CSV template
   const handleDownloadSampleCsv = () => {
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + sampleCsvContent;
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + activeSampleCsvContent;
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `نموذج_استيراد_فروع_${company.code || 'company'}.csv`);
+    link.setAttribute('download', `نموذج_استيراد_فروع_${isSimpleMode ? 'اسماء_فقط_' : ''}${company.code || 'company'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -222,53 +254,65 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
 
   // Load demo branches into preview
   const handleLoadDemoBranches = () => {
-    parseRawText(sampleCsvContent);
+    parseRawText(activeSampleCsvContent, isSimpleMode);
     showToast(isAr ? 'تم ملء بيانات النموذج الاسترشادي للتجربة' : 'Demo data loaded');
   };
 
-  // Parser helper (handles comma, tab, and semicolon separated rows)
-  const parseRawText = (rawText: string) => {
+  // Parser helper (handles comma, tab, newline separated rows, and Simple Mode)
+  const parseRawText = (rawText: string, simpleModeOverride?: boolean) => {
+    const useSimple = simpleModeOverride !== undefined ? simpleModeOverride : isSimpleMode;
     const lines = rawText.trim().split(/\r?\n/).filter(line => line.trim().length > 0);
-    if (lines.length <= 1) {
+    if (lines.length === 0) {
       setParsedBranches([]);
       return;
     }
 
     const items: ParsedBranchItem[] = [];
-    const dataLines = lines.slice(1); // skip headers
+    
+    // Check if first line is a header
+    const firstLineLower = lines[0].toLowerCase();
+    const hasHeader = firstLineLower.includes('اسم') || firstLineLower.includes('branch') || firstLineLower.includes('محافظة');
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    const defaultGov = company.allowedGovernorates?.[0] || 'القاهرة';
 
     dataLines.forEach((line, idx) => {
-      // Split by tab or comma (handling quoted cells)
       let parts: string[] = [];
       if (line.includes('\t')) {
         parts = line.split('\t').map(p => p.trim());
-      } else {
+      } else if (line.includes(',')) {
         parts = line.split(',').map(p => p.trim().replace(/^["']|["']$/g, ''));
+      } else {
+        parts = [line.trim()];
       }
 
       const branchName = parts[0] || '';
-      const governorate = parts[1] || 'القاهرة';
+      let governorate = parts[1] || defaultGov;
       const address = parts[2] || '';
       const phone = parts[3] || '';
       const managerName = parts[4] || '';
 
       const errors: string[] = [];
-      if (!branchName) {
+      if (!branchName.trim()) {
         errors.push(isAr ? 'اسم الفرع مفقود' : 'Branch name missing');
       }
 
-      // Normalize governorate name check
-      const matchedGov = EGYPT_GOVERNORATES.find(g => 
-        g.trim().replace(/[أإآ]/g, 'ا') === governorate.trim().replace(/[أإآ]/g, 'ا')
-      );
-      if (!matchedGov) {
-        errors.push(isAr ? `المحافظة غير معروفة: "${governorate}"` : `Unknown governorate: ${governorate}`);
+      // Check governorate if provided or full mode
+      if (!useSimple && parts[1]) {
+        const matchedGov = EGYPT_GOVERNORATES.find(g => 
+          g.trim().replace(/[أإآ]/g, 'ا') === governorate.trim().replace(/[أإآ]/g, 'ا')
+        );
+        if (matchedGov) {
+          governorate = matchedGov;
+        } else {
+          errors.push(isAr ? `المحافظة غير معروفة: "${governorate}"` : `Unknown governorate: ${governorate}`);
+        }
       }
 
       items.push({
         id: `parsed_${Date.now()}_${idx}`,
         name: branchName,
-        governorate: matchedGov || governorate,
+        governorate: governorate || defaultGov,
         address,
         phone,
         managerName,
@@ -653,6 +697,110 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                                   </span>
                                 )}
                               </p>
+
+                              {/* Branch User & Password Credentials Box */}
+                              <div className="mt-2.5 p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-4 flex-wrap">
+                                  {/* Username */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">اسم المستخدم:</span>
+                                    <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200 select-all">
+                                      {branch.username || `${company.code?.toLowerCase() || 'co'}_${branch.id.slice(-4)}`}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(branch.username || `${company.code?.toLowerCase() || 'co'}_${branch.id.slice(-4)}`);
+                                        showToast(isAr ? 'تم نسخ اسم المستخدم' : 'Username copied');
+                                      }}
+                                      className="p-1 hover:bg-slate-200 rounded text-slate-500"
+                                      title="نسخ اسم المستخدم"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </button>
+                                  </div>
+
+                                  {/* Password */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">كلمة المرور:</span>
+                                    <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 select-all">
+                                      {revealedPasswords[branch.id] 
+                                        ? (branch.password || `${(company.code || 'brn').toLowerCase().slice(0, 3)}@2026`) 
+                                        : '••••••••'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRevealPassword(branch.id)}
+                                      className="p-1 hover:bg-slate-200 rounded text-slate-500"
+                                      title={revealedPasswords[branch.id] ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                                    >
+                                      {revealedPasswords[branch.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(branch.password || `${(company.code || 'brn').toLowerCase().slice(0, 3)}@2026`);
+                                        showToast(isAr ? 'تم نسخ كلمة المرور' : 'Password copied');
+                                      }}
+                                      className="p-1 hover:bg-slate-200 rounded text-slate-500"
+                                      title="نسخ كلمة المرور"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Quick Change Password Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setChangingPassBranchId(changingPassBranchId === branch.id ? null : branch.id);
+                                    setNewPassInput(branch.password || `${(company.code || 'brn').toLowerCase().slice(0, 3)}@2026`);
+                                  }}
+                                  className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 flex items-center gap-1 transition-colors"
+                                >
+                                  <KeyRound className="h-3 w-3" />
+                                  <span>تعديل الباسورد</span>
+                                </button>
+                              </div>
+
+                              {/* Inline Password Edit Row */}
+                              {changingPassBranchId === branch.id && (
+                                <div className="mt-2 p-3 bg-indigo-50/80 rounded-xl border border-indigo-200 flex items-center justify-between gap-3 animate-in fade-in">
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <Lock className="h-4 w-4 text-indigo-600 shrink-0" />
+                                    <span className="text-xs font-bold text-indigo-950 shrink-0">باسورد جديد للفرع:</span>
+                                    <input
+                                      type="text"
+                                      value={newPassInput}
+                                      onChange={e => setNewPassInput(e.target.value)}
+                                      placeholder="مثال: tag@2026"
+                                      className="text-xs bg-white border border-indigo-300 rounded-lg px-2.5 py-1 font-mono font-bold text-slate-800 flex-1 max-w-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (!newPassInput.trim()) return;
+                                        await updateBranchPassword(branch.id, newPassInput.trim());
+                                        setChangingPassBranchId(null);
+                                        showToast(isAr ? 'تم تحديث كلمة مرور الفرع بنجاح' : 'Branch password updated');
+                                      }}
+                                      className="px-3 py-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                                    >
+                                      حفظ
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setChangingPassBranchId(null)}
+                                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                                    >
+                                      إلغاء
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Branch Action Buttons */}
@@ -837,6 +985,47 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                 </div>
               </div>
 
+              {/* Import Mode Switcher (نمط الأسماء فقط vs النمط الشامل) */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    <span>تحديد نمط الاستيراد المطلوب:</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {isSimpleMode 
+                      ? 'نمط الأسماء فقط: يكفيك إدخال أسماء الفروع فقط، وسيقوم النظام فوراً بتوليد يوزر وباسورد لكل فرع وتعيين المحافظة تلقائياً.' 
+                      : 'النمط الشامل: يتضمن اسم الفرع والمحافظة وعنوان الفرع ورقم الهاتف واسم المدير.'}
+                  </p>
+                </div>
+
+                <div className="inline-flex p-1 bg-white border border-slate-200 rounded-xl text-xs font-bold shrink-0 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => { setIsSimpleMode(false); setParsedBranches([]); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      !isSimpleMode 
+                        ? 'bg-slate-900 text-white shadow-xs font-black' 
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    النمط الشامل (كامل التفاصيل)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsSimpleMode(true); setParsedBranches([]); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${
+                      isSimpleMode 
+                        ? 'bg-emerald-600 text-white shadow-xs font-black' 
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Zap className="h-3 w-3" />
+                    <span>نمط الأسماء فقط (Simple Mode)</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Input Method Switcher */}
               <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
                 <button
@@ -924,8 +1113,12 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                         <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                         <span>معاينة الفروع المقروءة من الشيت ({parsedBranches.length} فرع)</span>
                       </h4>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        جاهز للاستيراد: <span className="font-bold text-emerald-700">{validParsedBranchesCount}</span> • بها ملاحظات: <span className="font-bold text-rose-600">{parsedBranches.length - validParsedBranchesCount}</span>
+                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                        <span>جاهز للاستيراد: <strong className="font-bold text-emerald-700">{validParsedBranchesCount}</strong></span>
+                        <span>• بها ملاحظات: <strong className="font-bold text-rose-600">{parsedBranches.length - validParsedBranchesCount}</strong></span>
+                        <span className="text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 text-[11px]">
+                          ⚡ سيتم توليد اسم مستخدم وباسورد تلقائياً لكل فرع ([كود]@2026)
+                        </span>
                       </p>
                     </div>
 

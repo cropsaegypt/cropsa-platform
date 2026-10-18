@@ -68,7 +68,8 @@ import {
   Award,
   Upload,
   Compass,
-  Layers
+  Layers,
+  Crop
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -97,6 +98,7 @@ import { CompanyWorkflowSettings } from '../components/CompanyWorkflowSettings';
 import { CompanyExcelImport } from './CompanyExcelImport';
 import { ClientFollowUpModal } from '../components/ClientFollowUpModal';
 import { ComprehensiveAnalyticsSection } from '../components/ComprehensiveAnalyticsSection';
+import { CompanyCoverCropperModal } from '../components/CompanyCoverCropperModal';
 import { SmartCreditCalculator } from '../components/SmartCreditCalculator';
 import { runClientCreditAiAnalysis } from '../services/gemini';
 
@@ -164,6 +166,7 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
   const [showBrandingModal, setShowBrandingModal] = useState(false);
   const [showProfileSettingsModal, setShowProfileSettingsModal] = useState(false);
   const [showClientFollowUpModal, setShowClientFollowUpModal] = useState(false);
+  const [showCoverCropperModal, setShowCoverCropperModal] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'applications' | 'branch_transfers' | 'branches' | 'staff' | 'database' | 'followup' | 'reports' | 'shared_docs' | 'ai' | 'settings' | 'excel_import'>(
     (initialTab as any) || (pendingNavigation?.subTab as any) || 'overview'
@@ -1399,15 +1402,29 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
       {/* ========================================================================= */}
       <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-visible space-y-0">
         {/* Cover Banner (Clean, Sharp & Clear - No Blur, Company Name & Logo Only) */}
-        <div className="relative h-44 sm:h-52 md:h-60 w-full overflow-hidden bg-slate-900 rounded-t-3xl">
+        <div className="relative h-44 sm:h-52 md:h-60 w-full overflow-hidden bg-slate-900 rounded-t-3xl group">
           <img 
             src={activeCompany.coverImage || compEditCover || 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1600&auto=format&fit=crop&q=80'} 
             alt={activeCompany?.name || 'Company Cover'} 
-            className="w-full h-full object-cover object-center"
+            className="w-full h-full object-cover transition-all"
+            style={{ objectPosition: activeCompany.coverPosition || '50% 50%' }}
             referrerPolicy="no-referrer"
           />
           {/* Natural soft gradient at bottom for text contrast only - No blur */}
           <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none" />
+
+          {/* Focal point adjustment button for company admin or super admin */}
+          {isCompanyAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowCoverCropperModal(true)}
+              className="absolute top-4 left-4 z-20 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg flex items-center gap-1.5 transition-all opacity-80 group-hover:opacity-100"
+              title="تحديد الجزء الظاهر من غلاف الشركة"
+            >
+              <Crop className="h-3.5 w-3.5 text-emerald-400" />
+              <span>ضبط موضع الكافر</span>
+            </button>
+          )}
 
           {/* ONLY Company Logo and Company Name on Cover */}
           <div className="absolute bottom-4 inset-x-5 sm:inset-x-7 flex items-end justify-between gap-4 z-10">
@@ -2298,14 +2315,16 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
               onClick={() => setReportsSubTab('detailed_analytics')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 reportsSubTab === 'detailed_analytics'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-800'
+                  : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              <BarChart3 className="h-4 w-4 text-emerald-400" />
+              <BarChart3 className="h-4 w-4 text-emerald-300" />
               <span>{language === 'ar' ? 'لوحة الإحصائيات الشاملة والمؤشرات المتقدمة' : 'Comprehensive Analytics Dashboard'}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-black">
-                جديد تفاعلي
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                reportsSubTab === 'detailed_analytics' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+              }`}>
+                {language === 'ar' ? 'جديد تفاعلي' : 'Interactive'}
               </span>
             </button>
 
@@ -2314,13 +2333,15 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
               onClick={() => setReportsSubTab('sales_performance')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 reportsSubTab === 'sales_performance'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-800'
+                  : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
               }`}
             >
               <Users className="h-4 w-4" />
               <span>{language === 'ar' ? 'لوحة تحكم أداء موظفي البيع والمندوبين' : 'Sales Staff Performance Dashboard'}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                reportsSubTab === 'sales_performance' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+              }`}>
                 {salesStaffPerformance.length} موظف
               </span>
             </button>
@@ -2330,64 +2351,14 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
               onClick={() => setReportsSubTab('geo_analytics')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 reportsSubTab === 'geo_analytics'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-800'
+                  : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
               }`}
             >
               <MapPin className="h-4 w-4" />
               <span>{language === 'ar' ? 'التقارير الجغرافية وتوزيع المحافظات' : 'Geographic & Regional Analytics'}</span>
             </button>
           </div>
-
-          {/* Auto-Archive & Database Optimization Status Banner */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-crobsa-950 to-slate-900 text-white border border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-white/10 text-amber-400 border border-white/10 shrink-0">
-                <Archive className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm text-white">
-                    {language === 'ar' ? 'نظام الأرشفة التلقائية وتنظيف قاعدة البيانات' : 'Auto-Archive & Database Optimization'}
-                  </h4>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md font-mono font-bold">
-                    نشط ومرتبط بالفاير بيز
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  {language === 'ar' 
-                    ? `تفريغ المساحة وأرشفة الطلبات المرفوضة والطلبات القديمة (> 6 أشهر) لتحسين أداء واستجابة التطبيق. يوجد (${eligibleForAutoArchiveCount}) طلب مؤهل للأرشفة.`
-                    : `Archive rejected & old cases (>6 months) to speed up database performance. (${eligibleForAutoArchiveCount}) cases eligible.`}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 self-start md:self-auto shrink-0">
-              <button
-                type="button"
-                disabled={autoArchiveRunning || eligibleForAutoArchiveCount === 0}
-                onClick={handleRunAutoArchive}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${autoArchiveRunning ? 'animate-spin' : ''}`} />
-                <span>
-                  {autoArchiveRunning 
-                    ? (language === 'ar' ? 'جاري الأرشفة...' : 'Archiving...') 
-                    : (language === 'ar' ? `تشغيل الأرشفة التلقائية (${eligibleForAutoArchiveCount})` : `Run Auto-Archive (${eligibleForAutoArchiveCount})`)}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {autoArchiveResult && (
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-between animate-in fade-in">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span>{autoArchiveResult}</span>
-              </div>
-              <button onClick={() => setAutoArchiveResult(null)} className="text-emerald-700 hover:text-emerald-900 font-bold">✕</button>
-            </div>
-          )}
 
           {/* ========================================================================= */}
           {/* SUB-VIEW 0: COMPREHENSIVE DETAILED ANALYTICS (الإحصائيات الشاملة والمؤشرات المتقدمة) */}
@@ -6000,6 +5971,22 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
         <CompanyBrandingModal
           company={activeCompany}
           onClose={() => setShowBrandingModal(false)}
+        />
+      )}
+
+      {/* Company Cover Focal Point Cropper Modal */}
+      {showCoverCropperModal && (
+        <CompanyCoverCropperModal
+          isOpen={showCoverCropperModal}
+          onClose={() => setShowCoverCropperModal(false)}
+          coverImageUrl={activeCompany.coverImage || compEditCover || 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1600&auto=format&fit=crop&q=80'}
+          currentPosition={activeCompany.coverPosition || '50% 50%'}
+          companyName={activeCompany.name}
+          companyLogo={activeCompany.logo}
+          onSave={async (newPos) => {
+            await updateCompany(activeCompany.id, { coverPosition: newPos });
+            setShowCoverCropperModal(false);
+          }}
         />
       )}
 

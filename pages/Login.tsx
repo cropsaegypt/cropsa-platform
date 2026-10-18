@@ -15,6 +15,7 @@ import {
   Leaf
 } from 'lucide-react';
 import { PasswordRecoveryModal } from '../components/PasswordRecoveryModal';
+import { getLockoutStatus, recordFailedLogin, clearFailedLogin, sanitizeInput } from '../utils/security';
 
 export const Login: React.FC = () => {
   const { 
@@ -63,16 +64,46 @@ export const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const cleanId = sanitizeInput(identifier.trim());
+    if (!cleanId) {
+      setError(isAr ? 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني' : 'Please enter your username or email');
+      return;
+    }
+
+    // 1. Check Brute-Force Rate Limiting Lockout
+    const lockout = getLockoutStatus(cleanId);
+    if (lockout.isLocked) {
+      const waitMin = Math.ceil(lockout.remainingSeconds / 60);
+      setError(
+        isAr 
+          ? `تم قفل الحساب مؤقتاً لحمايتك بسبب تكرار محاولات الدخول الخاطئة. يرجى الانتظار (${waitMin}) دقيقة ثم المحاولة مجدداً.`
+          : `Account is temporarily locked due to multiple failed login attempts. Please wait (${waitMin}) minutes.`
+      );
+      return;
+    }
+
     setLoading(true);
-    
     try {
-      const success = await login(identifier, password);
-      if (!success) {
-        setError(
-          isAr 
-            ? 'بيانات الدخول غير صحيحة، يرجى التحقق من اسم المستخدم أو البريد وكلمة المرور' 
-            : 'Invalid credentials. Please verify your username/email and password'
-        );
+      const success = await login(cleanId, password);
+      if (success) {
+        clearFailedLogin(cleanId);
+      } else {
+        const failureStatus = recordFailedLogin(cleanId);
+        if (failureStatus.isLocked) {
+          const waitMin = Math.ceil(failureStatus.remainingSeconds / 60);
+          setError(
+            isAr 
+              ? `تم تجاوز الحد الأقصى للمحاولات الخاطئة. تم قفل الحساب مؤقتاً لمدة (${waitMin}) دقيقة لحماية الحساب.`
+              : `Maximum failed attempts reached. Account locked for (${waitMin}) minutes.`
+          );
+        } else {
+          setError(
+            isAr 
+              ? `بيانات الدخول غير صحيحة. متبقي (${failureStatus.attemptsLeft}) محاولات قبل قفل الحساب مؤقتاً.`
+              : `Invalid credentials. (${failureStatus.attemptsLeft}) attempts remaining before temporary lockout.`
+          );
+        }
       }
     } catch (err) {
       setError(

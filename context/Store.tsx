@@ -47,6 +47,7 @@ import {
   ExternalDispatchRecord,
   SmtpConfig
 } from '../types';
+import { generateBranchCredentials } from '../utils/branchCredentials';
 import { 
   MOCK_USERS, 
   MOCK_COMPANIES, 
@@ -123,6 +124,7 @@ interface StoreContextType {
   deleteCompany: (companyId: string) => Promise<void>;
   createBranch: (branch: Partial<CompanyBranch>) => Promise<void>;
   updateBranch: (branchId: string, updates: Partial<CompanyBranch>) => Promise<void>;
+  updateBranchPassword: (branchId: string, newPassword: string) => Promise<void>;
   deleteBranch: (branchId: string) => Promise<void>;
   bulkImportCompanyBranches: (companyId: string, branchesToImport: Partial<CompanyBranch>[]) => Promise<{ count: number }>;
   wipeDemoData: (password: string) => Promise<void>;
@@ -1438,12 +1440,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setCurrentUser(updatedUser);
     localStorage.setItem('crobsa_active_user', JSON.stringify(updatedUser));
     setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+
+    if (supabase) {
+      try {
+        await supabase.from('users').update({
+          password: newPassword,
+          must_change_password: false
+        }).eq('id', currentUser.id);
+      } catch (err) {
+        console.warn('Supabase changePassword fallback:', err);
+      }
+    }
+
     try {
       await updateDoc(doc(db, 'users', currentUser.id), { password: newPassword, mustChangePassword: false });
     } catch (err) {
       console.warn('Firestore changePassword fallback:', err);
     }
-    addAuditLog('PASSWORD_CHANGE', 'User changed their password');
+
+    // Trigger onboarding tour immediately after password change
+    try {
+      localStorage.setItem('cropsa_launch_tour_now', 'true');
+    } catch {}
+
+    addAuditLog('PASSWORD_CHANGE', 'User changed their password', currentUser.id);
   };
 
   // Super Admin: Create generic user
@@ -1777,7 +1797,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
       companyId: compId,
       password: initialAdminPassword,
-      mustChangePassword: false,
+      mustChangePassword: true,
       permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff', 'followup_cases'],
       createdAt: new Date().toISOString()
     };
@@ -1810,7 +1830,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           role: initialAdmin.role,
           staff_role: initialAdmin.staffRole || null,
           company_id: compId,
-          active: true
+          active: true,
+          password: initialAdminPassword,
+          must_change_password: true
         });
         const updatedComps = [...companies, newComp];
         await supabase.from('system_settings').upsert({
@@ -1934,17 +1956,45 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const createBranch = async (branchData: Partial<CompanyBranch>) => {
     const branchId = `br_${Date.now()}`;
+    const targetComp = companies.find(c => c.id === (branchData.companyId || currentCompany?.id || 'comp_01'));
+    const compCode = targetComp?.code || 'COMP';
+    const branchName = branchData.name || 'فرع جديد';
+    const creds = generateBranchCredentials(branchName, compCode, branches.length + 1);
+
     const newBranch: CompanyBranch = {
       id: branchId,
       companyId: branchData.companyId || (currentCompany?.id || 'comp_01'),
-      name: branchData.name || 'فرع جديد',
-      governorate: branchData.governorate || 'القاهرة',
+      name: branchName,
+      governorate: branchData.governorate || targetComp?.allowedGovernorates?.[0] || 'القاهرة',
       address: branchData.address || '',
       phone: branchData.phone || '',
       managerName: branchData.managerName || '',
-      active: true
+      active: true,
+      username: branchData.username || creds.username,
+      password: branchData.password || creds.password
     };
+
     setBranches(prev => [...prev, newBranch]);
+
+    // Automatically create branch manager login user
+    const branchUser: User = {
+      id: `u_${branchId}`,
+      name: `مسؤول ${newBranch.name}`,
+      username: newBranch.username!,
+      email: `${newBranch.username!}@${compCode.toLowerCase()}.cropsa.eg`,
+      role: Role.BRANCH_MANAGER,
+      staffRole: InstallmentCompanyStaffRole.BRANCH_MANAGER,
+      companyId: newBranch.companyId,
+      branchId: branchId,
+      branchName: newBranch.name,
+      governorate: newBranch.governorate,
+      password: newBranch.password,
+      mustChangePassword: false,
+      permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports'],
+      createdAt: new Date().toISOString()
+    };
+    setUsers(prev => [...prev.filter(u => u.id !== branchUser.id), branchUser]);
+
     if (supabase) {
       try {
         await supabase.from('company_branches').upsert({
@@ -1955,6 +2005,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           address: newBranch.address || '',
           phone: newBranch.phone || '',
           manager_name: newBranch.managerName || '',
+          active: true,
+          username: newBranch.username,
+          password: newBranch.password
+        });
+        await supabase.from('users').upsert({
+          id: branchUser.id,
+          name: branchUser.name,
+          username: branchUser.username,
+          email: branchUser.email,
+          role: branchUser.role,
+          staff_role: branchUser.staffRole,
+          company_id: branchUser.companyId,
+          branch_id: branchUser.branchId,
+          governorate: branchUser.governorate,
+          password: branchUser.password,
           active: true
         });
       } catch (err) {
@@ -1963,10 +2028,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
     try {
       await setDoc(doc(db, 'branches', branchId), newBranch);
+      await setDoc(doc(db, 'users', branchUser.id), branchUser);
     } catch (err) {
       console.warn('Firestore createBranch fallback:', err);
     }
-    addAuditLog('CREATE_BRANCH', `Created branch ${newBranch.name} for company ${newBranch.companyId}`);
+    addAuditLog('CREATE_BRANCH', `Created branch ${newBranch.name} with auto credentials for company ${newBranch.companyId}`);
   };
 
   const updateBranch = async (branchId: string, updates: Partial<CompanyBranch>) => {
@@ -1980,6 +2046,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (updates.phone !== undefined) payload.phone = updates.phone;
         if (updates.managerName !== undefined) payload.manager_name = updates.managerName;
         if (updates.active !== undefined) payload.active = updates.active;
+        if (updates.password !== undefined) payload.password = updates.password;
         if (Object.keys(payload).length > 0) {
           await supabase.from('company_branches').update(payload).eq('id', branchId);
         }
@@ -1995,11 +2062,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addAuditLog('UPDATE_BRANCH', `Updated branch ${branchId}`, branchId);
   };
 
+  const updateBranchPassword = async (branchId: string, newPassword: string) => {
+    let nextBranches: CompanyBranch[] = [];
+    setBranches(prev => {
+      nextBranches = prev.map(b => b.id === branchId ? { ...b, password: newPassword } : b);
+      try {
+        localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches));
+      } catch (e) {}
+      return nextBranches;
+    });
+
+    setUsers(prev => prev.map(u => u.branchId === branchId ? { ...u, password: newPassword } : u));
+
+    if (supabase) {
+      try {
+        await supabase.from('company_branches').update({ password: newPassword }).eq('id', branchId);
+        await supabase.from('users').update({ password: newPassword }).eq('branch_id', branchId);
+        await supabase.from('system_settings').upsert({
+          id: 'company_branches_data',
+          data: nextBranches,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase updateBranchPassword error:', err);
+      }
+    }
+
+    addAuditLog('UPDATE_BRANCH_PASSWORD', `Updated password for branch ${branchId}`, branchId);
+  };
+
   const deleteBranch = async (branchId: string) => {
     setBranches(prev => prev.filter(b => b.id !== branchId));
+    setUsers(prev => prev.filter(u => u.branchId !== branchId));
     if (supabase) {
       try {
         await supabase.from('company_branches').delete().eq('id', branchId);
+        await supabase.from('users').delete().eq('branch_id', branchId);
       } catch (err) {
         console.warn('Supabase deleteBranch fallback:', err);
       }
@@ -2014,15 +2112,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const bulkImportCompanyBranches = async (companyId: string, branchesToImport: Partial<CompanyBranch>[]) => {
     const timestamp = Date.now();
-    const createdBranches: CompanyBranch[] = branchesToImport.map((b, idx) => ({
-      id: b.id || `br_${companyId}_${timestamp}_${idx + 1}`,
+    const targetComp = companies.find(c => c.id === companyId);
+    const compCode = targetComp?.code || 'COMP';
+
+    const createdBranches: CompanyBranch[] = branchesToImport.map((b, idx) => {
+      const branchName = b.name || `فرع ${idx + 1}`;
+      const creds = generateBranchCredentials(branchName, compCode, idx + 1);
+      return {
+        id: b.id || `br_${companyId}_${timestamp}_${idx + 1}`,
+        companyId: companyId,
+        name: branchName,
+        governorate: b.governorate || targetComp?.allowedGovernorates?.[0] || 'القاهرة',
+        address: b.address || '',
+        phone: b.phone || '',
+        managerName: b.managerName || '',
+        active: b.active ?? true,
+        username: b.username || creds.username,
+        password: b.password || creds.password
+      };
+    });
+
+    // Automatically create branch login users for each imported branch
+    const createdBranchUsers: User[] = createdBranches.map(b => ({
+      id: `u_${b.id}`,
+      name: `مسؤول ${b.name}`,
+      username: b.username!,
+      email: `${b.username!}@${compCode.toLowerCase()}.cropsa.eg`,
+      role: Role.BRANCH_MANAGER,
+      staffRole: InstallmentCompanyStaffRole.BRANCH_MANAGER,
       companyId: companyId,
-      name: b.name || `فرع ${idx + 1}`,
-      governorate: b.governorate || 'القاهرة',
-      address: b.address || '',
-      phone: b.phone || '',
-      managerName: b.managerName || '',
-      active: b.active ?? true
+      branchId: b.id,
+      branchName: b.name,
+      governorate: b.governorate,
+      password: b.password,
+      mustChangePassword: false,
+      permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports'],
+      createdAt: new Date().toISOString()
     }));
 
     let allNextBranches: CompanyBranch[] = [];
@@ -2032,6 +2157,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         localStorage.setItem('cropsa_branches', JSON.stringify(allNextBranches));
       } catch (e) {}
       return allNextBranches;
+    });
+
+    setUsers(prev => {
+      const existingUserIds = new Set(createdBranchUsers.map(u => u.id));
+      const filtered = prev.filter(u => !existingUserIds.has(u.id));
+      const merged = [...filtered, ...createdBranchUsers];
+      try {
+        localStorage.setItem('cropsa_staff_users', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
     });
 
     if (supabase) {
@@ -2044,7 +2179,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           address: b.address || '',
           phone: b.phone || '',
           manager_name: b.managerName || '',
-          active: b.active
+          active: b.active,
+          username: b.username,
+          password: b.password
+        })));
+
+        await supabase.from('users').upsert(createdBranchUsers.map(u => ({
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          email: u.email,
+          role: u.role,
+          staff_role: u.staffRole,
+          company_id: u.companyId,
+          branch_id: u.branchId,
+          governorate: u.governorate,
+          password: u.password,
+          active: true
         })));
 
         await supabase.from('system_settings').upsert({
@@ -2057,7 +2208,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
-    addAuditLog('BULK_IMPORT_BRANCHES', `Bulk imported ${createdBranches.length} branches for company ${companyId}`, companyId);
+    addAuditLog('BULK_IMPORT_BRANCHES', `Bulk imported ${createdBranches.length} branches with automated credentials for company ${companyId}`, companyId);
     return { count: createdBranches.length };
   };
 

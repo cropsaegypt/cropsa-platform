@@ -21,6 +21,8 @@ import {
   Layers, 
   Percent, 
   ShieldCheck, 
+  ShieldAlert,
+  AlertCircle,
   BarChart3, 
   PieChart as PieIcon, 
   FileText,
@@ -238,6 +240,37 @@ export const ComprehensiveAnalyticsSection: React.FC<ComprehensiveAnalyticsSecti
     ].filter(i => i.value > 0);
   }, [filteredApps]);
 
+  // Rejection reasons breakdown for risk intelligence
+  const rejectionReasonsData = useMemo(() => {
+    const reasonsMap = new Map<string, number>();
+    const rejectedApps = filteredApps.filter(a => a.status === ApplicationStatus.REJECTED);
+    
+    rejectedApps.forEach(a => {
+      const reason = a.rejectionReason?.trim() || 'أسباب ائتمانية عامة';
+      reasonsMap.set(reason, (reasonsMap.get(reason) || 0) + 1);
+    });
+
+    if (reasonsMap.size === 0) {
+      return [
+        { reason: 'الاستعلام I-Score', count: 0, percentage: 0 },
+        { reason: 'عدم كفاية الدخل', count: 0, percentage: 0 },
+        { reason: 'شروط الضامن', count: 0, percentage: 0 },
+        { reason: 'عبء المديونية', count: 0, percentage: 0 },
+        { reason: 'نقص المستندات', count: 0, percentage: 0 }
+      ];
+    }
+
+    const total = rejectedApps.length;
+    return Array.from(reasonsMap.entries())
+      .map(([reason, count]) => ({
+        reason,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [filteredApps]);
+
   // Detailed Matrix Table Data (Grouped by Branch or Governorate)
   const matrixTableData = useMemo(() => {
     const map = new Map<string, {
@@ -334,35 +367,38 @@ export const ComprehensiveAnalyticsSection: React.FC<ComprehensiveAnalyticsSecti
 
   return (
     <div className="space-y-6" dir="rtl">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-3xl p-6 text-white border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
-              <BarChart3 className="h-6 w-6" />
-            </span>
-            <div>
-              <h2 className="text-xl lg:text-2xl font-black flex items-center gap-2">
-                <span>لوحة الإحصائيات الشاملة والتحليلات المتعددة</span>
-                <span className="text-xs bg-emerald-400/20 text-emerald-300 font-mono px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                  Detailed Analytics & Insights
-                </span>
+      {/* Executive Header Card */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start sm:items-center gap-3.5">
+          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200 shadow-2xs shrink-0">
+            <BarChart3 className="h-7 w-7" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-black text-slate-900">
+                لوحة الإحصائيات الشاملة ومؤشرات اتخاذ القرار
               </h2>
-              <p className="text-xs text-slate-300 mt-1">
-                متابعة تفصيلية لحجم الطلبات، المبالغ المعتمدة، المبالغ المصروفة للعملاء، ونسب التنفيذ الجغرافي عبر فلاتر وأشكال بيانية متنوعة
-              </p>
+              <span className="text-[11px] bg-emerald-50 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                Executive Analytics & Insights
+              </span>
+              <span className="text-[10px] bg-slate-100 text-slate-700 font-medium px-2 py-0.5 rounded-md border border-slate-200">
+                سحابي مؤمّن 256-bit
+              </span>
             </div>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              تحليل فوري لحجم محفظة التمويل، معدلات الموافقة والرفض، ومسارات السيولة المصروفة عبر الفروع الجغرافية لدعم القرارات الائتمانية.
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
           <button
             type="button"
             onClick={handleExportMatrixCSV}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-xs transition-colors"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all"
           >
             <Download className="h-4 w-4" />
-            <span>تصدير البيانات (CSV)</span>
+            <span>تصدير المصفوفة (CSV)</span>
           </button>
         </div>
       </div>
@@ -749,6 +785,80 @@ export const ComprehensiveAnalyticsSection: React.FC<ComprehensiveAnalyticsSecti
               <span className="font-mono font-black text-emerald-700">
                 {metrics.totalCount > 0 ? `${Math.round(((metrics.totalCount - metrics.unassignedCount) / metrics.totalCount) * 100)}%` : '100%'}
               </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SHAPE 5: REJECTION REASONS & CREDIT RISK BREAKDOWN (تحليل أسباب الرفض ومؤشرات المخاطر) */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-rose-600" />
+              <span>تحليل أسباب الرفض الائتماني (Rejection Pareto & Credit Risk)</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              تشخيص تفصيلي لأكثر العوامل المؤدية لرفض الملفات لمساعدة لجنة الائتمان على تعديل السياسات أو توجيه مسؤولي البيع
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold px-3 py-1 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">
+              إجمالي حالات الرفض: <strong className="font-mono">{metrics.rejectedCount}</strong> ({metrics.totalCount > 0 ? Math.round((metrics.rejectedCount / metrics.totalCount) * 100) : 0}%)
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+          {/* Horizontal Bar Chart for Rejection Reasons */}
+          <div className="h-64 w-full" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                layout="vertical"
+                data={rejectionReasonsData}
+                margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis dataKey="reason" type="category" width={140} tick={{ fontSize: 10, fill: '#334155' }} />
+                <Tooltip 
+                  formatter={(val: any) => [`${val} حالة`, 'العدد']}
+                  contentStyle={{ borderRadius: '14px', border: '1px solid #e2e8f0', fontSize: '11px' }}
+                />
+                <Bar dataKey="count" name="عدد الحالات" fill="#e11d48" radius={[0, 6, 6, 0]} barSize={18} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Key Insights & Strategy Cards */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-black text-slate-800">توصيات ومؤشرات للجنة إدارة المخاطر:</h4>
+            
+            <div className="p-3.5 bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between font-bold text-rose-950">
+                <span className="flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-rose-600" />
+                  <span>السبب الأبرز للرفض:</span>
+                </span>
+                <span className="text-rose-800 font-black">{rejectionReasonsData[0]?.reason || 'الاستعلام الائتماني I-Score'}</span>
+              </div>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                يمثل هذا السبب حوالي <strong className="font-mono">{rejectionReasonsData[0]?.percentage || 0}%</strong> من إجمالي الحالات المرفوضة في النطاق المحدد.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 text-xs text-slate-700">
+              <div className="flex items-center justify-between font-bold text-slate-900">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-emerald-600" />
+                  <span>إجراءات تصحيحية مقترحة:</span>
+                </span>
+              </div>
+              <ul className="text-[11px] space-y-1 text-slate-600 list-disc list-inside">
+                <li>إلزام مندوبي الفروع بالفحص الأولي للضامن قبل رفع الملف.</li>
+                <li>تفعيل برامج التقسيط التكافلية للعملاء أصحاب الدخل الحر لتقليل نسبة الرفض.</li>
+                <li>تحديد سقف التمويل المبدئي بناءً على شهادة الدخل المرفقة مباشرة.</li>
+              </ul>
             </div>
           </div>
         </div>
