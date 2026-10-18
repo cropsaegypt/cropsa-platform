@@ -261,12 +261,15 @@ export const CompaniesManagement: React.FC = () => {
       'إيصال مرافق حديث (كهرباء / غاز / مياه)',
       'استعلام I-Score ائتماني غير مدرج في القوائم السلبية'
     ],
+    initialAdminUsername: '',
     initialAdminPassword: 'password'
   });
 
   const [newDocItem, setNewDocItem] = useState('');
   const logoInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const editLogoInputRef = useRef<HTMLInputElement>(null);
+  const editCoverInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'coverImage') => {
     const file = e.target.files?.[0];
@@ -275,6 +278,18 @@ export const CompaniesManagement: React.FC = () => {
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         setCompanyForm(prev => ({ ...prev, [field]: reader.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleEditFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'coverImage') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setEditCompanyForm(prev => ({ ...prev, [field]: reader.result as string }));
       }
     };
     reader.readAsDataURL(file);
@@ -337,7 +352,7 @@ export const CompaniesManagement: React.FC = () => {
       allowedGovernorates: companyForm.allowedGovernorates,
       requiredDocumentsList: companyForm.requiredDocumentsList,
       status: 'ACTIVE'
-    }, companyForm.initialAdminPassword);
+    }, companyForm.initialAdminPassword, companyForm.initialAdminUsername);
 
     setShowAddCompanyModal(false);
     setCompanyForm({
@@ -363,6 +378,7 @@ export const CompaniesManagement: React.FC = () => {
         'إيصال مرافق حديث (كهرباء / غاز / مياه)',
         'استعلام I-Score ائتماني غير مدرج في القوائم السلبية'
       ],
+      initialAdminUsername: '',
       initialAdminPassword: 'password'
     });
   };
@@ -840,23 +856,52 @@ export const CompaniesManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Initial Admin Password for the company */}
-              <div className="bg-sky-50 p-4 rounded-2xl border border-sky-200">
-                <label className="block font-bold text-sky-900 mb-1 flex items-center gap-1.5">
-                  <Lock className="h-4 w-4 text-sky-600" />
-                  {language === 'ar' ? 'كلمة مرور حساب المدير العام للشركة' : 'Initial Company Admin Password'} *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={companyForm.initialAdminPassword}
-                  onChange={e => setCompanyForm({ ...companyForm, initialAdminPassword: e.target.value })}
-                  placeholder="password"
-                  className="w-full text-sm border border-sky-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
-                />
-                <p className="text-[11px] text-sky-700 mt-1">
-                  {language === 'ar' ? 'سيتم إنشاء حساب تلقائي لمدير الشركة باسم مستخدم مشتق من كود الشركة.' : 'An admin account will be generated automatically.'}
-                </p>
+              {/* Initial Admin Credentials for the company */}
+              <div className="bg-sky-50/80 p-4 rounded-2xl border border-sky-200 space-y-3">
+                <div className="flex items-center gap-2 text-sky-900 font-bold text-sm">
+                  <ShieldCheck className="h-4.5 w-4.5 text-sky-600" />
+                  <span>بيانات حساب المدير العام للشركة (Admin Credentials)</span>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-sky-900 text-xs mb-1 flex items-center gap-1.5">
+                    <Mail className="h-4 w-4 text-sky-600" />
+                    <span>البريد الإلكتروني / اسم مستخدم المدير العام (للدخول واسترجاع الباسورد) *</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={companyForm.initialAdminUsername}
+                    onChange={e => setCompanyForm({ ...companyForm, initialAdminUsername: e.target.value })}
+                    placeholder="admin@company.com"
+                    className="w-full text-sm border border-sky-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                  />
+                  <p className="text-[11px] text-sky-700 mt-1">
+                    {language === 'ar' 
+                      ? 'يُستخدم هذا البريد الرسمي للدخول إلى النظام واستعادة كلمة المرور في أي وقت بسهولة.' 
+                      : 'This email is used as the login username and for self-service password recovery.'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-sky-900 text-xs mb-1 flex items-center gap-1.5">
+                    <Lock className="h-4 w-4 text-sky-600" />
+                    <span>كلمة مرور حساب المدير العام المبدئية *</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={companyForm.initialAdminPassword}
+                    onChange={e => setCompanyForm({ ...companyForm, initialAdminPassword: e.target.value })}
+                    placeholder="password"
+                    className="w-full text-sm border border-sky-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                  />
+                  <p className="text-[11px] text-sky-700 mt-1">
+                    {language === 'ar' 
+                      ? 'سيُطلب من المدير تغيير كلمة المرور عند أول تسجيل دخول.' 
+                      : 'The company admin will be prompted to change their password upon first login.'}
+                  </p>
+                </div>
               </div>
 
               {/* Receiving Channel & External Dispatch Details */}
@@ -1285,20 +1330,82 @@ export const CompaniesManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Logo URL */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">رابط شعار الشركة (Logo URL)</label>
-                <div className="flex gap-2">
+              {/* Logo & Cover Branding in Edit Modal */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                {/* Logo Section */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>شعار الشركة (Logo)</span>
+                    <button
+                      type="button"
+                      onClick={() => editLogoInputRef.current?.click()}
+                      className="text-[11px] text-sky-600 hover:text-sky-700 font-bold flex items-center gap-1"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>رفع من الجهاز</span>
+                    </button>
+                  </label>
                   <input
-                    type="text"
-                    value={editCompanyForm.logo}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, logo: e.target.value })}
-                    className="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2 font-mono"
-                    placeholder="https://..."
+                    ref={editLogoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => handleEditFileUpload(e, 'logo')}
                   />
-                  {editCompanyForm.logo && (
-                    <img src={editCompanyForm.logo} alt="" className="h-9 w-9 rounded-lg object-contain border p-0.5 bg-white shrink-0" />
-                  )}
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={editCompanyForm.logo}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, logo: e.target.value })}
+                      className="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2 font-mono bg-white"
+                      placeholder="https://... رابط الشعار"
+                    />
+                    {editCompanyForm.logo ? (
+                      <img src={editCompanyForm.logo} alt="" className="h-9 w-9 rounded-xl object-contain border p-0.5 bg-white shrink-0 shadow-xs" />
+                    ) : (
+                      <div className="h-9 w-9 rounded-xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
+                        <ImageIcon className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cover Image Section */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>غلاف الشركة (Cover Banner)</span>
+                    <button
+                      type="button"
+                      onClick={() => editCoverInputRef.current?.click()}
+                      className="text-[11px] text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>رفع من الجهاز</span>
+                    </button>
+                  </label>
+                  <input
+                    ref={editCoverInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => handleEditFileUpload(e, 'coverImage')}
+                  />
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={editCompanyForm.coverImage}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, coverImage: e.target.value })}
+                      className="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2 font-mono bg-white"
+                      placeholder="https://... رابط الكافر"
+                    />
+                    {editCompanyForm.coverImage ? (
+                      <img src={editCompanyForm.coverImage} alt="" className="h-9 w-14 rounded-xl object-cover border p-0.5 bg-white shrink-0 shadow-xs" />
+                    ) : (
+                      <div className="h-9 w-14 rounded-xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400 shrink-0">
+                        <ImageIcon className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1317,7 +1424,7 @@ export const CompaniesManagement: React.FC = () => {
                   className="px-6 py-2.5 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-md flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Save className="h-4 w-4" />
-                  <span>{isUpdatingCompany ? 'جاري الحفظ في سوبابيس...' : 'حفظ التعديلات في قاعدة البيانات'}</span>
+                  <span>{isUpdatingCompany ? 'جاري حفظ التعديلات سحابياً...' : 'حفظ التعديلات في قاعدة البيانات'}</span>
                 </button>
               </div>
             </form>
@@ -1345,7 +1452,7 @@ export const CompaniesManagement: React.FC = () => {
                 <span className="text-rose-700 font-black">{deletingCompany.name} ({deletingCompany.code})</span>
               </div>
               <p className="text-slate-600 leading-relaxed">
-                سيؤدي حذف هذه الشركة إلى إزالتها وفروعها التابعة ({branches.filter(b => b.companyId === deletingCompany.id).length} فروع) وحسابات موظفيها فوراً من قاعدة البيانات وسوبابيس (Supabase).
+                سيؤدي حذف هذه الشركة إلى إزالتها وفروعها التابعة ({branches.filter(b => b.companyId === deletingCompany.id).length} فروع) وحسابات موظفيها فوراً من النظام وقاعدة البيانات السحابية المركزية.
               </p>
             </div>
 

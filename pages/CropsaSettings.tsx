@@ -214,7 +214,7 @@ export const CropsaSettings: React.FC = () => {
       setDbStatus({
         checked: true,
         ok: res.ok,
-        msg: res.ok ? 'متصل بقاعدة البيانات السحابية (Supabase) 🟢' : 'تنبيه: ' + res.message
+        msg: res.ok ? 'متصل بقاعدة البيانات السحابية المركزية 🟢' : 'تنبيه: ' + res.message
       });
     });
   }, []);
@@ -348,7 +348,7 @@ export const CropsaSettings: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1">
-              تخصيص كامل لألوان كروبسا، مربعات اسم المستخدم وكلمة المرور، النصوص، الخلفيات، والشعار مع مزامنة فورية في سوبابيس (Supabase)
+              تخصيص كامل لألوان كروبسا، مربعات اسم المستخدم وكلمة المرور، النصوص، الخلفيات، والشعار مع مزامنة سحابية فورية ومؤمنة
             </p>
           </div>
         </div>
@@ -363,7 +363,7 @@ export const CropsaSettings: React.FC = () => {
           {savedSuccess && (
             <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
               <Check className="h-4 w-4 text-emerald-400" />
-              <span>تم حفظ التعديلات في قاعدة البيانات (Supabase) ومتزامنة فوراً على كل المتصفحات!</span>
+              <span>تم حفظ التعديلات في قاعدة البيانات ومتزامنة فوراً على كل المتصفحات!</span>
             </div>
           )}
 
@@ -865,7 +865,7 @@ export const CropsaSettings: React.FC = () => {
             {/* Save Button */}
             <div className="flex items-center justify-between pt-2">
               <span className="text-[11px] text-slate-400">
-                يتم مزامنة كافة التغييرات وحفظها فوراً في قاعدة بيانات فايربيز (Firestore)
+                يتم مزامنة كافة التغييرات وحفظها فوراً في قاعدة البيانات السحابية المشفرة
               </span>
               <button
                 type="submit"
@@ -873,7 +873,7 @@ export const CropsaSettings: React.FC = () => {
                 className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-7 py-3.5 rounded-xl shadow-lg shadow-emerald-950/20 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
               >
                 <Save className="h-4 w-4" />
-                {saving ? 'جاري الحفظ في فايربيز...' : 'حفظ التعديلات وتطبيق الهوية فوراً'}
+                {saving ? 'جاري الحفظ سحابياً...' : 'حفظ التعديلات وتطبيق الهوية فوراً'}
               </button>
             </div>
           </form>
@@ -1062,7 +1062,7 @@ export const CropsaSettings: React.FC = () => {
           {smtpSavedSuccess && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>تم حفظ وتحديث إعدادات البريد بنجاح ومزامنتها في سوبابيس (Supabase)!</span>
+              <span>تم حفظ وتحديث إعدادات البريد بنجاح ومزامنتها سحابياً!</span>
             </div>
           )}
 
@@ -1233,7 +1233,7 @@ export const CropsaSettings: React.FC = () => {
                 className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md flex items-center gap-2 transition disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                <span>{savingSmtp ? 'جاري الحفظ...' : 'حفظ إعدادات البريد في سوبابيس (Supabase)'}</span>
+                <span>{savingSmtp ? 'جاري الحفظ...' : 'حفظ إعدادات البريد في السيرفر السحابي'}</span>
               </button>
             </div>
           </form>

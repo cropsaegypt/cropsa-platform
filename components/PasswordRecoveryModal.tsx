@@ -495,7 +495,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                 {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 <span>
                   {loading 
-                    ? (isAr ? 'جاري تحديث كلمة المرور في الفايربيز...' : 'Updating password in Firebase...')
+                    ? (isAr ? 'جاري تحديث كلمة المرور وحفظها مشفرة...' : 'Updating password securely...')
                     : (isAr ? 'حفظ وتثبيت كلمة المرور الجديدة' : 'Save & Confirm New Password')}
                 </span>
               </button>
@@ -515,8 +515,8 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                 </h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed font-medium">
                   {isAr 
-                    ? `تم تحديث كلمة المرور ومزامنتها على الفايربيز لحساب (${targetUser?.name}). يمكنك الآن تسجيل الدخول مباشرة.`
-                    : `Password was updated and synced to Firebase for (${targetUser?.name}). You can now log in immediately.`}
+                    ? `تم تحديث كلمة المرور ومزامنتها بنجاح لحساب (${targetUser?.name}). يمكنك الآن تسجيل الدخول مباشرة.`
+                    : `Password was updated and synced successfully for (${targetUser?.name}). You can now log in immediately.`}
                 </p>
               </div>
 

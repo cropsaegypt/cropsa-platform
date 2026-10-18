@@ -119,7 +119,7 @@ interface StoreContextType {
   createUser: (user: Partial<User>) => Promise<void>;
   updateUserWallet: (userId: string, newBalance: number) => Promise<void>;
   resetUserPassword: (userId: string) => Promise<void>;
-  createCompany: (company: Partial<InstallmentCompany>, initialAdminPassword?: string) => Promise<void>;
+  createCompany: (company: Partial<InstallmentCompany>, initialAdminPassword?: string, initialAdminUsername?: string) => Promise<void>;
   updateCompany: (companyId: string, updates: Partial<InstallmentCompany>) => Promise<void>;
   deleteCompany: (companyId: string) => Promise<void>;
   createBranch: (branch: Partial<CompanyBranch>) => Promise<void>;
@@ -1748,9 +1748,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // Super Admin: Create partner installment company
-  const createCompany = async (companyData: Partial<InstallmentCompany>, initialAdminPassword = 'password') => {
+  const createCompany = async (companyData: Partial<InstallmentCompany>, initialAdminPassword = 'password', initialAdminUsername?: string) => {
     if (!currentUser || (currentUser.role !== Role.SUPER_ADMIN && currentUser.role !== Role.ADMIN)) return;
     const compId = `comp_${Date.now()}`;
+    const trimmedUsername = initialAdminUsername?.trim();
+    const finalAdminUsername = trimmedUsername || `${(companyData.code || `COMP-${Date.now().toString().slice(-3)}`).toLowerCase().replace('-', '_')}_admin`;
+    const finalAdminEmail = (trimmedUsername && trimmedUsername.includes('@')) 
+      ? trimmedUsername 
+      : (companyData.email && companyData.email.includes('@') ? companyData.email : `${finalAdminUsername}@cropsa.net`);
+
     const newComp: InstallmentCompany = {
       id: compId,
       name: companyData.name || 'شركة تقسيط شريكة',
@@ -1758,7 +1764,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       code: companyData.code || `COMP-${Date.now().toString().slice(-3)}`,
       logo: companyData.logo || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=128&auto=format&fit=crop&q=80',
       coverImage: companyData.coverImage || 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1600&q=80',
-      email: companyData.email || 'info@company.eg',
+      coverPosition: companyData.coverPosition || '50% 50%',
+      email: finalAdminEmail,
       phone: companyData.phone || '19000',
       receivingChannel: companyData.receivingChannel || 'PORTAL',
       whatsappNumber: companyData.whatsappNumber || '',
@@ -1787,12 +1794,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     };
 
-    // Also auto-create initial company admin user
+    // Also auto-create initial company admin user with the user-defined email/username
     const initialAdmin: User = {
       id: `u_admin_${compId}`,
       name: `${newComp.name} (المدير العام)`,
-      username: `${newComp.code.toLowerCase().replace('-', '_')}_admin`,
-      email: newComp.email,
+      username: finalAdminUsername,
+      email: finalAdminEmail,
       role: Role.INSTALLMENT_COMPANY,
       staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
       companyId: compId,
@@ -1874,6 +1881,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (updates.code) payload.code = updates.code;
         if (updates.logo !== undefined) payload.logo = updates.logo;
         if (updates.coverImage !== undefined) payload.cover_image = updates.coverImage;
+        if (updates.coverPosition !== undefined) payload.cover_position = updates.coverPosition;
         if (updates.email !== undefined) payload.email = updates.email;
         if (updates.phone !== undefined) payload.phone = updates.phone;
         if (updates.commercialRegister !== undefined) payload.commercial_register = updates.commercialRegister;

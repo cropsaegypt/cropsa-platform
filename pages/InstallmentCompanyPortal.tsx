@@ -1394,6 +1394,28 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
 
   const exportApplicationsCSV = handleExportCsv;
 
+  const handleBannerCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (typeof reader.result === 'string') {
+        const base64 = reader.result;
+        setCompEditCover(base64);
+        try {
+          await updateCompany(activeCompany.id, { 
+            coverImage: base64, 
+            coverPosition: '50% 50%' 
+          });
+          setShowCoverCropperModal(true);
+        } catch (err) {
+          console.error('Error updating company cover:', err);
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6 pb-24 md:pb-8">
       
@@ -1413,17 +1435,33 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
           {/* Natural soft gradient at bottom for text contrast only - No blur */}
           <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none" />
 
-          {/* Focal point adjustment button for company admin or super admin */}
+          {/* Cover Controls (Change Image & Focal Point Cropper) */}
           {isCompanyAdmin && (
-            <button
-              type="button"
-              onClick={() => setShowCoverCropperModal(true)}
-              className="absolute top-4 left-4 z-20 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg flex items-center gap-1.5 transition-all opacity-80 group-hover:opacity-100"
-              title="تحديد الجزء الظاهر من غلاف الشركة"
-            >
-              <Crop className="h-3.5 w-3.5 text-emerald-400" />
-              <span>ضبط موضع الكافر</span>
-            </button>
+            <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+              <label 
+                className="cursor-pointer px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/85 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg flex items-center gap-1.5 transition-all opacity-90 hover:opacity-100 hover:scale-105 active:scale-95"
+                title="رفع صورة غلاف جديدة للشركة"
+              >
+                <Camera className="h-3.5 w-3.5 text-sky-400" />
+                <span>تغيير صورة الكافر</span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handleBannerCoverUpload} 
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setShowCoverCropperModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/85 text-white text-xs font-bold backdrop-blur-md border border-white/20 shadow-lg flex items-center gap-1.5 transition-all opacity-90 hover:opacity-100 hover:scale-105 active:scale-95"
+                title="تحديد الجزء الظاهر من غلاف الشركة (Crop & Focus)"
+              >
+                <Crop className="h-3.5 w-3.5 text-emerald-400" />
+                <span>ضبط موضع الكافر</span>
+              </button>
+            </div>
           )}
 
           {/* ONLY Company Logo and Company Name on Cover */}
