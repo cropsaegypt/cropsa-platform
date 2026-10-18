@@ -15,6 +15,7 @@ import { UserWallet } from './pages/UserWallet';
 import { AdminFinance } from './pages/AdminFinance';
 import { InstallmentCompanyPortal } from './pages/InstallmentCompanyPortal';
 import { CompaniesManagement } from './pages/CompaniesManagement';
+import { SuppliersManagement } from './pages/SuppliersManagement';
 import { CropsaSettings } from './pages/CropsaSettings';
 import { ClientRequests } from './pages/ClientRequests';
 import { ApplicationQuestionsManager } from './pages/ApplicationQuestionsManager';
@@ -202,6 +203,8 @@ const AppContent: React.FC = () => {
         return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <CropsaSettings /> : <Dashboard />;
       case 'companies': 
         return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <CompaniesManagement /> : <Dashboard />;
+      case 'suppliers':
+        return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <SuppliersManagement /> : <Dashboard />;
       case 'application-questions': 
         return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <FinancingProgramsManager initialTab="QUESTIONS" /> : <Dashboard />;
       case 'financing-programs':

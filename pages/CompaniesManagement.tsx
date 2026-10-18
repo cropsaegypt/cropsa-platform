@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../context/Store';
-import { InstallmentCompany, EGYPT_GOVERNORATES, Role, FinancingProgram, CompanyReceivingChannel } from '../types';
+import { InstallmentCompany, EGYPT_GOVERNORATES, Role, InstallmentCompanyStaffRole, FinancingProgram, CompanyReceivingChannel } from '../types';
 import { 
   Building2, 
   Plus, 
@@ -42,6 +42,7 @@ export const CompaniesManagement: React.FC = () => {
     users, 
     createCompany, 
     updateCompany, 
+    updateCompanyAdminCredentials,
     deleteCompany,
     t, 
     language 
@@ -75,7 +76,9 @@ export const CompaniesManagement: React.FC = () => {
     dispatchEmail: '',
     contactPersonName: '',
     allowedGovernorates: ['القاهرة', 'الجيزة'],
-    status: 'ACTIVE' as 'ACTIVE' | 'SUSPENDED'
+    status: 'ACTIVE' as 'ACTIVE' | 'SUSPENDED',
+    adminUsername: '',
+    adminPassword: ''
   });
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
 
@@ -91,6 +94,10 @@ export const CompaniesManagement: React.FC = () => {
 
   const handleOpenEditCompany = (company: InstallmentCompany) => {
     setEditingCompany(company);
+    const compAdmin = users.find(u => 
+      u.companyId === company.id && 
+      (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
+    );
     setEditCompanyForm({
       name: company.name || '',
       nameEn: company.nameEn || '',
@@ -109,7 +116,9 @@ export const CompaniesManagement: React.FC = () => {
       dispatchEmail: company.dispatchEmail || '',
       contactPersonName: company.contactPersonName || '',
       allowedGovernorates: company.allowedGovernorates || ['القاهرة', 'الجيزة'],
-      status: company.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'
+      status: company.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+      adminUsername: compAdmin?.username || compAdmin?.email || '',
+      adminPassword: compAdmin?.password || ''
     });
   };
 
@@ -138,7 +147,15 @@ export const CompaniesManagement: React.FC = () => {
         allowedGovernorates: editCompanyForm.allowedGovernorates,
         status: editCompanyForm.status
       });
-      showToast(language === 'ar' ? 'تم تحديث بيانات الشركة بنجاح وحفظها في قاعدة البيانات' : 'Company updated successfully');
+
+      if (editCompanyForm.adminUsername.trim() || editCompanyForm.adminPassword.trim()) {
+        await updateCompanyAdminCredentials(editingCompany.id, {
+          username: editCompanyForm.adminUsername.trim(),
+          password: editCompanyForm.adminPassword.trim() || undefined
+        });
+      }
+
+      showToast(language === 'ar' ? 'تم تحديث بيانات الشركة وبيانات حساب المدير بنجاح' : 'Company and admin credentials updated successfully');
       setEditingCompany(null);
     } catch (err) {
       console.error(err);
@@ -1407,6 +1424,47 @@ export const CompaniesManagement: React.FC = () => {
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Company Admin Credentials Section (Username / Email & Password) */}
+              <div className="p-4 bg-sky-50/70 rounded-2xl border border-sky-200 space-y-3">
+                <div className="flex items-center gap-2 text-sky-900 font-bold text-xs">
+                  <ShieldCheck className="h-4 w-4 text-sky-600" />
+                  <span>بيانات حساب المدير العام للشركة (اسم المستخدم للدخول وكلمة المرور)</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                      <Mail className="h-3.5 w-3.5 text-sky-600" />
+                      <span>البريد الإلكتروني / اسم المستخدم:</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editCompanyForm.adminUsername}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, adminUsername: e.target.value })}
+                      placeholder="admin@company.com"
+                      className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                      <Lock className="h-3.5 w-3.5 text-sky-600" />
+                      <span>كلمة مرور حساب المدير العام:</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editCompanyForm.adminPassword}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, adminPassword: e.target.value })}
+                      placeholder="أدخل كلمة المرور الجديدة..."
+                      className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-sky-700">
+                  يمكنك تعديل اسم مستخدم وكلمة مرور المدير العام مباشرة من هنا في أي وقت، وسيتمكن من الدخول فوراً بالبيانات المحدثة.
+                </p>
               </div>
 
               {/* Modal Actions */}

@@ -43,7 +43,8 @@ import {
   MessageSquare,
   BellRing,
   Calculator,
-  Compass
+  Compass,
+  Store
 } from 'lucide-react';
 import { RoleSwitcherModal } from './RoleSwitcherModal';
 import { ClientFollowUpModal } from './ClientFollowUpModal';
@@ -92,6 +93,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
     overdueCases,
     companies,
     branches,
+    users,
     financingPrograms,
     systemBranding
   } = useStore();
@@ -307,6 +309,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
             label: isAr ? 'شركات التقسيط المعتمدة' : 'Installment Companies',
             icon: Building2,
             count: companies.length
+          },
+          {
+            id: 'suppliers',
+            label: isAr ? 'شبكة الموردين والتجار' : 'Suppliers & Merchants',
+            icon: Store,
+            count: users.filter(u => u.role === Role.SUPPLIER).length || undefined
           },
           {
             id: 'financing-programs',
@@ -1607,6 +1615,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
           }
         }}
         currentUser={currentUser}
+        onNavigate={onNavigate}
       />
     </div>
   );

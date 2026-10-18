@@ -61,6 +61,7 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
   const { 
     currentUser, 
     updateCompany, 
+    updateCompanyAdminCredentials,
     changePassword, 
     createCompanyStaff, 
     updateStaffPassword,
@@ -93,7 +94,12 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
   const [coverPosition, setCoverPosition] = useState(company.coverPosition || '50% 50%');
   const [showCropperModal, setShowCropperModal] = useState(false);
 
-  // Director Password Form
+  // Director Account & Password Form
+  const companyAdminUser = users.find(u => 
+    u.companyId === company.id && 
+    (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
+  );
+  const [directorUsername, setDirectorUsername] = useState(companyAdminUser?.username || companyAdminUser?.email || '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -179,31 +185,45 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
     reader.readAsDataURL(file);
   };
 
-  // Change Director password
-  const handleChangeDirectorPassword = async (e: React.FormEvent) => {
+  // Change Director username and/or password
+  const handleChangeDirectorCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess(false);
 
-    if (newPassword.length < 6) {
+    if (!directorUsername.trim()) {
+      setPasswordError(isAr ? 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني للحساب' : 'Please enter a username or email for the account');
+      return;
+    }
+
+    if (newPassword && newPassword.length < 6) {
       setPasswordError(isAr ? 'يجب أن تكون كلمة المرور 6 أحرف على الأقل' : 'Password must be at least 6 characters');
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (newPassword && newPassword !== confirmPassword) {
       setPasswordError(isAr ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match');
       return;
     }
 
     setSaving(true);
     try {
-      await changePassword(newPassword);
+      if (updateCompanyAdminCredentials) {
+        await updateCompanyAdminCredentials(company.id, {
+          username: directorUsername.trim(),
+          email: directorUsername.trim().includes('@') ? directorUsername.trim() : undefined,
+          password: newPassword ? newPassword : undefined
+        });
+      }
+      if (newPassword && currentUser?.id === companyAdminUser?.id) {
+        await changePassword(newPassword);
+      }
       setPasswordSuccess(true);
       setNewPassword('');
       setConfirmPassword('');
       setTimeout(() => setPasswordSuccess(false), 3500);
     } catch (err) {
       console.error(err);
-      setPasswordError(isAr ? 'حدث خطأ أثناء تغيير كلمة المرور' : 'Error updating password');
+      setPasswordError(isAr ? 'حدث خطأ أثناء تحديث بيانات الحساب' : 'Error updating account credentials');
     } finally {
       setSaving(false);
     }
@@ -294,7 +314,7 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
             { id: 'info', label: isAr ? 'الملف والبيانات' : 'Company Info', icon: Building2 },
             { id: 'branding', label: isAr ? 'اللوجو والكافر' : 'Logo & Cover', icon: ImageIcon },
             { id: 'branches', label: isAr ? 'الفروع وشيت الإكسيل' : 'Branches & Excel', icon: MapPin, count: companyBranches.length },
-            { id: 'password', label: isAr ? 'باسورد المدير' : 'Director Password', icon: KeyRound },
+            { id: 'password', label: isAr ? 'حساب وباسورد المدير' : 'Director Account & Password', icon: KeyRound },
             { id: 'staff', label: isAr ? 'الموظفين وكلمات مرورهم' : 'Staff & Passwords', icon: Users, count: companyStaff.length }
           ].map(tab => {
             const Icon = tab.icon;
@@ -780,10 +800,15 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
             </div>
           )}
 
-          {/* TAB 3: DIRECTOR PASSWORD */}
+          {/* TAB 3: DIRECTOR CREDENTIALS (USERNAME & PASSWORD) */}
           {activeTab === 'password' && (
-            <form onSubmit={handleChangeDirectorPassword} className="space-y-4 max-w-lg bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-black text-slate-900">{isAr ? 'تغيير كلمة المرور الخاصة بحساب المدير' : 'Change Director Password'}</h3>
+            <form onSubmit={handleChangeDirectorCredentials} className="space-y-4 max-w-lg bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div>
+                <h3 className="text-sm font-black text-slate-900">{isAr ? 'بيانات حساب المدير العام (اسم المستخدم وكلمة المرور)' : 'Director Account & Password'}</h3>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {isAr ? 'يمكنك تعديل اسم المستخدم / البريد الإلكتروني وكلمة المرور لحساب مدير الشركة من هنا مباشرة' : 'You can modify the username / email and password for the company administrator account directly from here'}
+                </p>
+              </div>
               
               {passwordError && (
                 <div className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200">
@@ -793,33 +818,56 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
 
               {passwordSuccess && (
                 <div className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-                  {isAr ? 'تم تغيير كلمة المرور بنجاح!' : 'Password updated successfully!'}
+                  {isAr ? 'تم تحديث بيانات حساب مدير الشركة بنجاح!' : 'Director credentials updated successfully!'}
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{isAr ? 'كلمة المرور الجديدة' : 'New Password'}</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isAr ? 'اسم المستخدم / البريد الإلكتروني للدخول' : 'Username / Login Email'} <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={directorUsername}
+                    onChange={(e) => setDirectorUsername(e.target.value)}
+                    placeholder="admin@company.com"
+                    className="w-full pr-9 pl-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 font-mono"
+                    required
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {isAr ? 'يستخدم هذا البريد أو الاسم لتسجيل الدخول إلى بورتال الشركة واستعادة الحساب' : 'Used to log into the company portal and for password recovery'}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isAr ? 'كلمة المرور الجديدة (اختياري - اتركها فارغة إذا لم ترغب بالتعديل)' : 'New Password (optional - leave blank to keep current)'}
+                </label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="******"
                   className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 font-mono"
-                  required
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{isAr ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password'}</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="******"
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 font-mono"
-                  required
-                />
-              </div>
+              {newPassword && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{isAr ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password'} <span className="text-rose-500">*</span></label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="******"
+                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 font-mono"
+                    required={Boolean(newPassword)}
+                  />
+                </div>
+              )}
 
               <div className="pt-2 flex justify-end">
                 <button
@@ -828,7 +876,7 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
                   className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2 transition-all"
                 >
                   <Lock className="h-4 w-4 text-sky-400" />
-                  <span>{saving ? (isAr ? 'جاري التحديث...' : 'Updating...') : (isAr ? 'تحديث كلمة المرور' : 'Update Password')}</span>
+                  <span>{saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : (isAr ? 'حفظ بيانات الحساب' : 'Save Credentials')}</span>
                 </button>
               </div>
             </form>

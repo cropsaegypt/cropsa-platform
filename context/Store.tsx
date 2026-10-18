@@ -119,8 +119,10 @@ interface StoreContextType {
   createUser: (user: Partial<User>) => Promise<void>;
   updateUserWallet: (userId: string, newBalance: number) => Promise<void>;
   resetUserPassword: (userId: string) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
   createCompany: (company: Partial<InstallmentCompany>, initialAdminPassword?: string, initialAdminUsername?: string) => Promise<void>;
   updateCompany: (companyId: string, updates: Partial<InstallmentCompany>) => Promise<void>;
+  updateCompanyAdminCredentials: (companyId: string, credentials: { username?: string; email?: string; password?: string }) => Promise<void>;
   deleteCompany: (companyId: string) => Promise<void>;
   createBranch: (branch: Partial<CompanyBranch>) => Promise<void>;
   updateBranch: (branchId: string, updates: Partial<CompanyBranch>) => Promise<void>;
@@ -530,11 +532,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       try {
         const payload: Record<string, any> = {};
         if (updates.name) payload.name = updates.name;
+        if (updates.username) payload.username = updates.username;
+        if (updates.password) payload.password = updates.password;
         if (updates.email) payload.email = updates.email;
         if (updates.phone !== undefined) payload.phone = updates.phone;
         if (updates.governorate !== undefined) payload.governorate = updates.governorate;
         if (updates.walletBalance !== undefined) payload.wallet_balance = updates.walletBalance;
         if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
+        if (updates.mustChangePassword !== undefined) payload.must_change_password = updates.mustChangePassword;
         if (Object.keys(payload).length > 0) {
           await supabase.from('users').update(payload).eq('id', userId);
         }
@@ -742,24 +747,37 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (companiesDataRes?.data?.data && Array.isArray(companiesDataRes.data.data) && companiesDataRes.data.data.length > 0) {
           companiesDataRes.data.data.forEach((c: InstallmentCompany) => companyMap.set(c.id, c));
         } else {
-          MOCK_COMPANIES.forEach(m => companyMap.set(m.id, m));
+          try {
+            const savedLocal = localStorage.getItem('cropsa_companies');
+            if (savedLocal) {
+              const parsed = JSON.parse(savedLocal);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                parsed.forEach((c: InstallmentCompany) => companyMap.set(c.id, c));
+              }
+            }
+          } catch (e) {}
+          if (companyMap.size === 0) {
+            MOCK_COMPANIES.forEach(m => companyMap.set(m.id, m));
+          }
         }
         if (companiesRes?.data && companiesRes.data.length > 0) {
           companiesRes.data.forEach((c: any) => {
             const existing = companyMap.get(c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
             companyMap.set(c.id, {
+              ...existing,
               id: c.id,
-              name: c.name,
-              nameEn: c.name_en || c.name,
+              name: c.name || existing?.name,
+              nameEn: c.name_en || existing?.nameEn || c.name,
               code: c.code || existing?.code || '',
               logo: c.logo || existing?.logo || '',
-              coverImage: c.cover_image || existing?.coverImage,
+              coverImage: existing?.coverImage || c.cover_image,
+              coverPosition: existing?.coverPosition || c.cover_position || '50% 50%',
               email: c.email || existing?.email || '',
               phone: c.phone || existing?.phone || '',
-              receivingChannel: c.receiving_channel || c.receivingChannel || existing?.receivingChannel || 'PORTAL',
-              whatsappNumber: c.whatsapp_number || c.whatsappNumber || existing?.whatsappNumber || '',
-              dispatchEmail: c.dispatch_email || c.dispatchEmail || existing?.dispatchEmail || '',
-              contactPersonName: c.contact_person_name || c.contactPersonName || existing?.contactPersonName || '',
+              receivingChannel: existing?.receivingChannel || c.receiving_channel || 'PORTAL',
+              whatsappNumber: existing?.whatsappNumber || c.whatsapp_number || '',
+              dispatchEmail: existing?.dispatchEmail || c.dispatch_email || '',
+              contactPersonName: existing?.contactPersonName || c.contact_person_name || '',
               commercialRegister: c.commercial_register || existing?.commercialRegister || '',
               taxNumber: c.tax_number || existing?.taxNumber || '',
               fraLicense: c.fra_license || existing?.fraLicense || 'FRA-FIN-2021',
@@ -783,7 +801,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             });
           });
         }
-        if (isMounted) setCompanies(Array.from(companyMap.values()));
+        if (isMounted) {
+          const finalComps = Array.from(companyMap.values());
+          setCompanies(finalComps);
+          try {
+            localStorage.setItem('cropsa_companies', JSON.stringify(finalComps));
+          } catch (e) {}
+        }
 
         // 3. Process Company Branches
         const branchMap = new Map<string, CompanyBranch>();
@@ -1813,6 +1837,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setUsers(prev => [...prev, initialAdmin]);
 
     if (supabase) {
+      const updatedComps = [...companies, newComp];
+      // 1. ALWAYS persist full JSON in system_settings FIRST so no rich property is ever lost
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'companies_data',
+          data: updatedComps,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase system_settings createCompany fallback:', err);
+      }
+
+      // 2. Sync relational tables safely
       try {
         await supabase.from('companies').upsert({
           id: compId,
@@ -1841,14 +1878,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           password: initialAdminPassword,
           must_change_password: true
         });
-        const updatedComps = [...companies, newComp];
-        await supabase.from('system_settings').upsert({
-          id: 'companies_data',
-          data: updatedComps,
-          updated_at: new Date().toISOString()
-        });
       } catch (err) {
-        console.warn('Supabase createCompany fallback:', err);
+        console.warn('Supabase createCompany relational fallback:', err);
       }
     }
 
@@ -1874,39 +1905,38 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
 
     if (supabase) {
+      // 1. ALWAYS persist full JSON with all rich fields in system_settings FIRST
       try {
-        const payload: Record<string, any> = {};
-        if (updates.name) payload.name = updates.name;
-        if (updates.nameEn) payload.name_en = updates.nameEn;
-        if (updates.code) payload.code = updates.code;
-        if (updates.logo !== undefined) payload.logo = updates.logo;
-        if (updates.coverImage !== undefined) payload.cover_image = updates.coverImage;
-        if (updates.coverPosition !== undefined) payload.cover_position = updates.coverPosition;
-        if (updates.email !== undefined) payload.email = updates.email;
-        if (updates.phone !== undefined) payload.phone = updates.phone;
-        if (updates.commercialRegister !== undefined) payload.commercial_register = updates.commercialRegister;
-        if (updates.taxNumber !== undefined) payload.tax_number = updates.taxNumber;
-        if (updates.fraLicense !== undefined) payload.fra_license = updates.fraLicense;
-        if (updates.receivingChannel !== undefined) payload.receiving_channel = updates.receivingChannel;
-        if (updates.whatsappNumber !== undefined) payload.whatsapp_number = updates.whatsappNumber;
-        if (updates.dispatchEmail !== undefined) payload.dispatch_email = updates.dispatchEmail;
-        if (updates.contactPersonName !== undefined) payload.contact_person_name = updates.contactPersonName;
-        if (updates.creditCeiling !== undefined) payload.credit_ceiling = updates.creditCeiling;
-        if (updates.usedCredit !== undefined) payload.used_credit = updates.usedCredit;
-        if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
-        if (updates.allowedGovernorates) payload.allowed_governorates = updates.allowedGovernorates;
-        if (updates.status !== undefined) payload.status = updates.status;
-
-        if (Object.keys(payload).length > 0) {
-          await supabase.from('companies').update(payload).eq('id', companyId);
-        }
         await supabase.from('system_settings').upsert({
           id: 'companies_data',
           data: nextComps,
           updated_at: new Date().toISOString()
         });
       } catch (err) {
-        console.warn('Supabase updateCompany fallback:', err);
+        console.warn('Supabase system_settings updateCompany fallback:', err);
+      }
+
+      // 2. Safely sync relational table with valid schema columns only
+      try {
+        const payload: Record<string, any> = {};
+        if (updates.name) payload.name = updates.name;
+        if (updates.nameEn) payload.name_en = updates.nameEn;
+        if (updates.code) payload.code = updates.code;
+        if (updates.logo !== undefined) payload.logo = updates.logo;
+        if (updates.email !== undefined) payload.email = updates.email;
+        if (updates.phone !== undefined) payload.phone = updates.phone;
+        if (updates.commercialRegister !== undefined) payload.commercial_register = updates.commercialRegister;
+        if (updates.taxNumber !== undefined) payload.tax_number = updates.taxNumber;
+        if (updates.creditCeiling !== undefined) payload.credit_ceiling = updates.creditCeiling;
+        if (updates.usedCredit !== undefined) payload.used_credit = updates.usedCredit;
+        if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
+        if (updates.allowedGovernorates) payload.allowed_governorates = updates.allowedGovernorates;
+
+        if (Object.keys(payload).length > 0) {
+          await supabase.from('companies').update(payload).eq('id', companyId);
+        }
+      } catch (err) {
+        console.warn('Supabase relational companies updateCompany fallback:', err);
       }
     }
     try {
@@ -1915,6 +1945,54 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('Firestore updateCompany fallback:', err);
     }
     addAuditLog('UPDATE_COMPANY', `Updated profile of company ${companyId}`, companyId);
+  };
+
+  const updateCompanyAdminCredentials = async (companyId: string, creds: { username?: string; email?: string; password?: string }) => {
+    const adminUser = users.find(u => 
+      u.companyId === companyId && 
+      (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
+    );
+
+    const cleanUsername = creds.username?.trim();
+    const cleanPassword = creds.password?.trim();
+    const cleanEmail = creds.email?.trim() || (cleanUsername && cleanUsername.includes('@') ? cleanUsername : undefined);
+
+    if (adminUser) {
+      const updates: Partial<User> = {};
+      if (cleanUsername) updates.username = cleanUsername;
+      if (cleanEmail) updates.email = cleanEmail;
+      if (cleanPassword) {
+        updates.password = cleanPassword;
+        updates.mustChangePassword = false;
+      }
+
+      await updateUserProfile(adminUser.id, updates);
+      addAuditLog('UPDATE_COMPANY_ADMIN', `Updated credentials for company admin of ${companyId}`, adminUser.id);
+    } else {
+      // Create admin user if not exists
+      const targetComp = companies.find(c => c.id === companyId);
+      const newAdminId = `u_admin_${companyId}`;
+      const newUsername = cleanUsername || `${(targetComp?.code || 'comp').toLowerCase().replace('-', '_')}_admin`;
+      const newEmail = cleanEmail || `${newUsername}@cropsa.net`;
+      const newPassword = cleanPassword || 'password';
+
+      const newAdmin: User = {
+        id: newAdminId,
+        name: `${targetComp?.name || 'الشركة'} (المدير العام)`,
+        username: newUsername,
+        email: newEmail,
+        role: Role.INSTALLMENT_COMPANY,
+        staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
+        companyId: companyId,
+        password: newPassword,
+        mustChangePassword: false,
+        permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff', 'followup_cases'],
+        createdAt: new Date().toISOString()
+      };
+
+      await createUser(newAdmin);
+      addAuditLog('CREATE_COMPANY_ADMIN', `Created admin account for company ${companyId}`, newAdminId);
+    }
   };
 
   const deleteCompany = async (companyId: string) => {
@@ -4964,6 +5042,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const deleteUser = async (userId: string) => {
+    if (!currentUser || (currentUser.role !== Role.SUPER_ADMIN && currentUser.role !== Role.ADMIN)) return;
+    setUsers(prev => prev.filter(u => u.id !== userId));
+    if (supabase) {
+      try {
+        await supabase.from('users').delete().eq('id', userId);
+      } catch (err) {
+        console.warn('Supabase deleteUser fallback:', err);
+      }
+    }
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+    } catch (err) {
+      console.warn('Firestore deleteUser fallback:', err);
+    }
+    addAuditLog('DELETE_USER', `Deleted user account ${userId}`);
+  };
+
   const setNavigation = (target: NavigationTarget | null) => {
     setPendingNavigation(target);
   };
@@ -5367,8 +5463,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createUser,
       updateUserWallet,
       resetUserPassword,
+      deleteUser,
       createCompany,
       updateCompany,
+      updateCompanyAdminCredentials,
       deleteCompany,
       createBranch,
       updateBranch,

@@ -576,20 +576,22 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
     );
   }, [companyBranches, staffPasswordSearchQuery]);
 
-  // Sales Staff Performance Data Calculation (لوحة تحكم أداء موظفي البيع والمندوبين)
+  // Company Staff Performance: strictly scoped to internal employees belonging to this company
   const salesStaffPerformance = useMemo(() => {
-    const salesUsers = users.filter(u => 
-      u.role === Role.SALESMAN || 
-      u.role === Role.SUPPLIER || 
-      companyApps.some(a => a.submittedBy === u.id || a.submittedBy === u.username || a.submittedBy === u.name)
+    const myStaffUsers = users.filter(u => 
+      u.companyId === companyId && 
+      (u.role === Role.COMPANY_EMPLOYEE || 
+       u.role === Role.BRANCH_MANAGER ||
+       u.staffRole === InstallmentCompanyStaffRole.CREDIT_OFFICER ||
+       u.staffRole === InstallmentCompanyStaffRole.COLLECTION_AGENT ||
+       u.staffRole === InstallmentCompanyStaffRole.BRANCH_MANAGER)
     );
 
-    return salesUsers.map(salesman => {
+    return myStaffUsers.map(salesman => {
       const salesmanApps = companyApps.filter(a => 
-        a.submittedBy === salesman.id || 
-        a.submittedBy === salesman.username || 
-        a.submittedBy === salesman.name ||
-        a.submittedBy === salesman.email
+        a.assignedOfficerId === salesman.id || 
+        a.assignedBranchId === salesman.branchId ||
+        a.history?.some(h => h.performedBy === salesman.id || h.performedBy === salesman.username)
       );
 
       const totalSubmitted = salesmanApps.length;
@@ -2531,88 +2533,90 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
               </div>
 
               {/* Visual Performance Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Chart 1: Applications Volume & Acceptance by Salesman */}
-                <div className="border border-slate-200 rounded-3xl p-5 bg-white shadow-sm space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-sky-600" />
-                        <span>مقارنة أداء موظفي البيع (المرفوعة vs المقبولة vs المرفوضة)</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-500">حجم الإنتاجية ومعدلات الإنجاز لمسؤولي البيع</p>
+              {filteredSalesStaff.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Chart 1: Applications Volume & Acceptance by Company Staff */}
+                  <div className="border border-slate-200 rounded-3xl p-5 bg-white shadow-sm space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4 text-sky-600" />
+                          <span>مقارنة أداء مسؤولي الائتمان بالشركة (المسندة vs المقبولة vs المرفوضة)</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">حجم الإنتاجية ومعدلات الإنجاز لمسؤولي الائتمان وفريق العمل</p>
+                      </div>
+                    </div>
+
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart 
+                          data={filteredSalesStaff.slice(0, 6).map(item => ({
+                            name: item.salesman.name.split(' ')[0] + ' ' + (item.salesman.name.split(' ')[1] || ''),
+                            submitted: item.totalSubmitted,
+                            approved: item.approvedCount,
+                            rejected: item.rejectedCount,
+                            rate: item.approvalRate
+                          }))} 
+                          margin={{ top: 15, right: 10, left: 0, bottom: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                          <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
+                          <YAxis fontSize={11} stroke="#64748b" allowDecimals={false} />
+                          <Tooltip />
+                          <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                          <Bar dataKey="submitted" name="إجمالي المسند" fill="#0284c7" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="approved" name="المقبول" fill="#10b981" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="rejected" name="المرفوض" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
 
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart 
-                        data={filteredSalesStaff.slice(0, 6).map(item => ({
-                          name: item.salesman.name.split(' ')[0] + ' ' + (item.salesman.name.split(' ')[1] || ''),
-                          submitted: item.totalSubmitted,
-                          approved: item.approvedCount,
-                          rejected: item.rejectedCount,
-                          rate: item.approvalRate
-                        }))} 
-                        margin={{ top: 15, right: 10, left: 0, bottom: 20 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
-                        <YAxis fontSize={11} stroke="#64748b" allowDecimals={false} />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                        <Bar dataKey="submitted" name="إجمالي المرفوع" fill="#0284c7" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="approved" name="المقبول" fill="#10b981" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="rejected" name="المرفوض" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                  {/* Chart 2: Turnaround Speed & Processing Hours */}
+                  <div className="border border-slate-200 rounded-3xl p-5 bg-white shadow-sm space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-amber-600" />
+                          <span>متوسط سرعة معالجة ودراسة طلبات كل موظف (ساعات العمل)</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">كلما قل عدد الساعات دل على سرعة وسلاسة استيفاء الأوراق والبت</p>
+                      </div>
+                    </div>
 
-                {/* Chart 2: Turnaround Speed & Processing Hours */}
-                <div className="border border-slate-200 rounded-3xl p-5 bg-white shadow-sm space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-amber-600" />
-                        <span>متوسط سرعة معالجة ودراسة طلبات كل موظف (ساعات العمل)</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-500">كلما قل عدد الساعات دل على سرعة وسلاسة استيفاء الأوراق والبت</p>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart 
+                          data={filteredSalesStaff.slice(0, 6).map(item => ({
+                            name: item.salesman.name.split(' ')[0] + ' ' + (item.salesman.name.split(' ')[1] || ''),
+                            speed: item.avgSpeedHours,
+                            rate: item.approvalRate
+                          }))} 
+                          margin={{ top: 15, right: 10, left: 0, bottom: 20 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                          <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
+                          <YAxis fontSize={11} stroke="#64748b" unit=" س" />
+                          <Tooltip formatter={(val: any) => [`${val} ساعة عمل`, 'متوسط سرعة المعالجة']} />
+                          <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                          <Bar dataKey="speed" name="متوسط سرعة المعالجة (ساعات)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
-
-                  <div className="h-64 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart 
-                        data={filteredSalesStaff.slice(0, 6).map(item => ({
-                          name: item.salesman.name.split(' ')[0] + ' ' + (item.salesman.name.split(' ')[1] || ''),
-                          speed: item.avgSpeedHours,
-                          rate: item.approvalRate
-                        }))} 
-                        margin={{ top: 15, right: 10, left: 0, bottom: 20 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="name" fontSize={11} stroke="#64748b" />
-                        <YAxis fontSize={11} stroke="#64748b" unit=" س" />
-                        <Tooltip formatter={(val: any) => [`${val} ساعة عمل`, 'متوسط سرعة المعالجة']} />
-                        <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                        <Bar dataKey="speed" name="متوسط سرعة المعالجة (ساعات)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Detailed Sales Staff Matrix Table */}
+              {/* Detailed Company Staff Matrix Table */}
               <div className="border border-slate-200 rounded-3xl p-5 bg-white shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Award className="h-4 w-4 text-amber-500" />
-                      <span>جدول مصفوفة أداء موظفي البيع ومعدلات القبول وسرعة الإنجاز</span>
+                      <span>جدول مصفوفة أداء مسؤولي الائتمان وفريق عمل الشركة</span>
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      تقييم شامل لكل موظف بيع بناءً على جودة الحالات المرفوعة، نسب الاعتماد، وزمن المعالجة.
+                      تقييم شامل لكل مسؤول ائتمان وموظف تابع لشركة {activeCompany?.name} بناءً على جودة الحالات المعتمدة، ونسب البت.
                     </p>
                   </div>
                 </div>
@@ -2621,15 +2625,15 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
                   <table className="w-full text-xs text-right">
                     <thead>
                       <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
-                        <th className="px-4 py-3">موظف البيع / المندوب</th>
+                        <th className="px-4 py-3">مسؤول الائتمان / الموظف</th>
                         <th className="px-4 py-3">اسم المستخدم</th>
-                        <th className="px-4 py-3 text-center">الطلبات المرفوعة</th>
+                        <th className="px-4 py-3 text-center">الطلبات المسندة</th>
                         <th className="px-4 py-3 text-center text-emerald-700">المقبول</th>
                         <th className="px-4 py-3 text-center text-rose-700">المرفوض</th>
                         <th className="px-4 py-3 text-center text-sky-700">قيد الفحص</th>
                         <th className="px-4 py-3 text-center">معدل القبول %</th>
                         <th className="px-4 py-3 text-center">سرعة المعالجة</th>
-                        <th className="px-4 py-3">إجمالي المبيعات المعتمدة</th>
+                        <th className="px-4 py-3">إجمالي التمويل المعتمد</th>
                         <th className="px-4 py-3 text-center">تقييم الأداء</th>
                         <th className="px-4 py-3 text-center">الإجراءات</th>
                       </tr>
@@ -2637,8 +2641,18 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
                     <tbody className="divide-y divide-slate-100">
                       {filteredSalesStaff.length === 0 ? (
                         <tr>
-                          <td colSpan={11} className="p-8 text-center text-slate-400">
-                            لا يوجد موظفو بيع يطابقون شروط البحث الحالية.
+                          <td colSpan={11} className="p-8 text-center bg-slate-50/60 rounded-2xl">
+                            <div className="max-w-md mx-auto space-y-2 py-4">
+                              <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto text-slate-400">
+                                <Users className="w-6 h-6" />
+                              </div>
+                              <p className="font-bold text-slate-800 text-xs">
+                                لم يتم إضافة موظفين أو مسؤولي ائتمان لشركة {activeCompany?.name} حتى الآن
+                              </p>
+                              <p className="text-[11px] text-slate-500 leading-relaxed">
+                                هذه اللوحة مخصصة لعرض إنجازات مسؤولي الائتمان وموظفي الفروع التابعين لشركتك فقط. يمكنك إضافة موظفي الشركة وتعيين كلمات مرورهم من تبويب "فريق العمل والائتمان".
+                              </p>
+                            </div>
                           </td>
                         </tr>
                       ) : (
