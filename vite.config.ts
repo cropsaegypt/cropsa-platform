@@ -2,6 +2,34 @@ import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
+function emailApiPlugin() {
+  return {
+    name: 'email-api-plugin',
+    configureServer(server: any) {
+      server.middlewares.use('/api/send-email', async (req: any, res: any) => {
+        if (req.method === 'POST') {
+          let bodyStr = '';
+          req.on('data', (chunk: any) => { bodyStr += chunk; });
+          req.on('end', async () => {
+            try {
+              req.body = JSON.parse(bodyStr);
+              const handler = (await import('./api/send-email.js')).default || (await import('./api/send-email.ts')).default;
+              await handler(req, res);
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, message: err?.message || 'Server error' }));
+            }
+          });
+        } else {
+          res.statusCode = 200;
+          res.end();
+        }
+      });
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
@@ -9,7 +37,7 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
-      plugins: [react()],
+      plugins: [react(), emailApiPlugin()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)

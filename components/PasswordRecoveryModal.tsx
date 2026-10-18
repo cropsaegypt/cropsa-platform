@@ -10,13 +10,10 @@ import {
   AlertCircle, 
   Eye, 
   EyeOff, 
-  Copy, 
-  Check, 
   RefreshCw,
-  ShieldCheck,
+  ShieldCheck, 
   Clock,
-  Sparkles,
-  Smartphone
+  Sparkles
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -44,16 +41,14 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
   const [identifier, setIdentifier] = useState('');
   const [targetUser, setTargetUser] = useState<User | null>(null);
   const [maskedTarget, setMaskedTarget] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successInfo, setSuccessInfo] = useState('');
   const [cooldown, setCooldown] = useState(0);
-  const [otpArrivedNotification, setOtpArrivedNotification] = useState(false);
 
   // Timer countdown for resending OTP
   useEffect(() => {
@@ -68,10 +63,11 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
 
   if (!isOpen) return null;
 
-  // STEP 1: Request OTP
+  // STEP 1: Request OTP - Sends real email to the registered address
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessInfo('');
     const cleanId = identifier.trim();
     if (!cleanId) {
       setError(isAr ? 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني' : 'Please enter your username or email');
@@ -89,17 +85,12 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
 
       setTargetUser(res.user);
       setMaskedTarget(res.maskedTarget || cleanId);
-      setGeneratedOtp(res.otp || '');
       setCooldown(60);
       setStep(2);
       setInputCode('');
-
-      // Show realistic simulated OTP arrival toast after a brief delay (800ms)
-      setTimeout(() => {
-        setOtpArrivedNotification(true);
-      }, 800);
-    } catch (err) {
-      setError(isAr ? 'حدث خطأ أثناء إرسال رمز التحقق' : 'An error occurred while sending verification code');
+      setSuccessInfo(res.message);
+    } catch (err: any) {
+      setError(isAr ? 'حدث خطأ أثناء إرسال رمز التحقق إلى بريدك الإلكتروني' : 'An error occurred while sending verification code');
     } finally {
       setLoading(false);
     }
@@ -109,18 +100,18 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
   const handleResendOtp = async () => {
     if (cooldown > 0 || !identifier.trim()) return;
     setError('');
+    setSuccessInfo('');
     setLoading(true);
     try {
       const res = await requestPasswordResetOtp(identifier.trim());
-      if (res.success && res.otp) {
-        setGeneratedOtp(res.otp);
+      if (res.success) {
         setCooldown(60);
-        setOtpArrivedNotification(true);
+        setSuccessInfo(res.message);
       } else {
         setError(res.message);
       }
     } catch (err) {
-      setError(isAr ? 'تعذر إعادة إرسال الكود' : 'Failed to resend code');
+      setError(isAr ? 'تعذر إعادة إرسال الكود حالياً' : 'Failed to resend code');
     } finally {
       setLoading(false);
     }
@@ -131,7 +122,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     e.preventDefault();
     setError('');
     if (!inputCode.trim()) {
-      setError(isAr ? 'يرجى إدخال رمز التحقق' : 'Please enter the verification code');
+      setError(isAr ? 'يرجى إدخال رمز التحقق المستلم في بريدك' : 'Please enter the verification code received in your email');
       return;
     }
 
@@ -141,7 +132,9 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     try {
       const isValid = await verifyPasswordResetOtp(targetUser.id, inputCode.trim());
       if (!isValid) {
-        setError(isAr ? 'رمز التحقق غير صحيح أو انتهت صلاحيته' : 'Verification code is invalid or has expired');
+        setError(isAr 
+          ? 'رمز التحقق غير صحيح أو انتهت صلاحيته. يرجى مراجعة بريدك الإلكتروني وكتابة الرمز بدقة.' 
+          : 'Verification code is invalid or has expired. Please check your email and enter the exact code.');
         setLoading(false);
         return;
       }
@@ -185,14 +178,6 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     }
   };
 
-  const handleAutofillOtp = () => {
-    if (generatedOtp) {
-      setInputCode(generatedOtp);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    }
-  };
-
   const handleImmediateLogin = async () => {
     if (targetUser && newPassword) {
       setLoading(true);
@@ -203,7 +188,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in" 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" 
       dir={isAr ? 'rtl' : 'ltr'}
     >
       <div className="bg-white text-slate-900 rounded-3xl shadow-2xl border border-slate-200/90 w-full max-w-md overflow-hidden animate-in zoom-in-95">
@@ -224,11 +209,11 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black text-slate-900">
-                {isAr ? 'استعادة كلمة المرور' : 'Reset Password'}
+                {isAr ? 'استعادة كلمة المرور عبر البريد' : 'Reset Password via Email'}
               </h3>
               <p className="text-xs text-emerald-700 font-semibold">
                 {step === 1 && (isAr ? 'الخطوة 1: تحديد الحساب المسجل' : 'Step 1: Enter Registered Account')}
-                {step === 2 && (isAr ? 'الخطوة 2: التحقق من كود الأمان OTP' : 'Step 2: Verify Security OTP Code')}
+                {step === 2 && (isAr ? 'الخطوة 2: فحص الإيميل وإدخال كود OTP' : 'Step 2: Check Email & Enter OTP')}
                 {step === 3 && (isAr ? 'الخطوة 3: تعيين كلمة المرور الجديدة' : 'Step 3: Set New Password')}
                 {step === 4 && (isAr ? 'اكتملت الاستعادة بنجاح' : 'Password Reset Completed')}
               </p>
@@ -242,10 +227,10 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
           {/* STEP 1: Enter Username or Email */}
           {step === 1 && (
             <form onSubmit={handleRequestOtp} className="space-y-4">
-              <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
                 {isAr 
-                  ? 'أدخل اسم المستخدم أو البريد الإلكتروني المسجل في منظومة كروبسا لتوليد وإرسال رمز التحقق الفوري (OTP) والبدء في استعادة الحساب.'
-                  : 'Enter your registered username or email to generate an instant OTP verification code and start password recovery.'
+                  ? 'أدخل اسم المستخدم أو البريد الإلكتروني المسجل في المنظومة لإرسال رمز أمان سري (OTP) مباشرة إلى صندوق بريدك الإلكتروني.'
+                  : 'Enter your registered username or email to send a security verification code (OTP) directly to your inbox.'
                 }
               </p>
 
@@ -260,7 +245,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder={isAr ? "مثال: superadmin أو aman_manager أو cairo_credit" : "e.g. superadmin or aman_manager"}
+                    placeholder={isAr ? "مثال: superadmin أو elwadi_supplier أو admin@cropsa.com" : "e.g. superadmin or user@email.com"}
                     value={identifier}
                     onChange={e => setIdentifier(e.target.value)}
                     className={`w-full ${isAr ? 'pr-10 pl-3' : 'pl-10 pr-3'} py-3 bg-slate-50/80 hover:bg-slate-50 focus:bg-white border-2 border-slate-200 focus:border-emerald-600 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-emerald-500/15 transition-all font-mono`}
@@ -284,11 +269,11 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                   {loading ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>{isAr ? 'جاري التحقق والاتصال...' : 'Connecting...'}</span>
+                      <span>{isAr ? 'جاري إرسال الإيميل...' : 'Sending Email...'}</span>
                     </>
                   ) : (
                     <>
-                      <span>{isAr ? 'إرسال رمز التحقق OTP' : 'Send Verification OTP'}</span>
+                      <span>{isAr ? 'إرسال رمز التحقق إلى بريدي' : 'Send Code To My Email'}</span>
                       <ArrowLeft className={`h-4 w-4 ${isAr ? '' : 'rotate-180'}`} />
                     </>
                   )}
@@ -304,52 +289,45 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
             </form>
           )}
 
-          {/* STEP 2: Enter and Verify OTP */}
+          {/* STEP 2: Check Email and Enter OTP (No default code, strict security) */}
           {step === 2 && (
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               
-              {/* Live Simulated OTP Incoming Banner */}
-              {otpArrivedNotification && (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 font-bold text-emerald-800">
-                      <Smartphone className="h-4 w-4 text-emerald-600" />
-                      <span>{isAr ? 'إشعار وارد: تم استلام كود OTP' : 'Incoming: OTP Code Received'}</span>
-                    </div>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono border border-emerald-300 font-bold">
-                      SMS / Email
-                    </span>
-                  </div>
+              {/* Email Sent Notice Card */}
+              <div className="p-4 bg-emerald-50/90 border border-emerald-200 rounded-2xl space-y-2.5 animate-in fade-in">
+                <div className="flex items-center gap-2 font-bold text-xs text-emerald-950">
+                  <Mail className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{isAr ? 'تم إرسال كود الأمان بنجاح إلى بريدك الإلكتروني' : 'Security code sent to your email'}</span>
+                </div>
 
-                  <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-emerald-200 shadow-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block font-medium">{isAr ? 'رمز التحقق الصادر:' : 'Issued Code:'}</span>
-                      <span className="font-mono text-lg font-black tracking-widest text-emerald-700">
-                        {generatedOtp}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAutofillOtp}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
-                    >
-                      {copiedCode ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                      <span>{copiedCode ? (isAr ? 'تم اللصق' : 'Pasted') : (isAr ? 'استخدام الرمز' : 'Autofill')}</span>
-                    </button>
-                  </div>
+                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                  {isAr 
+                    ? 'يرجى فتح صندوق الوارد (Inbox) أو الرسائل غير المرغوب فيها (Spam / Junk) لعنوان البريد التالي، ونسخ رمز الأمان المكون من 6 أرقام:'
+                    : 'Please open your inbox or spam folder for the registered email below and copy the 6-digit verification code:'}
+                </p>
+
+                <div className="bg-white p-2.5 rounded-xl border border-emerald-200 flex items-center justify-between shadow-2xs">
+                  <span className="text-[11px] text-slate-500 font-bold">{isAr ? 'البريد المسجل:' : 'Registered Email:'}</span>
+                  <span className="font-mono font-black text-xs text-emerald-800" dir="ltr">{maskedTarget}</span>
+                </div>
+
+                <div className="bg-amber-50 p-2 rounded-lg border border-amber-200 text-[11px] text-amber-800 flex items-center gap-1.5 font-bold">
+                  <ShieldCheck className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  <span>{isAr ? 'لأمان حسابك: الرمز سري وصالح لمدة 10 دقائق فقط.' : 'For security: Code is valid for 10 minutes.'}</span>
+                </div>
+              </div>
+
+              {successInfo && (
+                <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{successInfo}</span>
                 </div>
               )}
 
-              {/* Destination info */}
-              <div className="flex items-center justify-between text-xs bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-600">
-                <span>{isAr ? 'تم الإرسال إلى:' : 'Sent to:'}</span>
-                <span className="font-mono font-bold text-slate-900 text-xs" dir="ltr">{maskedTarget}</span>
-              </div>
-
-              {/* OTP Input */}
+              {/* OTP Input - User must type the code from their email */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 text-center">
-                  {isAr ? 'أدخل رمز التحقق المكون من 6 أرقام *' : 'Enter 6-digit verification code *'}
+                  {isAr ? 'أدخل رمز التحقق (OTP) المستلم في الإيميل *' : 'Enter 6-digit code received in email *'}
                 </label>
                 <input
                   type="text"
@@ -367,12 +345,12 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className="text-slate-500 text-[11px] flex items-center gap-1">
                   <Clock className="h-3 w-3 text-slate-400" />
-                  <span>{isAr ? 'صلاحية الكود: 5 دقائق' : 'Valid for 5 mins'}</span>
+                  <span>{isAr ? 'صلاحية الكود: 10 دقائق' : 'Valid for 10 mins'}</span>
                 </span>
 
                 {cooldown > 0 ? (
                   <span className="text-[11px] font-mono text-amber-600 font-bold">
-                    {isAr ? `إعادة الإرسال بعد: ${cooldown} ثانية` : `Resend in: ${cooldown}s`}
+                    {isAr ? `إعادة إرسال إيميل بعد: ${cooldown} ثانية` : `Resend in: ${cooldown}s`}
                   </span>
                 ) : (
                   <button
@@ -380,7 +358,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                     onClick={handleResendOtp}
                     className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold hover:underline transition-colors cursor-pointer"
                   >
-                    {isAr ? 'إعادة إرسال رمز جديد' : 'Resend new code'}
+                    {isAr ? 'لم يصلك الإيميل؟ إعادة الإرسال' : 'Did not receive? Resend'}
                   </button>
                 )}
               </div>
@@ -401,11 +379,11 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                   {loading ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>{isAr ? 'جاري التحقق...' : 'Verifying...'}</span>
+                      <span>{isAr ? 'جاري التحقق من الكود...' : 'Verifying Code...'}</span>
                     </>
                   ) : (
                     <>
-                      <span>{isAr ? 'التحقق ومتابعة التغيير' : 'Verify & Continue'}</span>
+                      <span>{isAr ? 'تأكيد الرمز ومتابعة التعيين' : 'Verify & Continue'}</span>
                       <ArrowLeft className={`h-4 w-4 ${isAr ? '' : 'rotate-180'}`} />
                     </>
                   )}
@@ -428,7 +406,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                 <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>
                   {isAr 
-                    ? `تم التحقق من هويتك بنجاح لحساب (${targetUser?.name}). يرجى تعيين كلمة المرور الجديدة:`
+                    ? `تم التحقق بنجاح من هوية حساب (${targetUser?.name}). يرجى كتابة كلمة المرور الجديدة:`
                     : `Identity verified for (${targetUser?.name}). Please set your new password:`}
                 </span>
               </div>
@@ -495,7 +473,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                 {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 <span>
                   {loading 
-                    ? (isAr ? 'جاري تحديث كلمة المرور وحفظها مشفرة...' : 'Updating password securely...')
+                    ? (isAr ? 'جاري تحديث كلمة المرور وحفظها...' : 'Updating password securely...')
                     : (isAr ? 'حفظ وتثبيت كلمة المرور الجديدة' : 'Save & Confirm New Password')}
                 </span>
               </button>
