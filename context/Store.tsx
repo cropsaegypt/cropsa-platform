@@ -120,9 +120,13 @@ interface StoreContextType {
   resetUserPassword: (userId: string) => Promise<void>;
   createCompany: (company: Partial<InstallmentCompany>, initialAdminPassword?: string) => Promise<void>;
   updateCompany: (companyId: string, updates: Partial<InstallmentCompany>) => Promise<void>;
+  deleteCompany: (companyId: string) => Promise<void>;
   createBranch: (branch: Partial<CompanyBranch>) => Promise<void>;
   updateBranch: (branchId: string, updates: Partial<CompanyBranch>) => Promise<void>;
   deleteBranch: (branchId: string) => Promise<void>;
+  bulkImportCompanyBranches: (companyId: string, branchesToImport: Partial<CompanyBranch>[]) => Promise<{ count: number }>;
+  wipeDemoData: (password: string) => Promise<void>;
+  isDemoDataWiped: boolean;
   
   // Company-level Staff Management (Immediate user & password creation)
   createCompanyStaff: (staffData: {
@@ -340,18 +344,92 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   });
 
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [companies, setCompanies] = useState<InstallmentCompany[]>(MOCK_COMPANIES);
-  const [branches, setBranches] = useState<CompanyBranch[]>(MOCK_BRANCHES);
-  const [applications, setApplications] = useState<Application[]>(MOCK_APPLICATIONS);
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
+  const [isDemoDataWiped, setIsDemoDataWiped] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cropsa_demo_data_wiped') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [companies, setCompanies] = useState<InstallmentCompany[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_companies');
+      return saved ? JSON.parse(saved) : MOCK_COMPANIES;
+    } catch {
+      return MOCK_COMPANIES;
+    }
+  });
+
+  const [branches, setBranches] = useState<CompanyBranch[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_branches');
+      return saved ? JSON.parse(saved) : MOCK_BRANCHES;
+    } catch {
+      return MOCK_BRANCHES;
+    }
+  });
+
+  const [applications, setApplications] = useState<Application[]>(() => {
+    try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') {
+        const saved = localStorage.getItem('cropsa_applications');
+        return saved ? JSON.parse(saved) : [];
+      }
+      return MOCK_APPLICATIONS;
+    } catch {
+      return [];
+    }
+  });
+
+  const [clients, setClients] = useState<Client[]>(() => {
+    try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') {
+        const saved = localStorage.getItem('cropsa_clients');
+        return saved ? JSON.parse(saved) : [];
+      }
+      return MOCK_CLIENTS;
+    } catch {
+      return [];
+    }
+  });
+
   const [clientRequests, setClientRequests] = useState<ClientAccessRequest[]>(MOCK_CLIENT_REQUESTS);
-  const [overdueCases, setOverdueCases] = useState<OverdueCase[]>(MOCK_OVERDUE_CASES);
+  const [overdueCases, setOverdueCases] = useState<OverdueCase[]>(() => {
+    try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
+      return MOCK_OVERDUE_CASES;
+    } catch {
+      return [];
+    }
+  });
   const [sharedDocuments, setSharedDocuments] = useState<SharedDocument[]>(MOCK_SHARED_DOCUMENTS);
   const [aiAnalyses, setAiAnalyses] = useState<AiCreditAnalysis[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
+      return MOCK_NOTIFICATIONS;
+    } catch {
+      return [];
+    }
+  });
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(MOCK_AUDIT_LOGS);
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
-  const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalRequest[]>(MOCK_WITHDRAWALS);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
+      return MOCK_TRANSACTIONS;
+    } catch {
+      return [];
+    }
+  });
+  const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalRequest[]>(() => {
+    try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
+      return MOCK_WITHDRAWALS;
+    } catch {
+      return [];
+    }
+  });
   const [applicationQuestions, setApplicationQuestions] = useState<ApplicationQuestion[]>(MOCK_APPLICATION_QUESTIONS);
   const [financingPrograms, setFinancingPrograms] = useState<FinancingProgram[]>(() => {
     return MOCK_COMPANIES.flatMap(c => 
@@ -601,7 +679,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           appRes,
           appSettingRes,
           smtpRes,
-          extTmplRes
+          extTmplRes,
+          demoWipedRes,
+          companiesDataRes,
+          branchDataRes
         ] = await Promise.all([
           supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
           supabase!.from('companies').select('*'),
@@ -611,8 +692,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supabase!.from('applications').select('*'),
           supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'smtp_config').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'external_dispatch_templates').maybeSingle()
+          supabase!.from('system_settings').select('data').eq('id', 'external_dispatch_templates').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'system_demo_wiped').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'company_branches_data').maybeSingle()
         ]);
+
+        const isRemoteWiped = demoWipedRes?.data?.data?.wiped === true;
+        const isLocalWiped = localStorage.getItem('cropsa_demo_data_wiped') === 'true';
+        const isWiped = isRemoteWiped || isLocalWiped;
+        if (isWiped && isMounted) {
+          setIsDemoDataWiped(true);
+        }
 
         // 1. Process Platform Branding
         if (brandingRes?.data?.data) {
@@ -646,37 +737,41 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 2. Process Companies
         const companyMap = new Map<string, InstallmentCompany>();
-        MOCK_COMPANIES.forEach(m => companyMap.set(m.id, m));
+        if (companiesDataRes?.data?.data && Array.isArray(companiesDataRes.data.data) && companiesDataRes.data.data.length > 0) {
+          companiesDataRes.data.data.forEach((c: InstallmentCompany) => companyMap.set(c.id, c));
+        } else {
+          MOCK_COMPANIES.forEach(m => companyMap.set(m.id, m));
+        }
         if (companiesRes?.data && companiesRes.data.length > 0) {
           companiesRes.data.forEach((c: any) => {
-            const existingMock = MOCK_COMPANIES.find(m => m.id === c.id);
+            const existing = companyMap.get(c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
             companyMap.set(c.id, {
               id: c.id,
               name: c.name,
               nameEn: c.name_en || c.name,
-              code: c.code || existingMock?.code || '',
-              logo: c.logo || existingMock?.logo || '',
-              coverImage: existingMock?.coverImage,
-              email: c.email || existingMock?.email || '',
-              phone: c.phone || existingMock?.phone || '',
-              receivingChannel: c.receiving_channel || c.receivingChannel || existingMock?.receivingChannel || 'PORTAL',
-              whatsappNumber: c.whatsapp_number || c.whatsappNumber || existingMock?.whatsappNumber || '',
-              dispatchEmail: c.dispatch_email || c.dispatchEmail || existingMock?.dispatchEmail || '',
-              contactPersonName: c.contact_person_name || c.contactPersonName || existingMock?.contactPersonName || '',
-              commercialRegister: c.commercial_register || existingMock?.commercialRegister || '',
-              taxNumber: c.tax_number || existingMock?.taxNumber || '',
-              fraLicense: 'FRA-FIN-2021',
-              creditCeiling: Number(c.credit_ceiling) || existingMock?.creditCeiling || 25000000,
-              usedCredit: Number(c.used_credit) || existingMock?.usedCredit || 0,
-              commissionRate: Number(c.commission_rate) || existingMock?.commissionRate || 3.5,
-              allowedGovernorates: c.allowed_governorates || existingMock?.allowedGovernorates || ['القاهرة', 'الجيزة'],
-              requiredDocumentsList: existingMock?.requiredDocumentsList || ['بطاقة الرقم القومي سارية للمشتري والضامن', 'إيصال مرافق حديث'],
-              rejectionReasons: existingMock?.rejectionReasons || [],
-              workflowConfig: existingMock?.workflowConfig,
-              financingPrograms: existingMock?.financingPrograms || [],
-              status: 'ACTIVE',
-              createdAt: c.created_at || new Date().toISOString(),
-              featuresGranted: {
+              code: c.code || existing?.code || '',
+              logo: c.logo || existing?.logo || '',
+              coverImage: c.cover_image || existing?.coverImage,
+              email: c.email || existing?.email || '',
+              phone: c.phone || existing?.phone || '',
+              receivingChannel: c.receiving_channel || c.receivingChannel || existing?.receivingChannel || 'PORTAL',
+              whatsappNumber: c.whatsapp_number || c.whatsappNumber || existing?.whatsappNumber || '',
+              dispatchEmail: c.dispatch_email || c.dispatchEmail || existing?.dispatchEmail || '',
+              contactPersonName: c.contact_person_name || c.contactPersonName || existing?.contactPersonName || '',
+              commercialRegister: c.commercial_register || existing?.commercialRegister || '',
+              taxNumber: c.tax_number || existing?.taxNumber || '',
+              fraLicense: c.fra_license || existing?.fraLicense || 'FRA-FIN-2021',
+              creditCeiling: Number(c.credit_ceiling) || existing?.creditCeiling || 25000000,
+              usedCredit: Number(c.used_credit) || existing?.usedCredit || 0,
+              commissionRate: Number(c.commission_rate) || existing?.commissionRate || 3.5,
+              allowedGovernorates: c.allowed_governorates || existing?.allowedGovernorates || ['القاهرة', 'الجيزة'],
+              requiredDocumentsList: existing?.requiredDocumentsList || ['بطاقة الرقم القومي سارية للمشتري والضامن', 'إيصال مرافق حديث'],
+              rejectionReasons: existing?.rejectionReasons || [],
+              workflowConfig: existing?.workflowConfig,
+              financingPrograms: existing?.financingPrograms || [],
+              status: (c.status as any) || existing?.status || 'ACTIVE',
+              createdAt: c.created_at || existing?.createdAt || new Date().toISOString(),
+              featuresGranted: existing?.featuresGranted || {
                 canViewCrobsaDb: true,
                 canUseAiAnalysis: true,
                 canExportReports: true,
@@ -690,7 +785,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 3. Process Company Branches
         const branchMap = new Map<string, CompanyBranch>();
-        MOCK_BRANCHES.forEach(m => branchMap.set(m.id, m));
+        if (branchDataRes?.data?.data && Array.isArray(branchDataRes.data.data) && branchDataRes.data.data.length > 0) {
+          branchDataRes.data.data.forEach((b: CompanyBranch) => branchMap.set(b.id, b));
+        } else {
+          MOCK_BRANCHES.forEach(m => branchMap.set(m.id, m));
+        }
         if (branchRes?.data && branchRes.data.length > 0) {
           branchRes.data.forEach((b: any) => {
             branchMap.set(b.id, {
@@ -709,7 +808,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 4. Process Clients
         const clientMap = new Map<string, Client>();
-        MOCK_CLIENTS.forEach(m => clientMap.set(m.id, m));
+        if (!isWiped) {
+          MOCK_CLIENTS.forEach(m => clientMap.set(m.id, m));
+        }
         if (clientRes?.data && clientRes.data.length > 0) {
           clientRes.data.forEach((cl: any) => {
             const existingMock = MOCK_CLIENTS.find(m => m.id === cl.id || m.nationalId === cl.national_id);
@@ -787,7 +888,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 6. Process Applications
         const appMap = new Map<string, Application>();
-        MOCK_APPLICATIONS.forEach(m => appMap.set(m.id, m));
+        if (!isWiped) {
+          MOCK_APPLICATIONS.forEach(m => appMap.set(m.id, m));
+        }
         if (appRes?.data && appRes.data.length > 0) {
           appRes.data.forEach((a: any) => {
             const existingMock = MOCK_APPLICATIONS.find(m => m.id === a.id);
@@ -802,6 +905,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
         }
         if (isMounted) setApplications(Array.from(appMap.values()));
+
+        if (isWiped && isMounted) {
+          setOverdueCases([]);
+          setTransactions([]);
+          setWithdrawalRequests([]);
+        }
       } catch (err) {
         console.warn('Supabase initial sync error:', err);
       } finally {
@@ -1726,27 +1835,44 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateCompany = async (companyId: string, updates: Partial<InstallmentCompany>) => {
-    setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, ...updates } : c));
+    let nextComps: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextComps = prev.map(c => c.id === companyId ? { ...c, ...updates } : c);
+      try {
+        localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
+      } catch (e) {}
+      return nextComps;
+    });
+
     if (supabase) {
       try {
         const payload: Record<string, any> = {};
         if (updates.name) payload.name = updates.name;
         if (updates.nameEn) payload.name_en = updates.nameEn;
         if (updates.code) payload.code = updates.code;
-        if (updates.logo) payload.logo = updates.logo;
-        if (updates.email) payload.email = updates.email;
-        if (updates.phone) payload.phone = updates.phone;
+        if (updates.logo !== undefined) payload.logo = updates.logo;
+        if (updates.coverImage !== undefined) payload.cover_image = updates.coverImage;
+        if (updates.email !== undefined) payload.email = updates.email;
+        if (updates.phone !== undefined) payload.phone = updates.phone;
+        if (updates.commercialRegister !== undefined) payload.commercial_register = updates.commercialRegister;
+        if (updates.taxNumber !== undefined) payload.tax_number = updates.taxNumber;
+        if (updates.fraLicense !== undefined) payload.fra_license = updates.fraLicense;
+        if (updates.receivingChannel !== undefined) payload.receiving_channel = updates.receivingChannel;
+        if (updates.whatsappNumber !== undefined) payload.whatsapp_number = updates.whatsappNumber;
+        if (updates.dispatchEmail !== undefined) payload.dispatch_email = updates.dispatchEmail;
+        if (updates.contactPersonName !== undefined) payload.contact_person_name = updates.contactPersonName;
         if (updates.creditCeiling !== undefined) payload.credit_ceiling = updates.creditCeiling;
         if (updates.usedCredit !== undefined) payload.used_credit = updates.usedCredit;
         if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
         if (updates.allowedGovernorates) payload.allowed_governorates = updates.allowedGovernorates;
+        if (updates.status !== undefined) payload.status = updates.status;
+
         if (Object.keys(payload).length > 0) {
           await supabase.from('companies').update(payload).eq('id', companyId);
         }
-        const updatedComps = companies.map(c => c.id === companyId ? { ...c, ...updates } : c);
         await supabase.from('system_settings').upsert({
           id: 'companies_data',
-          data: updatedComps,
+          data: nextComps,
           updated_at: new Date().toISOString()
         });
       } catch (err) {
@@ -1759,6 +1885,51 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('Firestore updateCompany fallback:', err);
     }
     addAuditLog('UPDATE_COMPANY', `Updated profile of company ${companyId}`, companyId);
+  };
+
+  const deleteCompany = async (companyId: string) => {
+    let nextComps: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextComps = prev.filter(c => c.id !== companyId);
+      try {
+        localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
+      } catch (e) {}
+      return nextComps;
+    });
+
+    let nextBranches: CompanyBranch[] = [];
+    setBranches(prev => {
+      nextBranches = prev.filter(b => b.companyId !== companyId);
+      try {
+        localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches));
+      } catch (e) {}
+      return nextBranches;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('companies').delete().eq('id', companyId);
+        await supabase.from('company_branches').delete().eq('company_id', companyId);
+        await supabase.from('system_settings').upsert({
+          id: 'companies_data',
+          data: nextComps,
+          updated_at: new Date().toISOString()
+        });
+        await supabase.from('system_settings').upsert({
+          id: 'company_branches_data',
+          data: nextBranches,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase deleteCompany fallback:', err);
+      }
+    }
+
+    try {
+      await deleteDoc(doc(db, 'companies', companyId));
+    } catch (err) {}
+
+    addAuditLog('DELETE_COMPANY', `Deleted company ${companyId}`, companyId);
   };
 
   const createBranch = async (branchData: Partial<CompanyBranch>) => {
@@ -1839,6 +2010,111 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('Firestore deleteBranch fallback:', err);
     }
     addAuditLog('DELETE_BRANCH', `Deleted branch ${branchId}`, branchId);
+  };
+
+  const bulkImportCompanyBranches = async (companyId: string, branchesToImport: Partial<CompanyBranch>[]) => {
+    const timestamp = Date.now();
+    const createdBranches: CompanyBranch[] = branchesToImport.map((b, idx) => ({
+      id: b.id || `br_${companyId}_${timestamp}_${idx + 1}`,
+      companyId: companyId,
+      name: b.name || `فرع ${idx + 1}`,
+      governorate: b.governorate || 'القاهرة',
+      address: b.address || '',
+      phone: b.phone || '',
+      managerName: b.managerName || '',
+      active: b.active ?? true
+    }));
+
+    let allNextBranches: CompanyBranch[] = [];
+    setBranches(prev => {
+      allNextBranches = [...prev, ...createdBranches];
+      try {
+        localStorage.setItem('cropsa_branches', JSON.stringify(allNextBranches));
+      } catch (e) {}
+      return allNextBranches;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('company_branches').upsert(createdBranches.map(b => ({
+          id: b.id,
+          company_id: b.companyId,
+          name: b.name,
+          governorate: b.governorate,
+          address: b.address || '',
+          phone: b.phone || '',
+          manager_name: b.managerName || '',
+          active: b.active
+        })));
+
+        await supabase.from('system_settings').upsert({
+          id: 'company_branches_data',
+          data: allNextBranches,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase bulkImportCompanyBranches error:', err);
+      }
+    }
+
+    addAuditLog('BULK_IMPORT_BRANCHES', `Bulk imported ${createdBranches.length} branches for company ${companyId}`, companyId);
+    return { count: createdBranches.length };
+  };
+
+  const wipeDemoData = async (password: string) => {
+    if (password !== 'Cropsa@015252505111') {
+      throw new Error('كلمة المرور غير صحيحة، يرجى كتابة كلمة المرور المعتمدة لمدير النظام: Cropsa@015252505111');
+    }
+
+    setIsDemoDataWiped(true);
+    setApplications([]);
+    setClients([]);
+    setTransactions([]);
+    setWithdrawalRequests([]);
+    setOverdueCases([]);
+    setNotifications([]);
+
+    try {
+      localStorage.setItem('cropsa_demo_data_wiped', 'true');
+      localStorage.removeItem('cropsa_applications');
+      localStorage.removeItem('cropsa_clients');
+      localStorage.removeItem('cropsa_transactions');
+      localStorage.removeItem('cropsa_overdue_cases');
+      localStorage.removeItem('crobsa_notifications');
+    } catch (e) {}
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'system_demo_wiped',
+          data: { wiped: true, wipedAt: new Date().toISOString() },
+          updated_at: new Date().toISOString()
+        });
+
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: [],
+          updated_at: new Date().toISOString()
+        });
+
+        await supabase.from('system_settings').upsert({
+          id: 'clients_data',
+          data: [],
+          updated_at: new Date().toISOString()
+        });
+
+        try {
+          await supabase.from('applications').delete().neq('id', '___none___');
+        } catch (err) {}
+        try {
+          await supabase.from('clients').delete().neq('id', '___none___');
+        } catch (err) {}
+      } catch (err) {
+        console.warn('Supabase wipeDemoData error:', err);
+      }
+    }
+
+    addAuditLog('WIPE_DEMO_DATA', 'تم مسح وتصفير كافة البيانات التجريبية للنظام بقاعدة البيانات بكلمة مرور المدير المصرحة');
   };
 
   // Client Directory & Timeline
@@ -4934,9 +5210,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       resetUserPassword,
       createCompany,
       updateCompany,
+      deleteCompany,
       createBranch,
       updateBranch,
       deleteBranch,
+      bulkImportCompanyBranches,
+      wipeDemoData,
+      isDemoDataWiped,
       createCompanyStaff,
       updateStaffPermissions,
       updateStaffPassword,

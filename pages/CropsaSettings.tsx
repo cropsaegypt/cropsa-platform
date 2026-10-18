@@ -22,7 +22,12 @@ import {
   Server,
   CheckCircle2,
   Send,
-  KeyRound
+  KeyRound,
+  Trash2,
+  AlertTriangle,
+  Database,
+  ShieldAlert,
+  RefreshCw
 } from 'lucide-react';
 import { SystemBranding, SmtpConfig } from '../types';
 import { compressImage } from '../utils/imageCompression';
@@ -82,13 +87,56 @@ const FONT_OPTIONS: { id: SystemBranding['fontFamily']; name: string }[] = [
 ];
 
 export const CropsaSettings: React.FC = () => {
-  const { systemBranding, updateBranding, smtpConfig, updateSmtpConfig } = useStore();
+  const { 
+    systemBranding, 
+    updateBranding, 
+    smtpConfig, 
+    updateSmtpConfig,
+    wipeDemoData,
+    isDemoDataWiped,
+    applications,
+    clients,
+    overdueCases,
+    transactions,
+    withdrawalRequests,
+    notifications,
+    companies,
+    branches
+  } = useStore();
 
-  const [activeSettingTab, setActiveSettingTab] = useState<'branding' | 'smtp'>('branding');
+  const [activeSettingTab, setActiveSettingTab] = useState<'branding' | 'smtp' | 'wipe_data'>('branding');
   const [localSmtp, setLocalSmtp] = useState<SmtpConfig>(() => smtpConfig);
   const [savingSmtp, setSavingSmtp] = useState(false);
   const [smtpSavedSuccess, setSmtpSavedSuccess] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Wipe Demo Data State
+  const [wipePasswordInput, setWipePasswordInput] = useState('');
+  const [isWipingData, setIsWipingData] = useState(false);
+  const [wipeSuccessMsg, setWipeSuccessMsg] = useState('');
+  const [wipeErrorMsg, setWipeErrorMsg] = useState('');
+  const [showWipeModal, setShowWipeModal] = useState(false);
+
+  const handleExecuteWipe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setWipeErrorMsg('');
+    setWipeSuccessMsg('');
+    if (wipePasswordInput !== 'Cropsa@015252505111') {
+      setWipeErrorMsg('كلمة المرور غير صحيحة! يرجى إدخال كلمة المرور المعتمدة لمدير النظام: Cropsa@015252505111');
+      return;
+    }
+    setIsWipingData(true);
+    try {
+      await wipeDemoData(wipePasswordInput);
+      setWipeSuccessMsg('تم تصفير وحذف كافة البيانات التجريبية بنجاح من قاعدة البيانات (Supabase) ومزامنتها على كافة المتصفحات! أصبحت المنظومة الآن نظيفة تماماً 100% وجاهزة للعمل الفعلي.');
+      setWipePasswordInput('');
+      setShowWipeModal(false);
+    } catch (err: any) {
+      setWipeErrorMsg(err?.message || 'حدث خطأ أثناء تصفير البيانات التجريبية');
+    } finally {
+      setIsWipingData(false);
+    }
+  };
 
   useEffect(() => {
     if (smtpConfig) {
@@ -356,6 +404,28 @@ export const CropsaSettings: React.FC = () => {
           <span>خادم البريد الإلكتروني الرسمي (Corporate SMTP)</span>
           {localSmtp.enabled && (
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSettingTab('wipe_data')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+            activeSettingTab === 'wipe_data'
+              ? 'bg-rose-600 text-white shadow-sm'
+              : 'text-slate-600 bg-white hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Trash2 className="w-4 h-4 text-rose-500" />
+          <span>مسح وتصفير البيانات التجريبية (Demo Reset)</span>
+          {isDemoDataWiped ? (
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+              منظومة نظيفة ✓
+            </span>
+          ) : (
+            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+              بيانات تجريبية
+            </span>
           )}
         </button>
       </div>
@@ -1167,6 +1237,201 @@ export const CropsaSettings: React.FC = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* TAB: WIPE MOCK DATA (Factory Reset / Danger Zone) */}
+      {activeSettingTab === 'wipe_data' && (
+        <div className="space-y-6">
+          {/* Success / Error Banners */}
+          {wipeSuccessMsg && (
+            <div className="bg-emerald-600 text-white p-4 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-200" />
+                <span>{wipeSuccessMsg}</span>
+              </div>
+              <button onClick={() => setWipeSuccessMsg('')} className="p-1 hover:bg-emerald-700 rounded-lg">
+                <Check className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {wipeErrorMsg && (
+            <div className="bg-rose-600 text-white p-4 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="h-5 w-5 text-rose-200" />
+                <span>{wipeErrorMsg}</span>
+              </div>
+              <button onClick={() => setWipeErrorMsg('')} className="p-1 hover:bg-rose-700 rounded-lg">
+                <Check className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Main Control Card */}
+          <div className="bg-white rounded-3xl p-6 lg:p-8 border border-rose-200 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-100 pb-5">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                  <ShieldAlert className="h-7 w-7" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-black text-slate-900">
+                      تصفير قاعدة البيانات ومسح البيانات التجريبية (Factory Reset)
+                    </h2>
+                    <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full border border-rose-200">
+                      إدارة عليا فقط
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    أداة مخصصة لمدير المنظومة لتطهير النظام من كافة البيانات المجسمة والتجريبية لتجهيزه فوراً للاستخدام الفعلي.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${
+                  isDemoDataWiped 
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${isDemoDataWiped ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                  <span>{isDemoDataWiped ? 'النظام مصفّر ونظيف 100%' : 'البيانات التجريبية نشطة حالياً'}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Database Current Stats Grid */}
+            <div>
+              <h3 className="text-xs font-black text-slate-900 mb-3 flex items-center gap-1.5">
+                <Database className="h-4 w-4 text-slate-500" />
+                <span>حصر البيانات التجريبية الموجودة حالياً والتي سيتم تصفيرها:</span>
+              </h3>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-500">طلبات التقسيط</div>
+                  <div className="text-xl font-black text-slate-900 mt-1">{applications.length}</div>
+                  <div className="text-[10px] text-slate-400">طلب تقسيط</div>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-500">سجلات العملاء</div>
+                  <div className="text-xl font-black text-slate-900 mt-1">{clients.length}</div>
+                  <div className="text-[10px] text-slate-400">عميل ومزارع</div>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-500">حالات التعثر</div>
+                  <div className="text-xl font-black text-slate-900 mt-1">{overdueCases.length}</div>
+                  <div className="text-[10px] text-slate-400">حالة متابعة</div>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-500">المعاملات المالية</div>
+                  <div className="text-xl font-black text-slate-900 mt-1">{transactions.length}</div>
+                  <div className="text-[10px] text-slate-400">حركة محفظة</div>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-500">طلبات السحب</div>
+                  <div className="text-xl font-black text-slate-900 mt-1">{withdrawalRequests.length}</div>
+                  <div className="text-[10px] text-slate-400">طلب سحب</div>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-500">الإشعارات والتنبيهات</div>
+                  <div className="text-xl font-black text-slate-900 mt-1">{notifications.length}</div>
+                  <div className="text-[10px] text-slate-400">إشعار نظام</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Protected Core Data Guarantee */}
+            <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200/80 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-black text-emerald-950">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                <span>ضمان أمان البيانات التشغيلية الأساسية (لن يتم مسحها إطلاقاً):</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs text-emerald-900 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>شركات التقسيط المعتمدة ({companies.length} شركة)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>فروع الشركات المسجلة ({branches.length} فرع)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>هوية كروبسا وتخصيص المظهر والشعار</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>خادم البريد الرسمي وحسابات المديرين</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Box With Password Input */}
+            <div className="p-6 bg-gradient-to-r from-rose-50/80 via-white to-rose-50/50 rounded-2xl border-2 border-dashed border-rose-300 space-y-4">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-rose-600" />
+                <h4 className="text-sm font-black text-slate-900">
+                  تنفيذ عملية التصفير والحذف النهائي (محمي بكلمة مرور الإدارة)
+                </h4>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                لتأكيد عملية التصفير وحماية المنظومة من الحذف غير المقصود، يرجى كتابة كلمة المرور المعتمدة الخاصة بمدير النظام أدناه، ثم الضغط على زر التصفير:
+              </p>
+
+              <form onSubmit={handleExecuteWipe} className="space-y-4 max-w-lg">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    كلمة مرور تأكيد الحذف:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      placeholder="أدخل كلمة المرور المعتمدة..."
+                      value={wipePasswordInput}
+                      onChange={e => setWipePasswordInput(e.target.value)}
+                      className="w-full text-xs font-mono p-3 bg-white border border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none pr-10 shadow-sm"
+                    />
+                    <Lock className="h-4 w-4 text-rose-400 absolute left-3 top-3.5" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={isWipingData || !wipePasswordInput}
+                    className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-600/20 flex items-center gap-2 transition disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>{isWipingData ? 'جاري تصفير قاعدة البيانات...' : 'تصفير ومسح كافة البيانات التجريبية الآن'}</span>
+                  </button>
+
+                  {isDemoDataWiped && (
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl flex items-center gap-1.5">
+                      <Check className="h-4 w-4 text-emerald-600" />
+                      <span>النظام نظيف حالياً</span>
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Supabase Persistence Note */}
+            <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-2 border-t border-slate-100">
+              <Database className="h-3.5 w-3.5 text-slate-400" />
+              <span>
+                تتم مزامنة حالة التصفير مباشرة في جدول <code>system_settings</code> بقاعدة بيانات Supabase وتحفظ محلياً عبر <code>cropsa_demo_data_wiped</code> لضمان عدم عودة البيانات التجريبية على أي متصفح.
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>

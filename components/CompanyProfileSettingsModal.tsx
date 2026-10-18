@@ -21,8 +21,12 @@ import {
   Trash2,
   Sparkles,
   CheckCircle2,
-  MessageSquare
+  MessageSquare,
+  MapPin,
+  FileSpreadsheet,
+  ExternalLink
 } from 'lucide-react';
+import { CompanyBranchesManagerModal } from './CompanyBranchesManagerModal';
 
 interface CompanyProfileSettingsModalProps {
   company: InstallmentCompany;
@@ -64,7 +68,9 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
   } = useStore();
 
   const isAr = language === 'ar';
-  const [activeTab, setActiveTab] = useState<'info' | 'branding' | 'password' | 'staff'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'branding' | 'branches' | 'password' | 'staff'>('info');
+  const [showBranchesModal, setShowBranchesModal] = useState(false);
+  const [branchesModalInitialTab, setBranchesModalInitialTab] = useState<'list' | 'add' | 'excel'>('list');
 
   // Company Details Form
   const [companyName, setCompanyName] = useState(company.name || '');
@@ -282,6 +288,7 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
           {[
             { id: 'info', label: isAr ? 'الملف والبيانات' : 'Company Info', icon: Building2 },
             { id: 'branding', label: isAr ? 'اللوجو والكافر' : 'Logo & Cover', icon: ImageIcon },
+            { id: 'branches', label: isAr ? 'الفروع وشيت الإكسيل' : 'Branches & Excel', icon: MapPin, count: companyBranches.length },
             { id: 'password', label: isAr ? 'باسورد المدير' : 'Director Password', icon: KeyRound },
             { id: 'staff', label: isAr ? 'الموظفين وكلمات مرورهم' : 'Staff & Passwords', icon: Users, count: companyStaff.length }
           ].map(tab => {
@@ -572,6 +579,187 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
             </form>
           )}
 
+          {/* TAB: BRANCHES & EXCEL SPREADSHEET */}
+          {activeTab === 'branches' && (
+            <div className="space-y-6">
+              {/* Branch Stats & Quick Action Bar */}
+              <div className="bg-gradient-to-r from-sky-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl border border-sky-500/20 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-2xl bg-white/10 flex items-center justify-center text-sky-400 border border-white/10">
+                    <MapPin className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white">
+                      {isAr ? 'فروع الشركة وشيت الإكسيل المجمع' : 'Company Branches & Bulk Excel'}
+                    </h3>
+                    <p className="text-xs text-sky-200 mt-0.5">
+                      {isAr 
+                        ? `مسجل حالياً ${companyBranches.length} فروع في ${Array.from(new Set(companyBranches.map(b => b.governorate))).length} محافظات`
+                        : `${companyBranches.length} branches registered across ${Array.from(new Set(companyBranches.map(b => b.governorate))).length} governorates`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchesModalInitialTab('excel');
+                      setShowBranchesModal(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md flex items-center gap-2 transition-all"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>{isAr ? 'رفع شيت إكسيل الفروع (CSV)' : 'Import Excel Sheet'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchesModalInitialTab('add');
+                      setShowBranchesModal(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md flex items-center gap-2 transition-all"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>{isAr ? 'إضافة فرع جديد' : 'Add Branch'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchesModalInitialTab('list');
+                      setShowBranchesModal(true);
+                    }}
+                    className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 flex items-center gap-1.5 transition-all"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>{isAr ? 'الإدارة الموسعة' : 'Advanced Manager'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Branches Quick Grid */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-sky-600" />
+                    <span>{isAr ? 'قائمة الفروع التابعة للشركة' : 'Registered Branches'}</span>
+                    <span className="text-[11px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-bold">
+                      {companyBranches.length}
+                    </span>
+                  </h4>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchesModalInitialTab('list');
+                      setShowBranchesModal(true);
+                    }}
+                    className="text-xs text-sky-600 hover:text-sky-800 font-bold flex items-center gap-1"
+                  >
+                    <span>{isAr ? 'تعديل أو حذف الفروع' : 'Edit or Delete Branches'}</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {companyBranches.length === 0 ? (
+                  <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <MapPin className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-600">
+                      {isAr ? 'لا توجد فروع مسجلة لهذه الشركة حتى الآن' : 'No branches registered yet for this company'}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {isAr ? 'يمكنك رفع شيت الفروع كاملاً دفعة واحدة أو إضافتها يدوياً' : 'You can upload an Excel sheet or add them manually'}
+                    </p>
+                    <div className="flex justify-center gap-2 mt-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBranchesModalInitialTab('excel');
+                          setShowBranchesModal(true);
+                        }}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                      >
+                        <FileSpreadsheet className="h-4 w-4" />
+                        <span>{isAr ? 'رفع شيت إكسيل (CSV)' : 'Upload Excel Sheet'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBranchesModalInitialTab('add');
+                          setShowBranchesModal(true);
+                        }}
+                        className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>{isAr ? 'إضافة فرع يدوي' : 'Add Branch'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {companyBranches.map((b) => (
+                      <div
+                        key={b.id}
+                        className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-sky-300 transition-all flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <h5 className="font-bold text-xs text-slate-900">{b.name}</h5>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 shrink-0">
+                              {b.governorate}
+                            </span>
+                          </div>
+                          {b.address && (
+                            <p className="text-[11px] text-slate-500 mb-1 flex items-start gap-1">
+                              <MapPin className="h-3 w-3 text-slate-400 shrink-0 mt-0.5" />
+                              <span className="line-clamp-1">{b.address}</span>
+                            </p>
+                          )}
+                          <div className="flex items-center gap-3 text-[11px] text-slate-600 font-mono">
+                            {b.phone && (
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 text-slate-400" />
+                                {b.phone}
+                              </span>
+                            )}
+                            {b.managerName && (
+                              <span className="text-slate-600">
+                                مدير الفرع: {b.managerName}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="pt-2 mt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                            b.status === 'ACTIVE' 
+                              ? 'bg-emerald-100 text-emerald-800' 
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {b.status === 'ACTIVE' ? (isAr ? 'نشط' : 'Active') : (isAr ? 'معطل' : 'Inactive')}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBranchesModalInitialTab('list');
+                              setShowBranchesModal(true);
+                            }}
+                            className="text-sky-600 hover:text-sky-800 font-bold"
+                          >
+                            {isAr ? 'تعديل التفاصيل' : 'Edit Details'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* TAB 3: DIRECTOR PASSWORD */}
           {activeTab === 'password' && (
             <form onSubmit={handleChangeDirectorPassword} className="space-y-4 max-w-lg bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -813,6 +1001,15 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
         </div>
 
       </div>
+
+      {/* Embedded Branches & Excel Manager Modal */}
+      {showBranchesModal && (
+        <CompanyBranchesManagerModal
+          company={company}
+          onClose={() => setShowBranchesModal(false)}
+          initialTab={branchesModalInitialTab}
+        />
+      )}
     </div>
   );
 };

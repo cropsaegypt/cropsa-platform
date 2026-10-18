@@ -25,8 +25,14 @@ import {
   Camera,
   Image as ImageIcon,
   MessageSquare,
-  Mail
+  Mail,
+  Edit3,
+  FileSpreadsheet,
+  Phone,
+  Save
 } from 'lucide-react';
+import { CompanyBranchesManagerModal } from '../components/CompanyBranchesManagerModal';
+import { CompanyProfileSettingsModal } from '../components/CompanyProfileSettingsModal';
 
 export const CompaniesManagement: React.FC = () => {
   const { 
@@ -36,6 +42,7 @@ export const CompaniesManagement: React.FC = () => {
     users, 
     createCompany, 
     updateCompany, 
+    deleteCompany,
     t, 
     language 
   } = useStore();
@@ -43,6 +50,118 @@ export const CompaniesManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [selectedCompanyForDetails, setSelectedCompanyForDetails] = useState<InstallmentCompany | null>(null);
+
+  // Branches & Excel Sheet Manager Modal State
+  const [selectedCompanyForBranches, setSelectedCompanyForBranches] = useState<InstallmentCompany | null>(null);
+  const [branchesModalTab, setBranchesModalTab] = useState<'list' | 'add' | 'excel'>('list');
+
+  // Edit Company State
+  const [editingCompany, setEditingCompany] = useState<InstallmentCompany | null>(null);
+  const [editCompanyForm, setEditCompanyForm] = useState({
+    name: '',
+    nameEn: '',
+    code: '',
+    logo: '',
+    coverImage: '',
+    email: '',
+    phone: '',
+    commercialRegister: '',
+    taxNumber: '',
+    fraLicense: '',
+    creditCeiling: 20000000,
+    commissionRate: 3.5,
+    receivingChannel: 'PORTAL' as CompanyReceivingChannel,
+    whatsappNumber: '',
+    dispatchEmail: '',
+    contactPersonName: '',
+    allowedGovernorates: ['القاهرة', 'الجيزة'],
+    status: 'ACTIVE' as 'ACTIVE' | 'SUSPENDED'
+  });
+  const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
+
+  // Delete Company State
+  const [deletingCompany, setDeletingCompany] = useState<InstallmentCompany | null>(null);
+  const [isDeletingCompany, setIsDeletingCompany] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 4000);
+  };
+
+  const handleOpenEditCompany = (company: InstallmentCompany) => {
+    setEditingCompany(company);
+    setEditCompanyForm({
+      name: company.name || '',
+      nameEn: company.nameEn || '',
+      code: company.code || '',
+      logo: company.logo || '',
+      coverImage: company.coverImage || '',
+      email: company.email || '',
+      phone: company.phone || '',
+      commercialRegister: company.commercialRegister || '',
+      taxNumber: company.taxNumber || '',
+      fraLicense: company.fraLicense || '',
+      creditCeiling: company.creditCeiling || 20000000,
+      commissionRate: company.commissionRate || 3.5,
+      receivingChannel: company.receivingChannel || 'PORTAL',
+      whatsappNumber: company.whatsappNumber || '',
+      dispatchEmail: company.dispatchEmail || '',
+      contactPersonName: company.contactPersonName || '',
+      allowedGovernorates: company.allowedGovernorates || ['القاهرة', 'الجيزة'],
+      status: company.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE'
+    });
+  };
+
+  const handleSaveEditCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCompany) return;
+    setIsUpdatingCompany(true);
+    try {
+      await updateCompany(editingCompany.id, {
+        name: editCompanyForm.name,
+        nameEn: editCompanyForm.nameEn,
+        code: editCompanyForm.code.toUpperCase(),
+        logo: editCompanyForm.logo,
+        coverImage: editCompanyForm.coverImage,
+        email: editCompanyForm.email,
+        phone: editCompanyForm.phone,
+        commercialRegister: editCompanyForm.commercialRegister,
+        taxNumber: editCompanyForm.taxNumber,
+        fraLicense: editCompanyForm.fraLicense,
+        creditCeiling: Number(editCompanyForm.creditCeiling),
+        commissionRate: Number(editCompanyForm.commissionRate),
+        receivingChannel: editCompanyForm.receivingChannel,
+        whatsappNumber: editCompanyForm.whatsappNumber,
+        dispatchEmail: editCompanyForm.dispatchEmail,
+        contactPersonName: editCompanyForm.contactPersonName,
+        allowedGovernorates: editCompanyForm.allowedGovernorates,
+        status: editCompanyForm.status
+      });
+      showToast(language === 'ar' ? 'تم تحديث بيانات الشركة بنجاح وحفظها في قاعدة البيانات' : 'Company updated successfully');
+      setEditingCompany(null);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء حفظ تعديلات الشركة');
+    } finally {
+      setIsUpdatingCompany(false);
+    }
+  };
+
+  const handleConfirmDeleteCompany = async () => {
+    if (!deletingCompany) return;
+    setIsDeletingCompany(true);
+    try {
+      await deleteCompany(deletingCompany.id);
+      showToast(language === 'ar' ? `تم حذف شركة "${deletingCompany.name}" وفروعها نهائياً` : `Company ${deletingCompany.name} deleted`);
+      setDeletingCompany(null);
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء حذف الشركة');
+    } finally {
+      setIsDeletingCompany(false);
+    }
+  };
 
   // Programs & Required Documents Management State
   const [selectedCompanyForPrograms, setSelectedCompanyForPrograms] = useState<InstallmentCompany | null>(null);
@@ -250,6 +369,19 @@ export const CompaniesManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-4 w-4" />
+            <span>{toastMessage}</span>
+          </div>
+          <button onClick={() => setToastMessage('')} className="p-1 hover:bg-emerald-700 rounded-lg">
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white rounded-3xl p-6 lg:p-8 border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -417,33 +549,68 @@ export const CompaniesManagement: React.FC = () => {
               </div>
 
               {/* Card Footer: Branches, Staff, Details Modal */}
-              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-3 text-xs text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5 text-sky-600" /> {compBranches.length} {language === 'ar' ? 'فروع' : 'Branches'}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
+              <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCompanyForBranches(company);
+                      setBranchesModalTab('list');
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold border border-sky-200 transition-colors"
+                    title="عرض وإدارة فروع الشركة أو رفع شيت الإكسيل"
+                  >
+                    <Building2 className="h-3.5 w-3.5 text-sky-600" />
+                    <span>{compBranches.length} {language === 'ar' ? 'فروع (إدارة وشيت)' : 'Branches'}</span>
+                    <FileSpreadsheet className="h-3 w-3 text-emerald-600 ml-1" />
+                  </button>
+
+                  <span className="flex items-center gap-1 text-slate-500">
                     <Users className="h-3.5 w-3.5 text-purple-600" /> {compStaff.length} {language === 'ar' ? 'موظف' : 'Staff'}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleOpenProgramsModal(company)}
-                    className="px-3 py-1.5 text-xs font-bold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition-colors flex items-center gap-1"
-                    title="تعديل برامج التمويل والورق المطلوب لكل برنامج"
-                  >
-                    <Settings2 className="h-3.5 w-3.5 text-sky-600" />
-                    <span>الورق والبرامج</span>
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-50">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenProgramsModal(company)}
+                      className="px-2 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1"
+                      title="تعديل برامج التمويل والورق المطلوب"
+                    >
+                      <Settings2 className="h-3.5 w-3.5 text-slate-600" />
+                      <span>البرامج والورق</span>
+                    </button>
 
-                  <button
-                    onClick={() => setSelectedCompanyForDetails(company)}
-                    className="px-3 py-1.5 text-xs font-bold text-crobsa-700 bg-crobsa-50 hover:bg-crobsa-100 rounded-xl transition-colors"
-                  >
-                    {language === 'ar' ? 'الملف الكامل' : 'View Profile'}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditCompany(company)}
+                      className="px-2 py-1.5 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-xl transition-colors flex items-center gap-1"
+                      title="تعديل كافة بيانات وسجلات الشركة"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 text-sky-600" />
+                      <span>تعديل</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCompanyForDetails(company)}
+                      className="px-2.5 py-1.5 text-xs font-bold text-white bg-crobsa-700 hover:bg-crobsa-800 rounded-xl shadow-xs transition-colors"
+                    >
+                      {language === 'ar' ? 'الملف الكامل' : 'Profile'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeletingCompany(company)}
+                      className="p-1.5 text-rose-500 hover:text-white hover:bg-rose-600 rounded-xl border border-transparent hover:border-rose-600 transition-colors"
+                      title="حذف شركة التقسيط"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -838,53 +1005,367 @@ export const CompaniesManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: COMPANY FULL DETAILS */}
+      {/* MODAL: COMPANY FULL PROFILE & SECURITY SETTINGS */}
       {selectedCompanyForDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <CompanyProfileSettingsModal
+          company={selectedCompanyForDetails}
+          onClose={() => setSelectedCompanyForDetails(null)}
+        />
+      )}
+
+      {/* MODAL: COMPANY BRANCHES & EXCEL SPREADSHEET MANAGER */}
+      {selectedCompanyForBranches && (
+        <CompanyBranchesManagerModal
+          company={selectedCompanyForBranches}
+          onClose={() => setSelectedCompanyForBranches(null)}
+          initialTab={branchesModalTab}
+        />
+      )}
+
+      {/* MODAL: EDIT COMPANY */}
+      {editingCompany && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-5 animate-in fade-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
-                {Boolean(selectedCompanyForDetails.logo?.trim()) ? (
-                  <img src={selectedCompanyForDetails.logo} alt="" className="h-10 w-10 object-contain rounded-lg border p-0.5" />
-                ) : (
-                  <div className="h-10 w-10 rounded-lg border p-0.5 flex items-center justify-center text-slate-400 bg-slate-50">
-                    <Building2 className="h-5 w-5" />
-                  </div>
-                )}
+                <div className="h-10 w-10 rounded-2xl bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-100">
+                  <Edit3 className="h-5 w-5" />
+                </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">{selectedCompanyForDetails.name}</h3>
-                  <span className="font-mono text-xs text-sky-600 font-bold">{selectedCompanyForDetails.code}</span>
+                  <h3 className="font-bold text-slate-900 text-lg">تعديل بيانات شركة التقسيط</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{editingCompany.name} ({editingCompany.code})</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedCompanyForDetails(null)} className="text-slate-400 hover:text-slate-600">
+              <button 
+                onClick={() => setEditingCompany(null)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
                 <XCircle className="h-6 w-6" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-700">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-                <p><strong>{t('fraLicense')}:</strong> {selectedCompanyForDetails.fraLicense}</p>
-                <p><strong>{t('commercialRegister')}:</strong> {selectedCompanyForDetails.commercialRegister}</p>
-                <p><strong>{t('taxNumber')}:</strong> {selectedCompanyForDetails.taxNumber}</p>
-                <p><strong>{t('creditCeiling')}:</strong> {selectedCompanyForDetails.creditCeiling.toLocaleString()} {t('egp')}</p>
+            <form onSubmit={handleSaveEditCompany} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">اسم شركة التقسيط (بالعربي) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCompanyForm.name}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">اسم الشركة (بالإنجليزي)</label>
+                  <input
+                    type="text"
+                    value={editCompanyForm.nameEn}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, nameEn: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <strong className="block text-slate-800 mb-1">{t('requiredDocsList')}:</strong>
-                <ul className="list-disc list-inside space-y-1 text-slate-600">
-                  {selectedCompanyForDetails.requiredDocumentsList.map((doc, i) => (
-                    <li key={i}>{doc}</li>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">كود الشراكة *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCompanyForm.code}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, code: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">رخصة الرقابة المالية (FRA) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCompanyForm.fraLicense}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, fraLicense: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">حالة الشركة في النظام</label>
+                  <select
+                    value={editCompanyForm.status}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, status: e.target.value as any })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-bold"
+                  >
+                    <option value="ACTIVE">نشطة (Active)</option>
+                    <option value="SUSPENDED">معطلة مؤقتاً (Suspended)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">السجل التجاري</label>
+                  <input
+                    type="text"
+                    value={editCompanyForm.commercialRegister}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, commercialRegister: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">البطاقة الضريبية</label>
+                  <input
+                    type="text"
+                    value={editCompanyForm.taxNumber}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, taxNumber: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">سقف التمويل الممنوح (ج.م) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={editCompanyForm.creditCeiling}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, creditCeiling: Number(e.target.value) })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">نسبة العمولة % *</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={editCompanyForm.commissionRate}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, commissionRate: Number(e.target.value) })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">هاتف التواصل الرسمي</label>
+                  <input
+                    type="text"
+                    value={editCompanyForm.phone}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, phone: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">البريد الإلكتروني للشركة</label>
+                  <input
+                    type="email"
+                    value={editCompanyForm.email}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, email: e.target.value })}
+                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Receiving Channel & External Dispatch */}
+              <div className="p-3.5 bg-sky-50/60 rounded-2xl border border-sky-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-xs text-sky-950 flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-sky-600" />
+                    <span>قناة استقبال ومعالجة طلبات التمويل (Receiving Channel)</span>
+                  </label>
+                  <span className="text-[11px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-lg">
+                    {editCompanyForm.receivingChannel}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'PORTAL', label: 'بورتال كروبسا', desc: 'استقبال داخل المنظومة' },
+                    { id: 'WHATSAPP', label: 'واتساب مباشر', desc: 'إرسال مباشر للرقم' },
+                    { id: 'EMAIL', label: 'بريد إلكتروني', desc: 'إرسال إيميل رسمي' },
+                    { id: 'WHATSAPP_AND_EMAIL', label: 'واتساب + إيميل', desc: 'إرسال مزدوج' }
+                  ].map(ch => (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => setEditCompanyForm({ ...editCompanyForm, receivingChannel: ch.id as any })}
+                      className={`p-2.5 rounded-xl border text-right transition-all ${
+                        editCompanyForm.receivingChannel === ch.id
+                          ? 'bg-sky-600 text-white border-sky-600 shadow-sm font-bold'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="text-xs font-bold leading-tight">{ch.label}</div>
+                      <div className={`text-[10px] mt-0.5 ${editCompanyForm.receivingChannel === ch.id ? 'text-sky-100' : 'text-slate-400'}`}>
+                        {ch.desc}
+                      </div>
+                    </button>
                   ))}
-                </ul>
+                </div>
+
+                {(editCompanyForm.receivingChannel === 'WHATSAPP' || editCompanyForm.receivingChannel === 'WHATSAPP_AND_EMAIL') && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-800 mb-1">
+                      رقم واتساب الشركة لاستقبال الطلبات والاستعجال *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="01012345678"
+                      value={editCompanyForm.whatsappNumber}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, whatsappNumber: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-emerald-300 rounded-xl font-mono"
+                    />
+                  </div>
+                )}
+
+                {(editCompanyForm.receivingChannel === 'EMAIL' || editCompanyForm.receivingChannel === 'WHATSAPP_AND_EMAIL') && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-indigo-800 mb-1">
+                      البريد الإلكتروني المخصص لتلقي ملفات الائتمان والاستعجال *
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="approvals@company.com"
+                      value={editCompanyForm.dispatchEmail}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, dispatchEmail: e.target.value })}
+                      className="w-full text-xs p-2 bg-white border border-indigo-300 rounded-xl font-mono"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    اسم مسؤول الائتمان / نقطة الاتصال بالشركة
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="أ. تامر حسني - مدير ائتمان الشركات"
+                    value={editCompanyForm.contactPersonName}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, contactPersonName: e.target.value })}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              {/* Allowed Governorates */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1.5">المحافظات المصرح للشركة التمويل فيها:</label>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                  {EGYPT_GOVERNORATES.map(gov => {
+                    const isSelected = editCompanyForm.allowedGovernorates.includes(gov);
+                    return (
+                      <button
+                        type="button"
+                        key={gov}
+                        onClick={() => {
+                          setEditCompanyForm(prev => ({
+                            ...prev,
+                            allowedGovernorates: isSelected 
+                              ? prev.allowedGovernorates.filter(g => g !== gov)
+                              : [...prev.allowedGovernorates, gov]
+                          }));
+                        }}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                          isSelected
+                            ? 'bg-sky-600 text-white border-sky-600 font-bold'
+                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '} {gov}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Logo URL */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">رابط شعار الشركة (Logo URL)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editCompanyForm.logo}
+                    onChange={e => setEditCompanyForm({ ...editCompanyForm, logo: e.target.value })}
+                    className="flex-1 text-xs border border-slate-300 rounded-xl px-3 py-2 font-mono"
+                    placeholder="https://..."
+                  />
+                  {editCompanyForm.logo && (
+                    <img src={editCompanyForm.logo} alt="" className="h-9 w-9 rounded-lg object-contain border p-0.5 bg-white shrink-0" />
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingCompany(null)}
+                  className="px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl font-bold"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingCompany}
+                  className="px-6 py-2.5 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  <span>{isUpdatingCompany ? 'جاري الحفظ في سوبابيس...' : 'حفظ التعديلات في قاعدة البيانات'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE COMPANY CONFIRMATION */}
+      {deletingCompany && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl border border-rose-200 max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="h-12 w-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-6 w-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">تأكيد حذف شركة التقسيط نهائياً</h3>
+                <p className="text-xs text-rose-600 font-bold mt-0.5">تحذير: لا يمكن التراجع عن هذا الإجراء</p>
               </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-slate-100">
+            <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-100 space-y-2 text-xs text-slate-700">
+              <div className="flex items-center gap-2 font-bold text-slate-900">
+                <span>الشركة المستهدفة:</span>
+                <span className="text-rose-700 font-black">{deletingCompany.name} ({deletingCompany.code})</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed">
+                سيؤدي حذف هذه الشركة إلى إزالتها وفروعها التابعة ({branches.filter(b => b.companyId === deletingCompany.id).length} فروع) وحسابات موظفيها فوراً من قاعدة البيانات وسوبابيس (Supabase).
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
-                onClick={() => setSelectedCompanyForDetails(null)}
-                className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl"
+                type="button"
+                onClick={() => setDeletingCompany(null)}
+                disabled={isDeletingCompany}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
               >
-                {t('close')}
+                إلغاء التراجع
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteCompany}
+                disabled={isDeletingCompany}
+                className="px-5 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-md flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>{isDeletingCompany ? 'جاري الحذف...' : 'نعم، حذف الشركة وفروعها الآن'}</span>
               </button>
             </div>
           </div>
