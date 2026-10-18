@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useStore } from '../context/Store';
 import { InstallmentCompany, CompanyBranch, EGYPT_GOVERNORATES } from '../types';
+import { generateBranchCredentials, matchGovernorate } from '../utils/branchCredentials';
 import { 
   Building2, 
   MapPin, 
@@ -43,6 +44,8 @@ interface ParsedBranchItem {
   address: string;
   phone: string;
   managerName: string;
+  username: string;
+  password: string;
   isValid: boolean;
   errors: string[];
 }
@@ -227,15 +230,15 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
 فرع طنطا,الغربية,شارع الجيش بجوار المحطة,0403300600,سامح الشربيني
 فرع الزقازيق,الشرقية,شارع وادي النيل برج السلام,0552300500,عمرو عبد العظيم`;
 
-  const simpleSampleCsvContent = `اسم الفرع
-فرع التجمع الخامس
-فرع المهندسين
-فرع سموحة
-فرع المنصورة
-فرع طنطا
-فرع الزقازيق
-فرع أسيوط
-فرع سوهاج`;
+  const simpleSampleCsvContent = `اسم الفرع,المحافظة
+فرع التجمع الخامس,القاهرة
+فرع المهندسين,الجيزة
+فرع سموحة,الإسكندرية
+فرع المنصورة,الدقهلية
+فرع طنطا,الغربية
+فرع الزقازيق,الشرقية
+فرع أسيوط,أسيوط
+فرع سوهاج,سوهاج`;
 
   const activeSampleCsvContent = isSimpleMode ? simpleSampleCsvContent : fullSampleCsvContent;
 
@@ -245,7 +248,7 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `نموذج_استيراد_فروع_${isSimpleMode ? 'اسماء_فقط_' : ''}${company.code || 'company'}.csv`);
+    link.setAttribute('download', `نموذج_استيراد_فروع_${isSimpleMode ? 'اسماء_ومحافظات_' : 'شامل_'}${company.code || 'company'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -287,27 +290,33 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
       }
 
       const branchName = parts[0] || '';
-      let governorate = parts[1] || defaultGov;
-      const address = parts[2] || '';
-      const phone = parts[3] || '';
-      const managerName = parts[4] || '';
+      const rawGov = parts[1] || '';
+      let governorate = defaultGov;
+      const address = (!useSimple && parts[2]) ? parts[2] : '';
+      const phone = (!useSimple && parts[3]) ? parts[3] : '';
+      const managerName = (!useSimple && parts[4]) ? parts[4] : '';
 
       const errors: string[] = [];
       if (!branchName.trim()) {
         errors.push(isAr ? 'اسم الفرع مفقود' : 'Branch name missing');
       }
 
-      // Check governorate if provided or full mode
-      if (!useSimple && parts[1]) {
-        const matchedGov = EGYPT_GOVERNORATES.find(g => 
-          g.trim().replace(/[أإآ]/g, 'ا') === governorate.trim().replace(/[أإآ]/g, 'ا')
-        );
+      // Check governorate in both modes
+      if (rawGov.trim()) {
+        const matchedGov = matchGovernorate(rawGov);
         if (matchedGov) {
           governorate = matchedGov;
         } else {
-          errors.push(isAr ? `المحافظة غير معروفة: "${governorate}"` : `Unknown governorate: ${governorate}`);
+          errors.push(isAr ? `المحافظة غير معروفة: "${rawGov}"` : `Unknown governorate: ${rawGov}`);
         }
+      } else {
+        governorate = defaultGov;
       }
+
+      // Generate credentials automatically from system
+      const creds = generateBranchCredentials(branchName || `فرع ${idx + 1}`, company.code || 'comp', idx + 1);
+      const username = (!useSimple && parts[5]?.trim()) ? parts[5].trim() : creds.username;
+      const password = (!useSimple && parts[6]?.trim()) ? parts[6].trim() : creds.password;
 
       items.push({
         id: `parsed_${Date.now()}_${idx}`,
@@ -316,6 +325,8 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
         address,
         phone,
         managerName,
+        username,
+        password,
         isValid: errors.length === 0,
         errors
       });
@@ -357,6 +368,8 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
           address: b.address,
           phone: b.phone,
           managerName: b.managerName,
+          username: b.username,
+          password: b.password,
           active: true
         }))
       );
@@ -364,7 +377,7 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
       setParsedBranches([]);
       setPasteContent('');
       setActiveTab('list');
-      showToast(isAr ? `تم بنجاح استيراد ${res.count} فرع وحفظها في قاعدة البيانات` : `Successfully imported ${res.count} branches`);
+      showToast(isAr ? `تم بنجاح استيراد ${res.count} فرع وتوليد حسابات الدخول وحفظها في قاعدة البيانات` : `Successfully imported ${res.count} branches with login accounts`);
     } catch (err) {
       console.error(err);
       alert(isAr ? 'حدث خطأ أثناء استيراد الفروع' : 'Error importing branches');
@@ -985,7 +998,7 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                 </div>
               </div>
 
-              {/* Import Mode Switcher (نمط الأسماء فقط vs النمط الشامل) */}
+              {/* Import Mode Switcher (نمط الأسماء والمحافظات vs النمط الشامل) */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
@@ -994,8 +1007,8 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     {isSimpleMode 
-                      ? 'نمط الأسماء فقط: يكفيك إدخال أسماء الفروع فقط، وسيقوم النظام فوراً بتوليد يوزر وباسورد لكل فرع وتعيين المحافظة تلقائياً.' 
-                      : 'النمط الشامل: يتضمن اسم الفرع والمحافظة وعنوان الفرع ورقم الهاتف واسم المدير.'}
+                      ? 'نمط الأسماء والمحافظات فقط: أدخل اسم الفرع والمحافظة، وسيقوم النظام فوراً بتوليد يوزر وباسورد تلقائياً لكل فرع وربطه بمحافظته لتوجيه طلبات التقسيط عليه.' 
+                      : 'النمط الشامل: يتضمن اسم الفرع والمحافظة وعنوان الفرع ورقم الهاتف واسم المدير، مع توليد يوزر وباسورد من النظام تلقائياً.'}
                   </p>
                 </div>
 
@@ -1021,7 +1034,7 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                     }`}
                   >
                     <Zap className="h-3 w-3" />
-                    <span>نمط الأسماء فقط (Simple Mode)</span>
+                    <span>نمط الأسماء والمحافظات فقط</span>
                   </button>
                 </div>
               </div>
@@ -1098,7 +1111,10 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                       setPasteContent(e.target.value);
                       parseRawText(e.target.value);
                     }}
-                    placeholder={`انسخ صفوف الفروع من برنامج إكسيل والصقها هنا...\nمثال:\nاسم الفرع\tالمحافظة\tالعنوان\tالهاتف\tاسم المدير`}
+                    placeholder={isSimpleMode 
+                      ? `انسخ الفروع والمحافظات والصقها هنا...\nمثال:\nفرع التجمع الخامس\tالقاهرة\nفرع المهندسين\tالجيزة\nفرع سموحة\tالإسكندرية`
+                      : `انسخ صفوف الفروع من برنامج إكسيل والصقها هنا...\nمثال:\nاسم الفرع\tالمحافظة\tالعنوان\tالهاتف\tاسم المدير`
+                    }
                     className="w-full text-xs font-mono border border-slate-200 rounded-2xl p-4 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
@@ -1117,7 +1133,7 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                         <span>جاهز للاستيراد: <strong className="font-bold text-emerald-700">{validParsedBranchesCount}</strong></span>
                         <span>• بها ملاحظات: <strong className="font-bold text-rose-600">{parsedBranches.length - validParsedBranchesCount}</strong></span>
                         <span className="text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 text-[11px]">
-                          ⚡ سيتم توليد اسم مستخدم وباسورد تلقائياً لكل فرع ([كود]@2026)
+                          ⚡ يقوم النظام بتوليد اسم مستخدم وباسورد تلقائياً لكل فرع ([كود]@2026)
                         </span>
                       </p>
                     </div>
@@ -1140,9 +1156,11 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                           <th className="p-2.5">#</th>
                           <th className="p-2.5">اسم الفرع</th>
                           <th className="p-2.5">المحافظة</th>
-                          <th className="p-2.5">العنوان</th>
-                          <th className="p-2.5">الهاتف</th>
-                          <th className="p-2.5">المدير</th>
+                          <th className="p-2.5">اسم المستخدم (تلقائي)</th>
+                          <th className="p-2.5">كلمة المرور (تلقائي)</th>
+                          {!isSimpleMode && <th className="p-2.5">العنوان</th>}
+                          {!isSimpleMode && <th className="p-2.5">الهاتف</th>}
+                          {!isSimpleMode && <th className="p-2.5">المدير</th>}
                           <th className="p-2.5">الحالة</th>
                         </tr>
                       </thead>
@@ -1152,13 +1170,23 @@ export const CompanyBranchesManagerModal: React.FC<CompanyBranchesManagerModalPr
                             <td className="p-2.5 font-mono text-slate-400">{index + 1}</td>
                             <td className="p-2.5 font-bold text-slate-900">{item.name || '—'}</td>
                             <td className="p-2.5 font-medium text-slate-700">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                              <span className="bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded text-[11px] font-bold">
                                 {item.governorate}
                               </span>
                             </td>
-                            <td className="p-2.5 text-slate-600 truncate max-w-xs">{item.address || '—'}</td>
-                            <td className="p-2.5 font-mono text-slate-600">{item.phone || '—'}</td>
-                            <td className="p-2.5 text-slate-600">{item.managerName || '—'}</td>
+                            <td className="p-2.5">
+                              <span className="font-mono text-[11px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 select-all">
+                                {item.username}
+                              </span>
+                            </td>
+                            <td className="p-2.5">
+                              <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 select-all">
+                                {item.password}
+                              </span>
+                            </td>
+                            {!isSimpleMode && <td className="p-2.5 text-slate-600 truncate max-w-xs">{item.address || '—'}</td>}
+                            {!isSimpleMode && <td className="p-2.5 font-mono text-slate-600">{item.phone || '—'}</td>}
+                            {!isSimpleMode && <td className="p-2.5 text-slate-600">{item.managerName || '—'}</td>}
                             <td className="p-2.5">
                               {item.isValid ? (
                                 <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">

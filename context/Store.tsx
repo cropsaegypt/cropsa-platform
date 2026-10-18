@@ -1740,6 +1740,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }>;
   }) => {
     const targetCompId = currentCompany?.id || currentUser?.companyId || 'comp_01';
+    const targetComp = companies.find(c => c.id === targetCompId);
+    const compCode = targetComp?.code || 'COMP';
     const nowStr = new Date().toISOString();
     
     // 1. Process branches
@@ -1757,14 +1759,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       let bId = branchNameToIdMap[normalizedName];
       if (!bId) {
         bId = `br_bulk_${Date.now()}_${i}`;
+        const branchName = bData.name.trim();
+        const creds = generateBranchCredentials(branchName, compCode, i + 1);
         const newBranch: CompanyBranch = {
           id: bId,
           companyId: targetCompId,
-          name: bData.name.trim(),
-          governorate: bData.governorate.trim() || 'القاهرة',
+          name: branchName,
+          governorate: bData.governorate.trim() || targetComp?.allowedGovernorates?.[0] || 'القاهرة',
           address: bData.address?.trim() || '',
           phone: bData.phone?.trim() || '',
           managerName: bData.managerName?.trim() || '',
+          username: creds.username,
+          password: creds.password,
           active: true
         };
         createdBranches.push(newBranch);
@@ -1785,20 +1791,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const createdStaffUsers: User[] = [];
     for (let j = 0; j < data.staff.length; j++) {
       const sData = data.staff[j];
-      const assignedBranchId = branchNameToIdMap[sData.branchName.trim().toLowerCase()] || createdBranches[0]?.id || branches[0]?.id || 'br_01';
+      const branchName = sData.branchName.trim();
+      const assignedBranchId = branchNameToIdMap[branchName.toLowerCase()] || createdBranches[0]?.id || branches[0]?.id || 'br_01';
       const staffId = `u_bulk_staff_${Date.now()}_${j}`;
+      const creds = generateBranchCredentials(branchName || `فرع ${j + 1}`, compCode, j + 1);
+      const finalUsername = sData.username?.trim() || creds.username;
+      const finalPassword = sData.password?.trim() || creds.password;
+
       const newStaffUser: User = {
         id: staffId,
-        name: sData.name.trim(),
-        username: sData.username.trim(),
-        password: sData.password.trim(),
+        name: sData.name.trim() || `مسؤول ${branchName}`,
+        username: finalUsername,
+        password: finalPassword,
         role: sData.role === InstallmentCompanyStaffRole.BRANCH_MANAGER ? Role.BRANCH_MANAGER : Role.COMPANY_EMPLOYEE,
-        staffRole: sData.role,
+        staffRole: sData.role || InstallmentCompanyStaffRole.BRANCH_MANAGER,
         companyId: targetCompId,
         branchId: assignedBranchId,
-        branchName: sData.branchName.trim(),
-        governorate: sData.governorate.trim() || 'القاهرة',
-        email: sData.email || `${sData.username.trim()}@partner.com`,
+        branchName: branchName,
+        governorate: sData.governorate.trim() || targetComp?.allowedGovernorates?.[0] || 'القاهرة',
+        email: sData.email || `${finalUsername}@${compCode.toLowerCase()}.cropsa.eg`,
         phone: sData.phone || '',
         mustChangePassword: false,
         permissions: sData.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps'],
@@ -1828,6 +1839,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             address: b.address || '',
             phone: b.phone || '',
             manager_name: b.managerName || '',
+            username: b.username,
+            password: b.password,
             active: true
           })));
         }
@@ -1837,6 +1850,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             name: s.name,
             username: s.username,
             email: s.email,
+            password: s.password,
             role: s.role,
             staff_role: s.staffRole || null,
             company_id: s.companyId || null,

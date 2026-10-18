@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../context/Store';
 import { InstallmentCompanyStaffRole, Role, EGYPT_GOVERNORATES } from '../types';
+import { generateBranchCredentials, matchGovernorate } from '../utils/branchCredentials';
 import { 
   FileSpreadsheet, 
   Upload, 
@@ -19,7 +20,8 @@ import {
   Phone, 
   UserCheck, 
   MapPin,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 
 interface ParsedBranchRow {
@@ -62,23 +64,37 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
   const [importing, setImporting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<CreatedBranchCredential[] | null>(null);
+  const [isSimpleMode, setIsSimpleMode] = useState(false);
 
-  // Simplified CSV Template content: ONLY BRANCHES AND THEIR MANAGER PASSWORDS
-  const sampleCsvContent = `اسم الفرع,المحافظة,عنوان الفرع,هاتف الفرع,اسم مدير الفرع,اسم مستخدم المدير,كلمة مرور الفرع,هاتف المدير
-فرع التجمع الخامس,القاهرة,شارع التسعين الشمالي مبنى 45,0228100100,محمد عبد الرحمن,bm_tagamoa,pass2026,01011122233
-فرع المهندسين,الجيزة,شارع جامعة الدول العربية 12,0237400200,ياسر الشناوي,bm_mohandessin,pass2026,01222233344
-فرع سموحة,الإسكندرية,ميدان فيكتور عمانويل برج الأطباء,034200300,خالد السعدني,bm_alex,pass2026,01555566677
-فرع المنصورة,الدقهلية,شارع الجمهورية أمام الجامعة,0502200400,طارق النجار,bm_mansoura,pass2026,01033344455
-فرع الزقازيق,الشرقية,شارع وادي النيل برج السلام,0552300500,عمرو عبد العظيم,bm_zagazig,pass2026,01144455566
-فرع طنطا,الغربية,شارع الجيش بجوار المحطة,0403300600,سامح الشربيني,bm_tanta,pass2026,01088776655`;
+  // Simple Mode Template (Branch Name + Governorate)
+  const simpleCsvContent = `اسم الفرع,المحافظة
+فرع التجمع الخامس,القاهرة
+فرع المهندسين,الجيزة
+فرع سموحة,الإسكندرية
+فرع المنصورة,الدقهلية
+فرع طنطا,الغربية
+فرع الزقازيق,الشرقية
+فرع أسيوط,أسيوط
+فرع سوهاج,سوهاج`;
+
+  // Full Mode Template (Complete Details - Auto generated credentials)
+  const fullCsvContent = `اسم الفرع,المحافظة,عنوان الفرع,هاتف الفرع,اسم مدير الفرع
+فرع التجمع الخامس,القاهرة,شارع التسعين الشمالي مبنى 45,0228100100,محمد عبد الرحمن
+فرع المهندسين,الجيزة,شارع جامعة الدول العربية 12,0237400200,ياسر الشناوي
+فرع سموحة,الإسكندرية,ميدان فيكتور عمانويل برج الأطباء,034200300,خالد السعدني
+فرع المنصورة,الدقهلية,شارع الجمهورية أمام الجامعة,0502200400,طارق النجار
+فرع طنطا,الغربية,شارع الجيش بجوار المحطة,0403300600,سامح الشربيني
+فرع الزقازيق,الشرقية,شارع وادي النيل برج السلام,0552300500,عمرو عبد العظيم`;
+
+  const activeSampleCsv = isSimpleMode ? simpleCsvContent : fullCsvContent;
 
   // Download Sample CSV
   const handleDownloadSampleCsv = () => {
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + sampleCsvContent;
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + activeSampleCsv;
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `نموذج_استيراد_الفروع_كروبسا_${currentCompany?.code || 'partner'}.csv`);
+    link.setAttribute('download', `نموذج_استيراد_فروع_${isSimpleMode ? 'اسماء_ومحافظات_' : 'شامل_'}${currentCompany?.code || 'partner'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -86,35 +102,55 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
 
   // Load Demo Data for fast testing
   const handleLoadDemoData = () => {
-    parseCsvString(sampleCsvContent);
+    parseCsvString(activeSampleCsv, isSimpleMode);
   };
 
-  // Parser helper
-  const parseCsvString = (text: string) => {
+  // Parser helper (Automatically generates username and password from the system)
+  const parseCsvString = (text: string, simpleModeOverride?: boolean) => {
+    const useSimple = simpleModeOverride !== undefined ? simpleModeOverride : isSimpleMode;
     const lines = text.trim().split(/\r?\n/).filter(line => line.trim().length > 0);
-    if (lines.length <= 1) return;
+    if (lines.length === 0) return;
 
     const rows: ParsedBranchRow[] = [];
-    const dataLines = lines.slice(1); // skip headers
+    const firstLineLower = lines[0].toLowerCase();
+    const hasHeader = firstLineLower.includes('اسم') || firstLineLower.includes('branch') || firstLineLower.includes('محافظة');
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    const compCode = currentCompany?.code || 'COMP';
+    const defaultGov = currentCompany?.allowedGovernorates?.[0] || 'القاهرة';
 
     dataLines.forEach((line, index) => {
       const delimiter = line.includes('\t') ? '\t' : ',';
       const cols = line.split(delimiter).map(c => c.replace(/^["']|["']$/g, '').trim());
 
-      const branchName = cols[0] || `فرع جديد ${index + 1}`;
-      const governorate = cols[1] || 'القاهرة';
-      const address = cols[2] || '';
-      const branchPhone = cols[3] || '';
-      const managerName = cols[4] || `مدير ${branchName}`;
-      const managerUsername = cols[5] || `bm_${index + 1}`;
-      const managerPassword = cols[6] || 'pass2026';
-      const managerPhone = cols[7] || '';
+      const branchName = cols[0] || '';
+      const rawGov = cols[1] || '';
+      let governorate = defaultGov;
+      const address = (!useSimple && cols[2]) ? cols[2] : '';
+      const branchPhone = (!useSimple && cols[3]) ? cols[3] : '';
+      const managerName = (!useSimple && cols[4]) ? cols[4] : `مدير ${branchName || `فرع ${index + 1}`}`;
 
       const errors: string[] = [];
-      if (!branchName) errors.push('اسم الفرع مطلوب');
-      if (!governorate) errors.push('المحافظة مطلوبة');
-      if (!managerUsername) errors.push('اسم مستخدم مدير الفرع مطلوب');
-      if (!managerPassword) errors.push('كلمة مرور الفرع مطلوبة');
+      if (!branchName.trim()) {
+        errors.push(isAr ? 'اسم الفرع مطلوب' : 'Branch name required');
+      }
+
+      if (rawGov.trim()) {
+        const matched = matchGovernorate(rawGov);
+        if (matched) {
+          governorate = matched;
+        } else {
+          errors.push(isAr ? `المحافظة غير معروفة: "${rawGov}"` : `Unknown governorate: ${rawGov}`);
+        }
+      } else {
+        governorate = defaultGov;
+      }
+
+      // Automatically generate credentials from the system for each branch!
+      const creds = generateBranchCredentials(branchName || `فرع ${index + 1}`, compCode, index + 1);
+      const managerUsername = (!useSimple && cols[5]?.trim()) ? cols[5].trim() : creds.username;
+      const managerPassword = (!useSimple && cols[6]?.trim()) ? cols[6].trim() : creds.password;
+      const managerPhone = (!useSimple && cols[7]?.trim()) ? cols[7].trim() : branchPhone;
 
       rows.push({
         id: `row_${index}`,
@@ -408,6 +444,47 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
         </div>
       )}
 
+      {/* Mode Switcher */}
+      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+            <Zap className="h-4 w-4 text-amber-500" />
+            <span>{isAr ? 'تحديد نمط الملف والشيت المطلوب رفعه:' : 'Select Import Mode:'}</span>
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {isSimpleMode 
+              ? (isAr ? 'نموذج الأسماء والمحافظات فقط: يكفيك كتابة اسم الفرع والمحافظة، وسيقوم النظام فوراً بتوليد الحسابات وكلمات المرور تلقائياً وربط الفروع جغرافياً لتوجيه طلبات التقسيط.' : 'Simple mode: Branch name and governorate only. The system generates all credentials automatically.')
+              : (isAr ? 'النموذج الكامل: يتضمن اسم الفرع والمحافظة والعنوان والهاتف واسم المدير، مع توليد اسم المستخدم وكلمة المرور تلقائياً من النظام.' : 'Full mode: Complete details, with credentials generated automatically by the system.')}
+          </p>
+        </div>
+
+        <div className="inline-flex p-1 bg-white border border-slate-200 rounded-xl text-xs font-bold shrink-0 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => { setIsSimpleMode(false); setParsedRows([]); }}
+            className={`px-3.5 py-1.5 rounded-lg transition-all ${
+              !isSimpleMode 
+                ? 'bg-slate-900 text-white shadow-xs font-bold' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {isAr ? 'النمط الكامل (التفاصيل الكاملة)' : 'Full Mode'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsSimpleMode(true); setParsedRows([]); }}
+            className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1 ${
+              isSimpleMode 
+                ? 'bg-emerald-600 text-white shadow-xs font-bold' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Zap className="h-3 w-3" />
+            <span>{isAr ? 'نمط الأسماء والمحافظات فقط' : 'Names & Govs Only'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Main Import Work Area */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         
@@ -485,7 +562,10 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
               rows={6}
               value={pasteData}
               onChange={e => setPasteData(e.target.value)}
-              placeholder="اسم الفرع	المحافظة	العنوان	هاتف الفرع	مدير الفرع	اسم المستخدم	كلمة المرور	هاتف المدير..."
+              placeholder={isSimpleMode 
+                ? "اسم الفرع\tالمحافظة\nفرع التجمع الخامس\tالقاهرة\nفرع المهندسين\tالجيزة\nفرع سموحة\tالإسكندرية..."
+                : "اسم الفرع\tالمحافظة\tالعنوان\tهاتف الفرع\tاسم المدير..."
+              }
               className="w-full text-xs font-mono p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-slate-900 focus:outline-none transition-all"
             />
             <button
@@ -511,10 +591,11 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
                   {parsedRows.length} {isAr ? 'فرع' : 'branches'}
                 </span>
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {isAr 
-                  ? 'تحقق من صحة الفروع وأسماء المستخدمين وكلمات المرور المحددة لمديري الفروع.' 
-                  : 'Verify branch names, governorates, and manager credentials before saving.'}
+              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>{isAr ? 'تحقق من الفروع والمحافظات المحددة.' : 'Verify branches and governorates.'}</span>
+                <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
+                  ⚡ {isAr ? 'يقوم النظام بتوليد اسم مستخدم وباسورد تلقائياً لكل فرع ([كود]@2026)' : 'Automated credentials generated by system'}
+                </span>
               </p>
             </div>
 
@@ -552,10 +633,11 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
                 <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
                   <th className="p-3 font-semibold">اسم الفرع</th>
                   <th className="p-3 font-semibold">المحافظة</th>
-                  <th className="p-3 font-semibold">العنوان</th>
-                  <th className="p-3 font-semibold">مدير الفرع</th>
-                  <th className="p-3 font-semibold">اسم مستخدم المدير</th>
-                  <th className="p-3 font-semibold">كلمة المرور</th>
+                  <th className="p-3 font-semibold">اسم مستخدم المدير (تلقائي)</th>
+                  <th className="p-3 font-semibold">كلمة المرور (تلقائي)</th>
+                  {!isSimpleMode && <th className="p-3 font-semibold">العنوان</th>}
+                  {!isSimpleMode && <th className="p-3 font-semibold">هاتف الفرع</th>}
+                  {!isSimpleMode && <th className="p-3 font-semibold">مدير الفرع</th>}
                   <th className="p-3 font-semibold">الحالة</th>
                 </tr>
               </thead>
@@ -563,11 +645,16 @@ export const CompanyExcelImport: React.FC<{ onBack?: () => void }> = ({ onBack }
                 {parsedRows.map((r, idx) => (
                   <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="p-3 font-bold text-slate-900">{r.branchName}</td>
-                    <td className="p-3 text-slate-600">{r.governorate}</td>
-                    <td className="p-3 text-slate-500 max-w-xs truncate">{r.address || '—'}</td>
-                    <td className="p-3 text-slate-800">{r.managerName || '—'}</td>
-                    <td className="p-3 font-mono text-slate-800 font-bold bg-slate-50/40">{r.managerUsername}</td>
-                    <td className="p-3 font-mono text-emerald-800 font-bold bg-emerald-50/40">{r.managerPassword}</td>
+                    <td className="p-3 text-slate-600">
+                      <span className="bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded text-[11px] font-bold">
+                        {r.governorate}
+                      </span>
+                    </td>
+                    <td className="p-3 font-mono text-slate-800 font-bold bg-slate-50/40 select-all">{r.managerUsername}</td>
+                    <td className="p-3 font-mono text-emerald-800 font-bold bg-emerald-50/40 select-all">{r.managerPassword}</td>
+                    {!isSimpleMode && <td className="p-3 text-slate-500 max-w-xs truncate">{r.address || '—'}</td>}
+                    {!isSimpleMode && <td className="p-3 font-mono text-slate-600">{r.branchPhone || '—'}</td>}
+                    {!isSimpleMode && <td className="p-3 text-slate-800">{r.managerName || '—'}</td>}
                     <td className="p-3">
                       {r.isValid ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">

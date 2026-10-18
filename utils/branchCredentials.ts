@@ -1,3 +1,5 @@
+import { EGYPT_GOVERNORATES } from '../types';
+
 /**
  * Helper to generate automatic branch login credentials (username & password)
  * - Username: [CompanyCode]_[branch_slug]_[index]
@@ -126,4 +128,27 @@ export function generateBranchCredentials(
   const password = `${shortSlug}@2026`;
 
   return { username, password, slug };
+}
+
+/**
+ * Normalizes governorate string for resilient matching (ignoring hamzas, taa marbuta, spaces)
+ */
+export function normalizeGovernorate(gov?: string): string {
+  return (gov || '')
+    .trim()
+    .replace(/[أإآا]/g, 'ا')
+    .replace(/ة$/g, 'ه')
+    .replace(/ى$/g, 'ي')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
+/**
+ * Matches an input governorate string against official Egyptian governorates
+ */
+export function matchGovernorate(inputGov: string): string | null {
+  if (!inputGov || !inputGov.trim()) return null;
+  const norm = normalizeGovernorate(inputGov);
+  const found = EGYPT_GOVERNORATES.find(g => normalizeGovernorate(g) === norm);
+  return found || null;
 }
