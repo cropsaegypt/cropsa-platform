@@ -117,8 +117,8 @@ export const CompaniesManagement: React.FC = () => {
       contactPersonName: company.contactPersonName || '',
       allowedGovernorates: company.allowedGovernorates || ['القاهرة', 'الجيزة'],
       status: company.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
-      adminUsername: compAdmin?.username || compAdmin?.email || '',
-      adminPassword: compAdmin?.password || ''
+      adminUsername: compAdmin?.username || compAdmin?.email || company.adminUsername || company.adminEmail || '',
+      adminPassword: compAdmin?.password || company.adminPassword || ''
     });
   };
 
@@ -149,8 +149,10 @@ export const CompaniesManagement: React.FC = () => {
       });
 
       if (editCompanyForm.adminUsername.trim() || editCompanyForm.adminPassword.trim()) {
+        const cleanUser = editCompanyForm.adminUsername.trim();
         await updateCompanyAdminCredentials(editingCompany.id, {
-          username: editCompanyForm.adminUsername.trim(),
+          username: cleanUser,
+          email: cleanUser.includes('@') ? cleanUser : undefined,
           password: editCompanyForm.adminPassword.trim() || undefined
         });
       }

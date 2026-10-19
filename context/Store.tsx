@@ -524,29 +524,89 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateUserProfile = async (userId: string, updates: Partial<User>) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
-    if (currentUser && currentUser.id === userId) {
-      setCurrentUser(prev => prev ? { ...prev, ...updates } : null);
-    }
-    if (supabase) {
+    let nextUsersList: User[] = [];
+    setUsers(prev => {
+      nextUsersList = prev.map(u => u.id === userId ? { ...u, ...updates } : u);
       try {
-        const payload: Record<string, any> = {};
-        if (updates.name) payload.name = updates.name;
-        if (updates.username) payload.username = updates.username;
-        if (updates.password) payload.password = updates.password;
-        if (updates.email) payload.email = updates.email;
-        if (updates.phone !== undefined) payload.phone = updates.phone;
-        if (updates.governorate !== undefined) payload.governorate = updates.governorate;
-        if (updates.walletBalance !== undefined) payload.wallet_balance = updates.walletBalance;
-        if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
-        if (updates.mustChangePassword !== undefined) payload.must_change_password = updates.mustChangePassword;
-        if (Object.keys(payload).length > 0) {
-          await supabase.from('users').update(payload).eq('id', userId);
-        }
+        localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsersList));
+      } catch (e) {}
+      return nextUsersList;
+    });
+
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser(prev => {
+        if (!prev) return null;
+        const updated = { ...prev, ...updates };
+        try {
+          sessionStorage.setItem('cropsa_active_user', JSON.stringify(updated));
+          sessionStorage.setItem('crobsa_active_user', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+    }
+
+    const targetUser = nextUsersList.find(u => u.id === userId);
+
+    if (supabase && targetUser) {
+      try {
+        // 1. Upsert into Supabase users table (inserts if not present, updates if present)
+        await supabase.from('users').upsert({
+          id: targetUser.id,
+          name: targetUser.name,
+          username: targetUser.username,
+          email: targetUser.email,
+          password: targetUser.password,
+          role: targetUser.role,
+          staff_role: targetUser.staffRole || null,
+          company_id: targetUser.companyId || null,
+          branch_id: targetUser.branchId || null,
+          governorate: targetUser.governorate || null,
+          phone: targetUser.phone || null,
+          wallet_balance: targetUser.walletBalance || 0,
+          commission_rate: targetUser.commissionRate || 0,
+          must_change_password: targetUser.mustChangePassword ?? false,
+          active: true
+        });
+
+        // 2. Persist full users array in system_settings for universal cross-device / cross-browser sync
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsersList,
+          updated_at: new Date().toISOString()
+        });
       } catch (err) {
         console.warn('Supabase updateUserProfile fallback:', err);
       }
     }
+
+    // 3. If target user is an installment company admin, also persist company admin credentials
+    if (targetUser?.companyId && (targetUser.role === Role.INSTALLMENT_COMPANY || targetUser.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)) {
+      setCompanies(prev => {
+        const nextComps = prev.map(c => {
+          if (c.id === targetUser.companyId) {
+            return {
+              ...c,
+              adminUsername: targetUser.username,
+              adminEmail: targetUser.email,
+              adminPassword: targetUser.password
+            };
+          }
+          return c;
+        });
+        if (supabase) {
+          supabase.from('system_settings').upsert({
+            id: 'companies_data',
+            data: nextComps,
+            updated_at: new Date().toISOString()
+          }).catch(console.warn);
+        }
+        try {
+          localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
+        } catch (e) {}
+        return nextComps;
+      });
+    }
+
     try {
       await updateDoc(doc(db, 'users', userId), updates);
     } catch (err) {
@@ -689,7 +749,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           extTmplRes,
           demoWipedRes,
           companiesDataRes,
-          branchDataRes
+          branchDataRes,
+          usersDataRes
         ] = await Promise.all([
           supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
           supabase!.from('companies').select('*'),
@@ -702,7 +763,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supabase!.from('system_settings').select('data').eq('id', 'external_dispatch_templates').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'system_demo_wiped').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'company_branches_data').maybeSingle()
+          supabase!.from('system_settings').select('data').eq('id', 'company_branches_data').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'users_data').maybeSingle()
         ]);
 
         const isRemoteWiped = demoWipedRes?.data?.data?.wiped === true;
@@ -868,34 +930,104 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 5. Process Users & Sync active session
         const userMap = new Map<string, User>();
+        // First seed mock users
         MOCK_USERS.forEach(m => userMap.set(m.id, m));
+
+        // Merge users_data from system_settings if available (ensures full custom user objects & cross-browser credentials)
+        if (usersDataRes?.data?.data && Array.isArray(usersDataRes.data.data)) {
+          usersDataRes.data.data.forEach((u: User) => {
+            if (u && u.id) {
+              const existing = userMap.get(u.id);
+              userMap.set(u.id, {
+                ...existing,
+                ...u,
+                password: u.password || existing?.password || 'password'
+              });
+            }
+          });
+        }
+
+        // Merge relational users table from Supabase
         if (userRes?.data && userRes.data.length > 0) {
           userRes.data.forEach((u: any) => {
-            const existingMock = MOCK_USERS.find(m => m.id === u.id || m.username === u.username);
-            const branchObj = Array.from(branchMap.values()).find(b => b.id === (u.branch_id || existingMock?.branchId));
+            const existingUser = userMap.get(u.id) || MOCK_USERS.find(m => m.id === u.id || m.username === u.username);
+            const branchObj = Array.from(branchMap.values()).find(b => b.id === (u.branch_id || existingUser?.branchId));
             userMap.set(u.id, {
               id: u.id,
               name: u.name,
-              username: u.username || existingMock?.username || u.id,
-              email: u.email,
-              role: (u.role as Role) || existingMock?.role,
-              staffRole: u.staff_role || existingMock?.staffRole,
-              companyId: u.company_id || existingMock?.companyId,
-              branchId: u.branch_id || existingMock?.branchId,
-              branchName: branchObj?.name || existingMock?.branchName,
-              governorate: u.governorate || existingMock?.governorate,
-              phone: u.phone || existingMock?.phone,
-              walletBalance: Number(u.wallet_balance) || existingMock?.walletBalance || 0,
-              commissionRate: Number(u.commission_rate) || existingMock?.commissionRate || 0,
-              password: existingMock?.password || 'password',
-              permissions: existingMock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff'],
-              createdAt: u.created_at || existingMock?.createdAt
+              username: u.username || existingUser?.username || u.id,
+              email: u.email || existingUser?.email,
+              role: (u.role as Role) || existingUser?.role,
+              staffRole: u.staff_role || existingUser?.staffRole,
+              companyId: u.company_id || existingUser?.companyId,
+              branchId: u.branch_id || existingUser?.branchId,
+              branchName: branchObj?.name || existingUser?.branchName,
+              governorate: u.governorate || existingUser?.governorate,
+              phone: u.phone || existingUser?.phone,
+              walletBalance: Number(u.wallet_balance) || existingUser?.walletBalance || 0,
+              commissionRate: Number(u.commission_rate) || existingUser?.commissionRate || 0,
+              password: u.password || existingUser?.password || 'password',
+              mustChangePassword: u.must_change_password !== undefined ? u.must_change_password : (existingUser?.mustChangePassword ?? false),
+              permissions: existingUser?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff'],
+              createdAt: u.created_at || existingUser?.createdAt
             });
           });
         }
+
+        // Cross-check all companies for admin credentials (adminUsername / adminPassword)
+        Array.from(companyMap.values()).forEach(comp => {
+          if (comp.adminUsername || comp.adminPassword) {
+            const adminUser = Array.from(userMap.values()).find(u =>
+              u.companyId === comp.id &&
+              (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
+            );
+            if (adminUser) {
+              userMap.set(adminUser.id, {
+                ...adminUser,
+                username: comp.adminUsername || adminUser.username,
+                email: comp.adminEmail || adminUser.email,
+                password: comp.adminPassword || adminUser.password || 'password'
+              });
+            } else if (comp.adminUsername) {
+              const newAdminId = `u_comp_${comp.code?.toLowerCase() || comp.id}`;
+              userMap.set(newAdminId, {
+                id: newAdminId,
+                name: `${comp.name} (المدير العام)`,
+                username: comp.adminUsername,
+                email: comp.adminEmail || `${comp.adminUsername}@cropsa.net`,
+                role: Role.INSTALLMENT_COMPANY,
+                staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
+                companyId: comp.id,
+                password: comp.adminPassword || 'password',
+                mustChangePassword: false,
+                permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff', 'followup_cases'],
+                createdAt: comp.createdAt || new Date().toISOString()
+              });
+            }
+          }
+        });
+
+        // Merge localStorage cache fallback if available
+        try {
+          const cachedStaff = localStorage.getItem('cropsa_staff_users');
+          if (cachedStaff) {
+            const parsedStaff = JSON.parse(cachedStaff);
+            if (Array.isArray(parsedStaff)) {
+              parsedStaff.forEach((pu: User) => {
+                if (pu && pu.id && !userMap.has(pu.id)) {
+                  userMap.set(pu.id, pu);
+                }
+              });
+            }
+          }
+        } catch (e) {}
+
         if (isMounted) {
           const freshUsersList = Array.from(userMap.values());
           setUsers(freshUsersList);
+          try {
+            localStorage.setItem('cropsa_staff_users', JSON.stringify(freshUsersList));
+          } catch (e) {}
 
           // Update active session user with database truth if currently logged in
           setCurrentUser(prev => {
@@ -1106,7 +1238,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     phone: u.phone || existingMock?.phone,
                     walletBalance: Number(u.wallet_balance) || existingMock?.walletBalance || 0,
                     commissionRate: Number(u.commission_rate) || existingMock?.commissionRate || 0,
-                    password: existingMock?.password || 'password',
+                    password: u.password || existingMock?.password || 'password',
                     permissions: existingMock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps'],
                     createdAt: u.created_at || existingMock?.createdAt
                   });
@@ -1152,6 +1284,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               try { localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(updatedRow.data)); } catch (e) {}
             } else if (updatedRow.id === 'applications_data' && Array.isArray(updatedRow.data)) {
               setApplications(updatedRow.data);
+            } else if (updatedRow.id === 'companies_data' && Array.isArray(updatedRow.data)) {
+              setCompanies(updatedRow.data);
+              try { localStorage.setItem('cropsa_companies', JSON.stringify(updatedRow.data)); } catch (e) {}
+            } else if (updatedRow.id === 'users_data' && Array.isArray(updatedRow.data)) {
+              setUsers(updatedRow.data);
+              try { localStorage.setItem('cropsa_staff_users', JSON.stringify(updatedRow.data)); } catch (e) {}
             }
           }
         )
@@ -1235,11 +1373,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const login = async (identifier: string, password: string): Promise<boolean> => {
     const cleanId = identifier.trim().toLowerCase();
     let user = users.find(u => 
-      u.email.toLowerCase() === cleanId || 
+      (u.email && u.email.toLowerCase() === cleanId) || 
       (u.username && u.username.toLowerCase() === cleanId)
     );
 
-    // Fallback: Query Supabase users directly if not in initial local state
+    // Fallback 1: Query Supabase users table directly if not found in memory
     if (!user && supabase) {
       try {
         const { data: dbUser } = await supabase
@@ -1264,7 +1402,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             phone: dbUser.phone || existingMock?.phone,
             walletBalance: Number(dbUser.wallet_balance) || existingMock?.walletBalance || 0,
             commissionRate: Number(dbUser.commission_rate) || existingMock?.commissionRate || 0,
-            password: existingMock?.password || 'password',
+            password: dbUser.password || existingMock?.password || 'password',
+            mustChangePassword: dbUser.must_change_password !== undefined ? dbUser.must_change_password : (existingMock?.mustChangePassword ?? false),
             permissions: existingMock?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff'],
             createdAt: dbUser.created_at || existingMock?.createdAt
           };
@@ -1275,7 +1414,69 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
-    if (user && (user.password === password || password === 'password' || password === '123456')) {
+    // Fallback 2: Check system_settings users_data if still not found
+    if (!user && supabase) {
+      try {
+        const { data: usersSetting } = await supabase
+          .from('system_settings')
+          .select('data')
+          .eq('id', 'users_data')
+          .maybeSingle();
+
+        if (usersSetting?.data && Array.isArray(usersSetting.data)) {
+          const match = usersSetting.data.find((u: User) =>
+            (u.email && u.email.toLowerCase() === cleanId) ||
+            (u.username && u.username.toLowerCase() === cleanId)
+          );
+          if (match) {
+            user = match;
+            setUsers(prev => prev.some(u => u.id === match.id) ? prev : [match, ...prev]);
+          }
+        }
+      } catch (e) {
+        console.warn('system_settings users_data login fallback:', e);
+      }
+    }
+
+    // Fallback 3: Check installment companies admin credentials
+    if (!user) {
+      const matchedComp = companies.find(c =>
+        (c.adminUsername && c.adminUsername.toLowerCase() === cleanId) ||
+        (c.adminEmail && c.adminEmail.toLowerCase() === cleanId) ||
+        (c.email && c.email.toLowerCase() === cleanId) ||
+        (c.code && c.code.toLowerCase() === cleanId)
+      );
+      if (matchedComp) {
+        const existingAdmin = users.find(u =>
+          u.companyId === matchedComp.id &&
+          (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
+        );
+        user = existingAdmin || {
+          id: `u_comp_${matchedComp.code?.toLowerCase() || matchedComp.id}`,
+          name: `${matchedComp.name} (المدير العام)`,
+          username: matchedComp.adminUsername || `${matchedComp.code.toLowerCase()}_admin`,
+          email: matchedComp.adminEmail || matchedComp.email,
+          role: Role.INSTALLMENT_COMPANY,
+          staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
+          companyId: matchedComp.id,
+          password: matchedComp.adminPassword || 'password',
+          mustChangePassword: false,
+          permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff', 'followup_cases'],
+          createdAt: matchedComp.createdAt || new Date().toISOString()
+        };
+        setUsers(prev => prev.some(u => u.id === user!.id) ? prev : [user!, ...prev]);
+      }
+    }
+
+    const matchedCompanyForPass = user?.companyId ? companies.find(c => c.id === user?.companyId) : null;
+    const isPasswordValid = !!user && (
+      user.password === password ||
+      password === 'password' ||
+      password === '123456' ||
+      (matchedCompanyForPass?.adminPassword && matchedCompanyForPass.adminPassword === password)
+    );
+
+    if (user && isPasswordValid) {
       const sessionId = `cropsa_sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const updatedUser = { ...user, activeSessionId: sessionId };
 
@@ -1477,13 +1678,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const user = users.find(u => u.id === userId);
     if (!user) return false;
 
-    setUsers(prev => prev.map(u => u.id === userId ? {
-      ...u,
+    await updateUserProfile(userId, {
       password: newPassword,
       mustChangePassword: false,
       otpCode: undefined,
       otpExpiresAt: undefined
-    } : u));
+    });
 
     try {
       await updateDoc(doc(db, 'users', userId), {
@@ -1553,27 +1753,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const changePassword = async (newPassword: string) => {
     if (!currentUser) return;
-    const updatedUser = { ...currentUser, password: newPassword, mustChangePassword: false };
-    setCurrentUser(updatedUser);
-    localStorage.setItem('crobsa_active_user', JSON.stringify(updatedUser));
-    setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
-
-    if (supabase) {
-      try {
-        await supabase.from('users').update({
-          password: newPassword,
-          must_change_password: false
-        }).eq('id', currentUser.id);
-      } catch (err) {
-        console.warn('Supabase changePassword fallback:', err);
-      }
-    }
-
-    try {
-      await updateDoc(doc(db, 'users', currentUser.id), { password: newPassword, mustChangePassword: false });
-    } catch (err) {
-      console.warn('Firestore changePassword fallback:', err);
-    }
+    await updateUserProfile(currentUser.id, { password: newPassword, mustChangePassword: false });
 
     // Trigger onboarding tour immediately after password change
     try {
@@ -1587,7 +1767,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const createUser = async (userData: Partial<User>) => {
     if (!currentUser || currentUser.role !== Role.SUPER_ADMIN) return;
     const newUser: User = {
-      id: `u_${Date.now()}`,
+      id: userData.id || `u_${Date.now()}`,
       name: userData.name || 'مستخدم جديد',
       username: userData.username || `user_${Date.now().toString().slice(-4)}`,
       email: userData.email || `${Date.now()}@crobsa.com`,
@@ -1603,7 +1783,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       permissions: userData.permissions || ['view_clients'],
       createdAt: new Date().toISOString()
     };
-    setUsers(prev => [...prev, newUser]);
+    let nextUsers: User[] = [];
+    setUsers(prev => {
+      nextUsers = [...prev, newUser];
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsers)); } catch (e) {}
+      return nextUsers;
+    });
     if (supabase) {
       try {
         await supabase.from('users').upsert({
@@ -1611,6 +1796,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           name: newUser.name,
           username: newUser.username,
           email: newUser.email,
+          password: newUser.password,
           role: newUser.role,
           staff_role: newUser.staffRole || null,
           company_id: newUser.companyId || null,
@@ -1620,6 +1806,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           wallet_balance: newUser.walletBalance || 0,
           commission_rate: newUser.commissionRate || 0,
           active: true
+        });
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsers,
+          updated_at: new Date().toISOString()
         });
       } catch (err) {
         console.warn('Supabase createUser fallback:', err);
@@ -1669,7 +1860,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
 
-    setUsers(prev => [...prev, newStaff]);
+    let nextUsers: User[] = [];
+    setUsers(prev => {
+      nextUsers = [...prev, newStaff];
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsers)); } catch (e) {}
+      return nextUsers;
+    });
     if (supabase) {
       try {
         await supabase.from('users').upsert({
@@ -1677,6 +1873,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           name: newStaff.name,
           username: newStaff.username,
           email: newStaff.email,
+          password: newStaff.password,
           role: newStaff.role,
           staff_role: newStaff.staffRole,
           company_id: newStaff.companyId,
@@ -1686,6 +1883,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           wallet_balance: 0,
           commission_rate: 0,
           active: true
+        });
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsers,
+          updated_at: new Date().toISOString()
         });
       } catch (err) {
         console.warn('Supabase createCompanyStaff fallback:', err);
@@ -1710,12 +1912,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateStaffPassword = async (userId: string, newPassword: string) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, password: newPassword, mustChangePassword: false } : u));
-    try {
-      await updateDoc(doc(db, 'users', userId), { password: newPassword, mustChangePassword: false });
-    } catch (err) {
-      console.warn('Firestore updateStaffPassword fallback:', err);
-    }
+    await updateUserProfile(userId, { password: newPassword, mustChangePassword: false });
     addAuditLog('UPDATE_STAFF_PASSWORD', `Updated password for staff user ${userId}`, userId);
   };
 
@@ -1825,7 +2022,19 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     if (createdStaffUsers.length > 0) {
-      setUsers(prev => [...prev, ...createdStaffUsers]);
+      let nextUsers: User[] = [];
+      setUsers(prev => {
+        nextUsers = [...prev, ...createdStaffUsers];
+        try { localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsers)); } catch (e) {}
+        return nextUsers;
+      });
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsers,
+          updated_at: new Date().toISOString()
+        }).catch(console.warn);
+      }
     }
 
     if (supabase) {
@@ -1916,6 +2125,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       ],
       status: companyData.status || 'ACTIVE',
       createdAt: new Date().toISOString(),
+      adminUsername: finalAdminUsername,
+      adminEmail: finalAdminEmail,
+      adminPassword: initialAdminPassword,
       featuresGranted: companyData.featuresGranted || {
         canViewCrobsaDb: true,
         canUseAiAnalysis: true,
@@ -1940,16 +2152,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
 
-    setCompanies(prev => [...prev, newComp]);
-    setUsers(prev => [...prev, initialAdmin]);
+    const updatedComps = [...companies, newComp];
+    const updatedUsers = [...users, initialAdmin];
+
+    setCompanies(prev => {
+      const next = [...prev, newComp];
+      try { localStorage.setItem('cropsa_companies', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+    setUsers(prev => {
+      const next = [...prev, initialAdmin];
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
 
     if (supabase) {
-      const updatedComps = [...companies, newComp];
       // 1. ALWAYS persist full JSON in system_settings FIRST so no rich property is ever lost
       try {
         await supabase.from('system_settings').upsert({
           id: 'companies_data',
           data: updatedComps,
+          updated_at: new Date().toISOString()
+        });
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: updatedUsers,
           updated_at: new Date().toISOString()
         });
       } catch (err) {
@@ -2055,51 +2282,102 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateCompanyAdminCredentials = async (companyId: string, creds: { username?: string; email?: string; password?: string }) => {
+    const cleanUsername = creds.username?.trim();
+    const cleanPassword = creds.password?.trim();
+    const cleanEmail = creds.email?.trim() || (cleanUsername && cleanUsername.includes('@') ? cleanUsername : undefined);
+
+    const targetComp = companies.find(c => c.id === companyId);
+
+    // 1. Immediately persist admin credentials directly on the InstallmentCompany entity in system_settings
+    const compUpdates: Partial<InstallmentCompany> = {};
+    if (cleanUsername) compUpdates.adminUsername = cleanUsername;
+    if (cleanEmail) compUpdates.adminEmail = cleanEmail;
+    if (cleanPassword) compUpdates.adminPassword = cleanPassword;
+    if (Object.keys(compUpdates).length > 0) {
+      await updateCompany(companyId, compUpdates);
+    }
+
+    // 2. Locate or synthesize the company admin User object
     const adminUser = users.find(u => 
       u.companyId === companyId && 
       (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
     );
 
-    const cleanUsername = creds.username?.trim();
-    const cleanPassword = creds.password?.trim();
-    const cleanEmail = creds.email?.trim() || (cleanUsername && cleanUsername.includes('@') ? cleanUsername : undefined);
+    const finalUserId = adminUser?.id || `u_comp_${targetComp?.code?.toLowerCase() || companyId}`;
+    const finalUsername = cleanUsername || adminUser?.username || `${(targetComp?.code || 'comp').toLowerCase().replace('-', '_')}_admin`;
+    const finalEmail = cleanEmail || adminUser?.email || `${finalUsername}@cropsa.net`;
+    const finalPassword = cleanPassword || adminUser?.password || 'password';
 
-    if (adminUser) {
-      const updates: Partial<User> = {};
-      if (cleanUsername) updates.username = cleanUsername;
-      if (cleanEmail) updates.email = cleanEmail;
-      if (cleanPassword) {
-        updates.password = cleanPassword;
-        updates.mustChangePassword = false;
+    const updatedAdmin: User = {
+      id: finalUserId,
+      name: adminUser?.name || `${targetComp?.name || 'الشركة'} (المدير العام)`,
+      username: finalUsername,
+      email: finalEmail,
+      role: Role.INSTALLMENT_COMPANY,
+      staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
+      companyId: companyId,
+      password: finalPassword,
+      mustChangePassword: false,
+      permissions: adminUser?.permissions || ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff', 'followup_cases'],
+      createdAt: adminUser?.createdAt || new Date().toISOString()
+    };
+
+    // 3. Ensure user exists in in-memory state, localStorage, and system_settings users_data
+    let nextUsersList: User[] = [];
+    setUsers(prev => {
+      const exists = prev.some(u => u.id === finalUserId || (u.companyId === companyId && (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)));
+      if (exists) {
+        nextUsersList = prev.map(u => 
+          (u.id === finalUserId || (u.companyId === companyId && (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)))
+            ? { ...u, ...updatedAdmin }
+            : u
+        );
+      } else {
+        nextUsersList = [...prev, updatedAdmin];
       }
+      try {
+        localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsersList));
+      } catch (e) {}
+      return nextUsersList;
+    });
 
-      await updateUserProfile(adminUser.id, updates);
-      addAuditLog('UPDATE_COMPANY_ADMIN', `Updated credentials for company admin of ${companyId}`, adminUser.id);
-    } else {
-      // Create admin user if not exists
-      const targetComp = companies.find(c => c.id === companyId);
-      const newAdminId = `u_admin_${companyId}`;
-      const newUsername = cleanUsername || `${(targetComp?.code || 'comp').toLowerCase().replace('-', '_')}_admin`;
-      const newEmail = cleanEmail || `${newUsername}@cropsa.net`;
-      const newPassword = cleanPassword || 'password';
-
-      const newAdmin: User = {
-        id: newAdminId,
-        name: `${targetComp?.name || 'الشركة'} (المدير العام)`,
-        username: newUsername,
-        email: newEmail,
-        role: Role.INSTALLMENT_COMPANY,
-        staffRole: InstallmentCompanyStaffRole.COMPANY_ADMIN,
-        companyId: companyId,
-        password: newPassword,
-        mustChangePassword: false,
-        permissions: ['view_clients', 'request_access', 'ai_analysis', 'approve_apps', 'view_reports', 'manage_staff', 'followup_cases'],
-        createdAt: new Date().toISOString()
-      };
-
-      await createUser(newAdmin);
-      addAuditLog('CREATE_COMPANY_ADMIN', `Created admin account for company ${companyId}`, newAdminId);
+    if (currentUser && (currentUser.id === finalUserId || currentUser.companyId === companyId)) {
+      setCurrentUser(prev => prev ? { ...prev, ...updatedAdmin } : null);
     }
+
+    // 4. Force full upsert in Supabase users table and system_settings users_data
+    if (supabase) {
+      try {
+        await supabase.from('users').upsert({
+          id: updatedAdmin.id,
+          name: updatedAdmin.name,
+          username: updatedAdmin.username,
+          email: updatedAdmin.email,
+          password: updatedAdmin.password,
+          role: updatedAdmin.role,
+          staff_role: updatedAdmin.staffRole,
+          company_id: updatedAdmin.companyId,
+          active: true,
+          must_change_password: false
+        });
+
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsersList,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase updateCompanyAdminCredentials fallback:', err);
+      }
+    }
+
+    try {
+      await setDoc(doc(db, 'users', updatedAdmin.id), updatedAdmin);
+    } catch (err) {
+      console.warn('Firestore updateCompanyAdminCredentials fallback:', err);
+    }
+
+    addAuditLog('UPDATE_COMPANY_ADMIN', `Updated credentials for company admin of ${companyId}`, updatedAdmin.id);
   };
 
   const deleteCompany = async (companyId: string) => {
@@ -2265,7 +2543,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return nextBranches;
     });
 
-    setUsers(prev => prev.map(u => u.branchId === branchId ? { ...u, password: newPassword } : u));
+    let nextUsers: User[] = [];
+    setUsers(prev => {
+      nextUsers = prev.map(u => u.branchId === branchId ? { ...u, password: newPassword } : u);
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsers)); } catch (e) {}
+      return nextUsers;
+    });
 
     if (supabase) {
       try {
@@ -2274,6 +2557,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         await supabase.from('system_settings').upsert({
           id: 'company_branches_data',
           data: nextBranches,
+          updated_at: new Date().toISOString()
+        });
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsers,
           updated_at: new Date().toISOString()
         });
       } catch (err) {
@@ -2285,12 +2573,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteBranch = async (branchId: string) => {
-    setBranches(prev => prev.filter(b => b.id !== branchId));
-    setUsers(prev => prev.filter(u => u.branchId !== branchId));
+    let nextBranches: CompanyBranch[] = [];
+    setBranches(prev => {
+      nextBranches = prev.filter(b => b.id !== branchId);
+      try { localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches)); } catch (e) {}
+      return nextBranches;
+    });
+    let nextUsers: User[] = [];
+    setUsers(prev => {
+      nextUsers = prev.filter(u => u.branchId !== branchId);
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsers)); } catch (e) {}
+      return nextUsers;
+    });
     if (supabase) {
       try {
         await supabase.from('company_branches').delete().eq('id', branchId);
         await supabase.from('users').delete().eq('branch_id', branchId);
+        await supabase.from('system_settings').upsert({
+          id: 'company_branches_data',
+          data: nextBranches,
+          updated_at: new Date().toISOString()
+        });
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsers,
+          updated_at: new Date().toISOString()
+        });
       } catch (err) {
         console.warn('Supabase deleteBranch fallback:', err);
       }
@@ -2352,14 +2660,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return allNextBranches;
     });
 
+    let allNextUsers: User[] = [];
     setUsers(prev => {
       const existingUserIds = new Set(createdBranchUsers.map(u => u.id));
       const filtered = prev.filter(u => !existingUserIds.has(u.id));
-      const merged = [...filtered, ...createdBranchUsers];
+      allNextUsers = [...filtered, ...createdBranchUsers];
       try {
-        localStorage.setItem('cropsa_staff_users', JSON.stringify(merged));
+        localStorage.setItem('cropsa_staff_users', JSON.stringify(allNextUsers));
       } catch (e) {}
-      return merged;
+      return allNextUsers;
     });
 
     if (supabase) {
@@ -2394,6 +2703,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         await supabase.from('system_settings').upsert({
           id: 'company_branches_data',
           data: allNextBranches,
+          updated_at: new Date().toISOString()
+        });
+
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: allNextUsers,
           updated_at: new Date().toISOString()
         });
       } catch (err) {
@@ -5141,20 +5456,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const resetUserPassword = async (userId: string) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, password: 'password', mustChangePassword: true } : u));
-    try {
-      await updateDoc(doc(db, 'users', userId), { password: 'password', mustChangePassword: true });
-    } catch (err) {
-      console.warn('Firestore resetUserPassword fallback:', err);
-    }
+    await updateUserProfile(userId, { password: 'password', mustChangePassword: true });
   };
 
   const deleteUser = async (userId: string) => {
     if (!currentUser || (currentUser.role !== Role.SUPER_ADMIN && currentUser.role !== Role.ADMIN)) return;
-    setUsers(prev => prev.filter(u => u.id !== userId));
+    let nextUsers: User[] = [];
+    setUsers(prev => {
+      nextUsers = prev.filter(u => u.id !== userId);
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsers)); } catch (e) {}
+      return nextUsers;
+    });
     if (supabase) {
       try {
         await supabase.from('users').delete().eq('id', userId);
+        await supabase.from('system_settings').upsert({
+          id: 'users_data',
+          data: nextUsers,
+          updated_at: new Date().toISOString()
+        });
       } catch (err) {
         console.warn('Supabase deleteUser fallback:', err);
       }

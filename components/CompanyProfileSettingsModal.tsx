@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/Store';
 import { InstallmentCompany, User, Role, InstallmentCompanyStaffRole, EGYPT_GOVERNORATES, CompanyReceivingChannel } from '../types';
 import { 
@@ -99,7 +99,19 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
     u.companyId === company.id && 
     (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
   );
-  const [directorUsername, setDirectorUsername] = useState(companyAdminUser?.username || companyAdminUser?.email || '');
+  const resolvedInitialUsername = companyAdminUser?.username || companyAdminUser?.email || company.adminUsername || company.adminEmail || '';
+  const [directorUsername, setDirectorUsername] = useState(resolvedInitialUsername);
+
+  useEffect(() => {
+    const liveAdmin = users.find(u => 
+      u.companyId === company.id && 
+      (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)
+    );
+    const liveUsername = liveAdmin?.username || liveAdmin?.email || company.adminUsername || company.adminEmail || '';
+    if (liveUsername && !directorUsername) {
+      setDirectorUsername(liveUsername);
+    }
+  }, [users, company]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');

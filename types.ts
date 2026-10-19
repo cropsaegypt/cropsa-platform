@@ -174,6 +174,11 @@ export interface InstallmentCompany {
   dispatchEmail?: string; // بريد إلكتروني مخصص لاستقبال طلبات التمويل الرسمية
   contactPersonName?: string; // اسم مسؤول الائتمان أو نقطة الاتصال بالشركة
 
+  // Company Admin Login Credentials
+  adminUsername?: string; // اسم مستخدم المدير العام للشركة
+  adminEmail?: string; // البريد الإلكتروني للمدير العام
+  adminPassword?: string; // كلمة مرور المدير العام للشركة
+
   featuresGranted: {
     canViewCrobsaDb: boolean;
     canUseAiAnalysis: boolean;
