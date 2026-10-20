@@ -170,21 +170,29 @@ export const Clients: React.FC = () => {
 
       // Identify funding companies (من مين)
       const companyNamesSet = new Set<string>();
-      if (client.companyName) companyNamesSet.add(client.companyName);
-      if (client.manualEntry?.companyName) companyNamesSet.add(client.manualEntry.companyName);
+      if (client.companyName && client.companyName.trim()) {
+        companyNamesSet.add(client.companyName.trim());
+      }
+      if (client.manualEntry?.companyName && client.manualEntry.companyName.trim()) {
+        companyNamesSet.add(client.manualEntry.companyName.trim());
+      }
 
       approvedApps.forEach(a => {
-        if (a.reviewedBy) {
-          const u = users.find(user => user.id === a.reviewedBy);
-          if (u) companyNamesSet.add(u.name);
-        }
-        if (a.assignedCompanyIds) {
-          a.assignedCompanyIds.forEach(cid => {
-            const comp = ALL_KNOWN_INSTALLMENT_COMPANIES.find(c => c.code === cid);
-            if (comp) companyNamesSet.add(comp.nameAr);
-            const userComp = users.find(u => u.id === cid);
-            if (userComp) companyNamesSet.add(userComp.name);
-          });
+        // If client is historical or application is an imported mirror, do not let fallback comp_01 pollute client.companyName
+        const isImportedMirror = a.id.startsWith('app_imp_') || !!client.isHistoricalOnly;
+        if (!isImportedMirror) {
+          if (a.reviewedBy) {
+            const u = users.find(user => user.id === a.reviewedBy);
+            if (u) companyNamesSet.add(u.name);
+          }
+          if (a.assignedCompanyIds) {
+            a.assignedCompanyIds.forEach(cid => {
+              const comp = ALL_KNOWN_INSTALLMENT_COMPANIES.find(c => c.code === cid);
+              if (comp) companyNamesSet.add(comp.nameAr);
+              const userComp = users.find(u => u.id === cid);
+              if (userComp) companyNamesSet.add(userComp.name);
+            });
+          }
         }
       });
 

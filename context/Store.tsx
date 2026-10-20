@@ -5381,7 +5381,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         creditRating: row.creditRating || existingClient?.creditRating || (isDelinquent ? 'D' : 'A'),
         totalApprovedAmount: Number(row.totalApprovedAmount) || existingClient?.totalApprovedAmount || 0,
         disbursedAmount: Number(row.disbursedAmount) || existingClient?.disbursedAmount || 0,
-        companyName: row.companyName || existingClient?.companyName || 'شركة أمان لتمويل المشروعات والتقسيط',
+        companyName: row.companyName || existingClient?.companyName || 'سجل تقسيط سابق',
         lastFinanceDate: row.lastFinanceDate || existingClient?.lastFinanceDate || financeDate,
         isHistoricalOnly: row.isHistoricalOnly !== undefined ? !!row.isHistoricalOnly : true,
         notes: isMissingNid 
@@ -5448,7 +5448,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             submittedBy: currentUser.id,
             submittedAt: appRow.submittedAt || nowStr,
             reviewedAt: appRow.reviewedAt || appRow.submittedAt || nowStr,
-            assignedCompanyIds: appRow.assignedCompanyIds || ['comp_01'],
+            assignedCompanyIds: (appRow.assignedCompanyIds && appRow.assignedCompanyIds.length > 0) ? appRow.assignedCompanyIds : ['comp_other'],
             description: appRow.description || 'سجل تمويل تاريخي مستورد',
             history: [
               {

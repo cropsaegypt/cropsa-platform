@@ -79,7 +79,7 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
   onClose,
   onSuccess
 }) => {
-  const { currentUser, clients, bulkImportClients } = useStore();
+  const { currentUser, clients, bulkImportClients, companies } = useStore();
   const [activeTab, setActiveTab] = useState<'upload' | 'paste' | 'guide'>('upload');
   const [pasteData, setPasteData] = useState('');
   const [parsedRows, setParsedRows] = useState<ParsedClientRow[]>([]);
@@ -133,10 +133,24 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
     document.body.removeChild(link);
   };
 
-  // Helper to match company code from input name
+  // Helper to match company code from input name (checks registered companies, reference companies, and never defaults to Aman)
   const matchCompanyCode = (companyInput: string): { code: string; nameAr: string } => {
-    if (!companyInput) return { code: 'comp_01', nameAr: 'شركة أمان لتمويل المشروعات والتقسيط' };
+    if (!companyInput || !companyInput.trim()) {
+      return { code: 'comp_other', nameAr: 'سجل تقسيط سابق' };
+    }
     const clean = companyInput.trim().toLowerCase();
+
+    // 1. Check registered companies in Store first!
+    const inStore = companies.find(c => 
+      c.name.toLowerCase().includes(clean) || 
+      clean.includes(c.name.toLowerCase()) || 
+      (c.code && c.code.toLowerCase() === clean)
+    );
+    if (inStore) {
+      return { code: inStore.id, nameAr: inStore.name };
+    }
+
+    // 2. Check reference companies (including AL_GAMEYA)
     const found = ALL_KNOWN_INSTALLMENT_COMPANIES.find(c => 
       c.nameAr.toLowerCase().includes(clean) || 
       clean.includes(c.nameAr.toLowerCase()) || 
@@ -146,7 +160,10 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
     if (found) {
       return { code: found.code, nameAr: found.nameAr };
     }
-    return { code: 'comp_01', nameAr: companyInput };
+
+    // 3. Custom company (generate safe code, NEVER default to comp_01 Aman!)
+    const safeCode = `comp_${clean.replace(/[^a-zA-Z0-9\u0621-\u064A]/g, '_').slice(0, 20)}`;
+    return { code: safeCode, nameAr: companyInput.trim() };
   };
 
   // Smart Currency & Amount Parser (handles "50,000", "40.000", "40 ألف", "40" in thousands, etc.)

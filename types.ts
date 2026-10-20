@@ -905,6 +905,14 @@ export const ALL_KNOWN_INSTALLMENT_COMPANIES: CompanyReferenceItem[] = [
     typicalPrograms: 'سلف زراعية ومحاصيل وحيازات كارت الفلاح'
   },
   {
+    code: 'AL_GAMEYA',
+    nameAr: 'شركة الجمعية لتقنية المعلومات (الجمعية)',
+    nameEn: 'ElGameya Fintech',
+    category: 'ACTIVE_PLATFORM',
+    isPlatformActive: true,
+    typicalPrograms: 'جمعيات رقمية، تمويل أفراد وتجار، وتسهيلات ائتمانية'
+  },
+  {
     code: 'MSMEDA',
     nameAr: 'جهاز تنمية المشروعات المتوسطة والصغيرة (MSMEDA)',
     nameEn: 'MSMEDA Egypt',
