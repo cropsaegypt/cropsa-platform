@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { ClientSolvencyGauge } from '../components/ClientSolvencyGauge';
 import { ComprehensiveAnalyticsSection } from '../components/ComprehensiveAnalyticsSection';
+import { NeedsUpdateNotificationBoard } from '../components/NeedsUpdateNotificationBoard';
 
 const COLORS = ['#0284c7', '#10b981', '#f59e0b', '#f43f5e'];
 
@@ -194,6 +195,9 @@ export const Dashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Dedicated Notification Board for Cases Requiring Update (WhatsApp / Email) */}
+      <NeedsUpdateNotificationBoard onSelectApp={() => setNavigation('applications')} />
 
       {/* Primary KPI Metrics Ribbon */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">

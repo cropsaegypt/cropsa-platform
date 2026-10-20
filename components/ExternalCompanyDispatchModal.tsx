@@ -179,10 +179,13 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
 
     setIsSubmitting(false);
     if (res.success) {
-      setStatusFeedback({ type: 'success', message: 'تم فتح تطبيق واتساب وتوثيق المراسلة بنجاح في سجل الطلب' });
+      setStatusFeedback({ 
+        type: 'success', 
+        message: 'تم فتح تطبيق واتساب وتوثيق المراسلة بنجاح، وتوجيه إشعار لرافع الطلب بتحديث الحالة في لوحة الإشعارات' 
+      });
       setTimeout(() => {
         onClose();
-      }, 1400);
+      }, 1500);
     } else {
       setStatusFeedback({ type: 'error', message: res.message });
     }
@@ -216,7 +219,7 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
     if (res.success) {
       setStatusFeedback({ 
         type: 'success', 
-        message: `تم توجيه وإرسال الإيميل بنجاح إلى ${selectedCompany.name} عبر خادم المنصة (${smtpConfig.host || 'SMTP'})` 
+        message: `تم إرسال الإيميل بنجاح إلى ${selectedCompany.name} وتنبيه رافع الطلب بتحديث الحالة في لوحة الإشعارات` 
       });
       setTimeout(() => {
         onClose();
@@ -250,10 +253,13 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
       deliveryMethod: 'CLIENT_MAILTO'
     });
 
-    setStatusFeedback({ type: 'success', message: 'تم فتح تطبيق البريد وتوثيق الإرسال في سجل الطلب' });
+    setStatusFeedback({ 
+      type: 'success', 
+      message: 'تم فتح تطبيق البريد وتوثيق الإرسال وتنبيه رافع الطلب في لوحة الإشعارات بنجاح' 
+    });
     setTimeout(() => {
       onClose();
-    }, 1400);
+    }, 1500);
   };
 
   // Handle Copy text
@@ -366,6 +372,14 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
                   بريد إلكتروني
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Info Banner on Notification & Tracking */}
+          <div className="p-3 bg-amber-50/80 border border-amber-200/90 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+            <span className="text-base shrink-0">🔔</span>
+            <div className="leading-relaxed">
+              <strong>تنبيه النظام التلقائي:</strong> بمجرد إرسال الحالة عبر واتساب أو البريد، يوجّه النظام إشعاراً لرافع الطلب (<span className="font-bold underline">{application.submittedByName || 'المندوب / الفرع'}</span>) وللإدارة، وتُدرج الحالة فوراً في <strong>لوحة إشعارات الحالات المطلوب تحديثها</strong> لاستكمال الأوراق وتزويد الشركة بالرد.
             </div>
           </div>
 

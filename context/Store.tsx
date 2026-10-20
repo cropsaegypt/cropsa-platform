@@ -231,6 +231,8 @@ interface StoreContextType {
 
   createApplication: (app: Partial<Application>) => Promise<void>;
   updateApplication: (appId: string, updates: Partial<Application>) => Promise<void>;
+  requestCaseUpdate: (appId: string, reason: string, channel?: 'WHATSAPP' | 'EMAIL' | 'SYSTEM') => Promise<void>;
+  resolveCaseUpdate: (appId: string, resolutionNote?: string) => Promise<void>;
   disburseApplicationAmount: (appId: string, amount: number, notes?: string, receiptNumber?: string) => Promise<boolean>;
   assignApplication: (appId: string, companyIds: string[], branchId?: string, branchName?: string, officerId?: string, officerName?: string) => Promise<void>;
   acknowledgeApplication: (appId: string) => Promise<void>;
@@ -5892,6 +5894,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       externalDispatches: updatedDispatches,
       comments: updatedComments,
       history: updatedHistory,
+      needsUpdate: true,
+      updateRequestedAt: nowStr,
+      updateRequestedBy: currentUser?.id || 'SYSTEM',
+      updateRequestedByName: currentUser?.name || 'النظام',
+      updateRequestReason: payload.templateName || `مراسلة خارجية عبر ${channelLabel}`,
+      updateRequestChannel: payload.channel,
+      updateRequestDeliveryMethod: payload.deliveryMethod,
       ...(payload.driveLink ? { driveLink: payload.driveLink } : {})
     };
 
@@ -5902,6 +5911,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return updatedAppsList;
     });
 
+    // Notify submitter and Admin that case requires update
+    if (targetApp.submittedBy) {
+      addNotification(
+        targetApp.submittedBy,
+        `⚠️ حالة العميل (${targetApp.clientName}) بحاجة لتحديث واستكمال بيانات/أوراق (مرسلة عبر ${channelLabel})`,
+        'WARNING',
+        appId,
+        undefined,
+        'CASE_UPDATE_REQUIRED',
+        { title: 'مطلوب تحديث حالة العميل' }
+      );
+    }
+    addNotification(
+      'ROLE_SUPER_ADMIN',
+      `📢 حالة العميل (${targetApp.clientName}) أُرسلت عبر ${channelLabel} ومسجلة في لوحة الحالات بانتظار التحديث من رافع الطلب`,
+      'INFO',
+      appId,
+      undefined,
+      'CASE_UPDATE_REQUIRED',
+      { title: 'حالة بانتظار التحديث' }
+    );
+
     // Log in client timeline
     if (targetApp.clientId) {
       addClientTimelineEvent(targetApp.clientId, {
@@ -5909,7 +5940,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         actionType: 'NOTE',
         performedBy: currentUser?.id || 'SYSTEM',
         performedByName: currentUser?.name || 'النظام',
-        details: `تم توجيه المراسلة إلى ${payload.targetContact}. ${payload.templateName ? `[${payload.templateName}]` : ''}`,
+        details: `تم توجيه المراسلة إلى ${payload.targetContact}. ${payload.templateName ? `[${payload.templateName}]` : ''} - الحالة بانتظار التحديث من رافع الطلب`,
         badgeColor: payload.templateCategory === 'EXPEDITE' ? 'red' : 'blue'
       });
     }
@@ -5917,7 +5948,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // Audit Log
     addAuditLog(
       'EXTERNAL_DISPATCH', 
-      `Dispatched application ${appId} via ${payload.channel} to ${companyName} (${payload.targetContact})`, 
+      `Dispatched application ${appId} via ${payload.channel} to ${companyName} (${payload.targetContact}) - needsUpdate marked`, 
       appId
     );
 
@@ -5940,7 +5971,167 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('Firestore sync external dispatch error:', e);
     }
 
-    return { success: true, message: `تم تسجيل المراسلة إلى ${companyName} بنجاح` };
+    return { success: true, message: `تم تسجيل المراسلة إلى ${companyName} وإرسال إشعار التحديث المطلوب لرافع الحالة بنجاح` };
+  };
+
+  const requestCaseUpdate = async (appId: string, reason: string, channel: 'WHATSAPP' | 'EMAIL' | 'SYSTEM' = 'SYSTEM') => {
+    const targetApp = applications.find(a => a.id === appId);
+    if (!targetApp) return;
+    const nowStr = new Date().toISOString();
+    const channelLabel = channel === 'WHATSAPP' ? 'واتساب' : channel === 'EMAIL' ? 'البريد الإلكتروني' : 'النظام الداخلي';
+
+    const newHistoryItem: ApplicationHistoryItem = {
+      action: 'UPDATE_REQUESTED',
+      timestamp: nowStr,
+      performedBy: currentUser?.id || 'SYSTEM',
+      performedByName: currentUser?.name || 'النظام',
+      details: `تم طلب تحديث واستكمال بيانات/مستندات الحالة من رافع الطلب (${channelLabel}): ${reason}`
+    };
+
+    const newComment: ApplicationComment = {
+      id: `c_upd_${Date.now()}`,
+      authorId: currentUser?.id || 'SYSTEM',
+      authorName: currentUser?.name || 'النظام',
+      authorRole: currentUser?.role || Role.SUPER_ADMIN,
+      companyName: 'منصة كروبسا',
+      message: `⚠️ [طلب تحديث واستكمال الحالة عبر ${channelLabel}]:\n${reason}`,
+      createdAt: nowStr,
+      isUrgent: true,
+      notificationType: 'DOCS_REQUIRED'
+    };
+
+    const appUpdates: Partial<Application> = {
+      needsUpdate: true,
+      updateRequestedAt: nowStr,
+      updateRequestedBy: currentUser?.id || 'SYSTEM',
+      updateRequestedByName: currentUser?.name || 'النظام',
+      updateRequestReason: reason,
+      updateRequestChannel: channel,
+      history: [newHistoryItem, ...(targetApp.history || [])],
+      comments: [...(targetApp.comments || []), newComment]
+    };
+
+    let nextApps: Application[] = [];
+    setApplications(prev => {
+      nextApps = prev.map(a => a.id === appId ? { ...a, ...appUpdates } : a);
+      return nextApps;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: nextApps,
+          updated_at: nowStr
+        });
+      } catch (err) {}
+    }
+
+    try {
+      await updateDoc(doc(db, 'applications', appId), appUpdates);
+    } catch (err) {}
+
+    if (targetApp.submittedBy) {
+      addNotification(
+        targetApp.submittedBy,
+        `⚠️ تنبيه: حالة العميل (${targetApp.clientName}) بحاجة لتحديث واستكمال بيانات/أوراق: ${reason}`,
+        'WARNING',
+        appId,
+        undefined,
+        'CASE_UPDATE_REQUIRED',
+        { title: 'مطلوب تحديث حالة العميل' }
+      );
+    }
+
+    addNotification(
+      'ROLE_SUPER_ADMIN',
+      `📌 تم تسجيل طلب تحديث للحالة (${targetApp.clientName}) من رافع الطلب: ${reason}`,
+      'INFO',
+      appId,
+      undefined,
+      'CASE_UPDATE_REQUIRED'
+    );
+
+    addAuditLog('REQUEST_CASE_UPDATE', `Requested update for application ${appId}: ${reason}`, appId);
+  };
+
+  const resolveCaseUpdate = async (appId: string, resolutionNote?: string) => {
+    const targetApp = applications.find(a => a.id === appId);
+    if (!targetApp) return;
+    const nowStr = new Date().toISOString();
+    const finalNote = resolutionNote || 'تم استكمال التحديث المطلوب ورفع المستندات وإعادة الإرسال بنجاح';
+
+    const newHistoryItem: ApplicationHistoryItem = {
+      action: 'UPDATE_RESOLVED',
+      timestamp: nowStr,
+      performedBy: currentUser?.id || 'SYSTEM',
+      performedByName: currentUser?.name || 'رافع الطلب',
+      details: `تم اعتماد واستكمال التحديث المطلوب للحالة وإعادة إرسالها بنجاح بواسطة ${currentUser?.name || 'رافع الطلب'}: ${finalNote}`
+    };
+
+    const newComment: ApplicationComment = {
+      id: `c_res_${Date.now()}`,
+      authorId: currentUser?.id || 'SYSTEM',
+      authorName: currentUser?.name || 'رافع الطلب',
+      authorRole: currentUser?.role || Role.SALESMAN,
+      companyName: 'منصة كروبسا',
+      message: `✅ [تم استكمال التحديث بنجاح]:\n${finalNote}`,
+      createdAt: nowStr,
+      isUrgent: false,
+      notificationType: 'GENERAL'
+    };
+
+    const appUpdates: Partial<Application> = {
+      needsUpdate: false,
+      updateResolvedAt: nowStr,
+      updateResolvedBy: currentUser?.id || 'SYSTEM',
+      updateResolvedByName: currentUser?.name || 'رافع الطلب',
+      updateResolvedNote: finalNote,
+      history: [newHistoryItem, ...(targetApp.history || [])],
+      comments: [...(targetApp.comments || []), newComment]
+    };
+
+    let nextApps: Application[] = [];
+    setApplications(prev => {
+      nextApps = prev.map(a => a.id === appId ? { ...a, ...appUpdates } : a);
+      return nextApps;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: nextApps,
+          updated_at: nowStr
+        });
+      } catch (err) {}
+    }
+
+    try {
+      await updateDoc(doc(db, 'applications', appId), appUpdates);
+    } catch (err) {}
+
+    addNotification(
+      'ROLE_SUPER_ADMIN',
+      `✅ تم استكمال التحديث وإعادة إرسال حالة العميل (${targetApp.clientName}) بواسطة ${currentUser?.name || 'رافع الطلب'}`,
+      'SUCCESS',
+      appId,
+      undefined,
+      'APPLICATION'
+    );
+
+    targetApp.assignedCompanyIds?.forEach(cid => {
+      addNotification(
+        cid,
+        `✅ تم تحديث واستكمال أوراق العميل (${targetApp.clientName}) وهي جاهزة للدراسة الآن`,
+        'SUCCESS',
+        appId,
+        undefined,
+        'APPLICATION'
+      );
+    });
+
+    addAuditLog('RESOLVE_CASE_UPDATE', `Resolved update for application ${appId}: ${finalNote}`, appId);
   };
 
   return (
@@ -6033,6 +6224,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       reRouteApplication,
       createApplication,
       updateApplication,
+      requestCaseUpdate,
+      resolveCaseUpdate,
       disburseApplicationAmount,
       archiveApplication,
       unarchiveApplication,

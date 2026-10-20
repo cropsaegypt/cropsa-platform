@@ -701,6 +701,19 @@ export interface Application {
   driveLink?: string; // رابط درايف لأوراق ومستندات العميل
   externalDispatches?: ExternalDispatchRecord[];
 
+  // Case Update State (when dispatched via WhatsApp/Email or flagged for update from submitter)
+  needsUpdate?: boolean;
+  updateRequestedAt?: string;
+  updateRequestedBy?: string;
+  updateRequestedByName?: string;
+  updateRequestReason?: string;
+  updateRequestChannel?: 'WHATSAPP' | 'EMAIL' | 'SYSTEM';
+  updateRequestDeliveryMethod?: string;
+  updateResolvedAt?: string;
+  updateResolvedBy?: string;
+  updateResolvedByName?: string;
+  updateResolvedNote?: string;
+
   description: string;
   history: ApplicationHistoryItem[];
 }
@@ -1103,7 +1116,7 @@ export interface Notification {
   createdAt: string;
   type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
   referenceId?: string;
-  referenceType?: 'APPLICATION' | 'CLIENT_REQUEST' | 'OVERDUE' | 'SHARED_DOCUMENT' | 'CLIENT_UPDATE' | 'CLIENT_RENEWAL';
+  referenceType?: 'APPLICATION' | 'CLIENT_REQUEST' | 'OVERDUE' | 'SHARED_DOCUMENT' | 'CLIENT_UPDATE' | 'CLIENT_RENEWAL' | 'CASE_UPDATE_REQUIRED';
   commentNotificationType?: CommentNotificationType;
   senderName?: string;
   title?: string;

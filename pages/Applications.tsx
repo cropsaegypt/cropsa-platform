@@ -43,6 +43,7 @@ import { CaseDiscussionModal } from '../components/CaseDiscussionModal';
 import { DisbursementModal } from '../components/DisbursementModal';
 import { ExternalCompanyDispatchModal } from '../components/ExternalCompanyDispatchModal';
 import { InternalDocViewerModal } from '../components/InternalDocViewerModal';
+import { NeedsUpdateNotificationBoard } from '../components/NeedsUpdateNotificationBoard';
 
 const REJECTION_REASONS = [
   "درجة الائتمان منخفضة جداً",
@@ -256,7 +257,11 @@ export const Applications: React.FC = () => {
     }
 
     // Status Filter
-    if (filterStatus !== 'ALL' && app.status !== filterStatus) return false;
+    if (filterStatus === 'NEEDS_UPDATE') {
+      if (!app.needsUpdate) return false;
+    } else if (filterStatus !== 'ALL' && app.status !== filterStatus) {
+      return false;
+    }
 
     // Company Branch Filter
     if (filterBranch !== 'ALL') {
@@ -426,6 +431,20 @@ export const Applications: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Needs Update Notification Board for WhatsApp / Email dispatched cases */}
+      <NeedsUpdateNotificationBoard
+        onSelectApp={(app) => {
+          setSelectedApp(app);
+          setIsEditing(false);
+          setNextStatus('');
+          setIsRejecting(false);
+        }}
+        onOpenDiscussion={(app, tab) => {
+          setDiscussionApp(app);
+          setDiscussionTab(tab || 'documents');
+        }}
+      />
+
       {/* Header & Global Advanced Filter System */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -480,6 +499,7 @@ export const Applications: React.FC = () => {
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="ALL">جميع الحالات ({applications.length})</option>
+                <option value="NEEDS_UPDATE">⚠️ مطلوب تحديثها واستكمالها ({applications.filter(a => a.needsUpdate).length})</option>
                 <option value={ApplicationStatus.RECEIVED}>طلب مستلم ({applications.filter(a => a.status === ApplicationStatus.RECEIVED).length})</option>
                 <option value={ApplicationStatus.APPROVED}>طلب معتمد ({applications.filter(a => a.status === ApplicationStatus.APPROVED).length})</option>
                 <option value={ApplicationStatus.PAPER_REVIEW}>مراجعة الأوراق ({applications.filter(a => a.status === ApplicationStatus.PAPER_REVIEW).length})</option>
@@ -685,6 +705,11 @@ export const Applications: React.FC = () => {
                         مستعجل
                       </span>
                     )}
+                    {app.needsUpdate && (
+                      <span className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px] font-bold px-1.5 py-0.2 rounded flex items-center gap-1 animate-pulse">
+                        ⚠️ مطلوب تحديث
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 font-mono mt-0.5">{app.clientNationalId}</p>
                 </div>
@@ -797,6 +822,11 @@ export const Applications: React.FC = () => {
                           مستعجل
                         </span>
                       )}
+                      {app.needsUpdate && (
+                        <span className="bg-orange-100 text-orange-800 border border-orange-300 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse" title="مطلوب تحديث واستكمال الأوراق والبيانات من رافع الطلب">
+                          ⚠️ مطلوب تحديث
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-400 font-mono mt-0.5">{app.clientNationalId}</p>
                   </td>
@@ -824,6 +854,12 @@ export const Applications: React.FC = () => {
                         <p className="text-[10px] text-sky-600 mt-0.5 flex items-center gap-1">
                           <ArrowRightLeft className="h-2.5 w-2.5" />
                           تم تحويله ({app.reRouteHistory.length})
+                        </p>
+                      )}
+                      {app.needsUpdate && (
+                        <p className="text-[10px] text-amber-700 font-bold mt-1 flex items-center gap-1">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                          بانتظار تحديث الرافع
                         </p>
                       )}
                     </div>
