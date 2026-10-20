@@ -240,22 +240,42 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
       return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
     }
 
+    // Handle isolated 1 or 2 digit number (e.g. "40", "60", duration in months)
+    // NEVER pass 2-digit numbers to new Date() because JS interprets "40" as future year 2040 and "60" as 1960!
+    if (/^\d{1,2}$/.test(str)) {
+      const months = Math.max(3, parseInt(str, 10)); // e.g. 40 months or 60 months
+      const historicalTime = now - (months * 30 * 86400 * 1000);
+      const jsDate = new Date(historicalTime);
+      const yyyy = Math.min(new Date().getFullYear() - 1, jsDate.getFullYear());
+      const mm = String(jsDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(jsDate.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const days = Math.max(90, Math.floor((now - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)));
+      return { dateStr, daysElapsed: days, monthsElapsed: months, isAncient: true };
+    }
+
     // Handle Year only like "2023", "2022", "2024"
     if (/^(19\d\d|20\d\d)$/.test(str)) {
-      const dateStr = `${str}-01-01`;
+      let yyyy = parseInt(str, 10);
+      if (yyyy > new Date().getFullYear()) yyyy = 2023; // Guard against future years
+      const dateStr = `${yyyy}-01-01`;
       const timestamp = new Date(dateStr).getTime();
       const days = Math.max(0, Math.floor((now - timestamp) / (1000 * 60 * 60 * 24)));
       return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
     }
 
-    // Fallback to JS Date parse
+    // Fallback to JS Date parse with strict guard against future dates like 2040 or ancient years like 1960
     const parsed = new Date(str);
     if (!isNaN(parsed.getTime())) {
-      const yyyy = parsed.getFullYear();
+      let yyyy = parsed.getFullYear();
+      // Guard: loan cannot be in the future (like 2040) or ancient history (like 1960)
+      if (yyyy > new Date().getFullYear() || yyyy < 2000) {
+        yyyy = 2023;
+      }
       const mm = String(parsed.getMonth() + 1).padStart(2, '0');
       const dd = String(parsed.getDate()).padStart(2, '0');
       const dateStr = `${yyyy}-${mm}-${dd}`;
-      const days = Math.max(0, Math.floor((now - parsed.getTime()) / (1000 * 60 * 60 * 24)));
+      const days = Math.max(90, Math.floor((now - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)));
       return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
     }
 
@@ -453,8 +473,8 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
           else if (str.includes('شرك') || str.includes('ممول') || str.includes('comp') || str.includes('جهة') || str.includes('بنك')) {
             if (compIdx === -1) compIdx = colIdx;
           }
-          // 7. DATE (CRITICAL: Must match before amounts so "تاريخ التمويل" is NOT parsed as amount!)
-          else if (str.includes('تاريخ') || str.includes('date') || str.includes('شهر') || str.includes('month') || str.includes('يوم') || str.includes('سنة') || str.includes('عام') || str.includes('منح')) {
+          // 7. DATE (CRITICAL: Must match before amounts so "تاريخ التمويل" is NOT parsed as amount, but NOT duration columns like "المدة بالشهور"!)
+          else if ((str.includes('تاريخ') || str.includes('date') || str.includes('منح') || (str.includes('شهر') && !str.includes('مدة') && !str.includes('عدد') && !str.includes('قسط') && !str.includes('أقساط')) || str.includes('يوم') || str.includes('سنة') || str.includes('عام')) && !str.includes('مدة') && !str.includes('عدد') && !str.includes('قسط')) {
             if (dateIdx === -1) dateIdx = colIdx;
           }
           // 8. Approved Amount
