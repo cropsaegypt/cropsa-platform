@@ -3449,6 +3449,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       usedAmount: 0,
       status: ApplicationStatus.RECEIVED,
       documentLink: appData.documentLink || '',
+      documents: appData.documents || [],
+      customAnswers: appData.customAnswers || {},
+      selectedProgramId: appData.selectedProgramId,
+      selectedProgramName: appData.selectedProgramName,
+      isUrgent: !!appData.isUrgent,
+      urgentRequestedAt: appData.isUrgent ? nowStr : undefined,
+      urgentRequestedBy: appData.isUrgent ? currentUser.id : undefined,
+      urgentRequestedByName: appData.isUrgent ? currentUser.name : undefined,
       submittedBy: currentUser.id,
       submittedAt: nowStr,
       assignedCompanyIds: assignedCompIds,
@@ -4257,6 +4265,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     setApplications(prev => prev.map(a => a.id === appId ? updatedApp : a));
+    if (supabase) {
+      try {
+        const nextApplications = applications.map(a => a.id === appId ? updatedApp : a);
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: nextApplications,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase uploadApplicationDocument fallback:', err);
+      }
+    }
     try {
       await updateDoc(doc(db, 'applications', appId), {
         documents: updatedApp.documents,

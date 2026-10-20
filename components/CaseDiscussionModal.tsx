@@ -70,6 +70,7 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [docName, setDocName] = useState('');
   const [docType, setDocType] = useState<ApplicationDocument['type']>('NATIONAL_ID');
+  const [docFile, setDocFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // Re-route state
@@ -102,21 +103,48 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
   // Handle document upload
   const handleUploadDoc = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docName.trim()) return;
+    const finalTitle = docName.trim() || docFile?.name?.replace(/\.[^/.]+$/, "") || 'مستند مرفق';
 
     setIsUploading(true);
     try {
-      await uploadApplicationDocument(application.id, {
-        name: docName.trim(),
-        type: docType,
-        url: 'https://crobsa.com/uploads/' + encodeURIComponent(docName) + '.pdf',
-        size: '1.8 MB'
-      });
-      setDocName('');
-      setShowUploadForm(false);
+      if (docFile) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const dataUrl = reader.result as string;
+          const k = 1024;
+          const sizes = ['B', 'KB', 'MB', 'GB'];
+          const i = Math.floor(Math.log(docFile.size) / Math.log(k));
+          const sizeStr = parseFloat((docFile.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+
+          await uploadApplicationDocument(application.id, {
+            name: finalTitle,
+            type: docType,
+            fileUrl: dataUrl,
+            url: dataUrl,
+            fileName: docFile.name,
+            fileSize: sizeStr
+          });
+          setDocName('');
+          setDocFile(null);
+          setShowUploadForm(false);
+          setIsUploading(false);
+        };
+        reader.readAsDataURL(docFile);
+      } else {
+        await uploadApplicationDocument(application.id, {
+          name: finalTitle,
+          type: docType,
+          fileUrl: '',
+          url: '',
+          fileName: `${finalTitle}.pdf`,
+          fileSize: '1.2 MB'
+        });
+        setDocName('');
+        setShowUploadForm(false);
+        setIsUploading(false);
+      }
     } catch (err) {
       console.error(err);
-    } finally {
       setIsUploading(false);
     }
   };
@@ -505,11 +533,10 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
                       <label className="text-xs font-bold text-slate-700 block mb-1.5">اسم المستند أو الوصف</label>
                       <input
                         type="text"
-                        required
                         value={docName}
                         onChange={(e) => setDocName(e.target.value)}
                         placeholder="مثال: إيصال كهرباء حديث شهر مارس 2026"
-                        className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:border-crobsa-500"
+                        className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:border-crobsa-500 font-medium"
                       />
                     </div>
 
@@ -518,7 +545,7 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
                       <select
                         value={docType}
                         onChange={(e) => setDocType(e.target.value as any)}
-                        className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:border-crobsa-500"
+                        className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:border-crobsa-500 font-medium"
                       >
                         <option value="NATIONAL_ID">بطاقة الرقم القومي (وجه/ظهر)</option>
                         <option value="UTILITY_BILL">إيصال مرافق (كهرباء / مياه / غاز)</option>
@@ -528,20 +555,46 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
                         <option value="OTHER">مستندات أخرى</option>
                       </select>
                     </div>
+
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-bold text-slate-700 block mb-1.5">الملف المرفق (PDF أو صور)</label>
+                      <input
+                        id="case-doc-file"
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setDocFile(file);
+                            if (!docName) {
+                              setDocName(file.name.replace(/\.[^/.]+$/, ""));
+                            }
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor="case-doc-file"
+                        className="border-2 border-dashed border-slate-300 hover:border-crobsa-500 hover:bg-white rounded-xl p-3 flex items-center justify-center gap-2 cursor-pointer transition-colors bg-white/50 text-xs font-bold text-slate-700"
+                      >
+                        <Upload className="h-4 w-4 text-crobsa-700" />
+                        <span>{docFile ? `📎 ${docFile.name}` : 'اضغط لاختيار ملف من جهازك (صور أو PDF)'}</span>
+                      </label>
+                    </div>
                   </div>
 
                   <div className="flex justify-end gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => setShowUploadForm(false)}
-                      className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl"
+                      className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl cursor-pointer"
                     >
                       إلغاء
                     </button>
                     <button
                       type="submit"
-                      disabled={isUploading || !docName.trim()}
-                      className="bg-crobsa-800 hover:bg-crobsa-900 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm"
+                      disabled={isUploading || (!docName.trim() && !docFile)}
+                      className="bg-crobsa-800 hover:bg-crobsa-900 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
                       <Upload className="h-4 w-4" />
                       {isUploading ? 'جاري الرفع...' : 'حفظ وإرفاق المستند'}
@@ -559,45 +612,61 @@ export const CaseDiscussionModal: React.FC<CaseDiscussionModalProps> = ({
                     <p className="text-xs text-slate-400 mt-1">انقر على "رفع مستند جديد" لإضافة أوراق العميل</p>
                   </div>
                 ) : (
-                  documents.map(doc => (
-                    <div 
-                      key={doc.id} 
-                      className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-crobsa-300 shadow-sm flex items-center justify-between gap-3 group transition-all"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-crobsa-100 group-hover:text-crobsa-900 transition-colors">
-                          <Paperclip className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-bold text-slate-900 line-clamp-1">{doc.name}</h5>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {doc.size || '1.5 MB'} • رفع بواسطة: {doc.uploadedByName || 'النظام'}
-                          </p>
-                        </div>
-                      </div>
+                  documents.map(doc => {
+                    const targetUrl = doc.fileUrl || doc.url;
+                    const isImg = targetUrl?.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(targetUrl || '') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(doc.fileName || '');
+                    const isPdf = targetUrl?.startsWith('data:application/pdf') || doc.fileName?.toLowerCase().endsWith('.pdf') || doc.type === 'application/pdf';
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewDoc(doc)}
-                          className="px-2.5 py-1.5 bg-crobsa-50 hover:bg-crobsa-100 text-crobsa-800 text-xs font-bold rounded-lg border border-crobsa-200 transition-colors flex items-center gap-1 shadow-xs"
-                          title="عرض المستند داخل البورتال"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          <span>عرض داخل البورتال</span>
-                        </button>
-                        <a
-                          href={doc.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition-colors"
-                          title="فتح في نافذة خارجية"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
+                    return (
+                      <div 
+                        key={doc.id} 
+                        className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-crobsa-300 shadow-sm flex items-center justify-between gap-3 group transition-all"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {isImg && targetUrl ? (
+                            <img
+                              src={targetUrl}
+                              alt={doc.name}
+                              className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0 cursor-pointer hover:opacity-90"
+                              onClick={() => setPreviewDoc(doc)}
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 group-hover:bg-crobsa-100 group-hover:text-crobsa-900 transition-colors">
+                              <Paperclip className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h5 className="text-xs font-bold text-slate-900 truncate" title={doc.name}>{doc.name}</h5>
+                            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                              {doc.fileSize || doc.size || '1.5 MB'} • رفع بواسطة: {doc.uploadedByName || 'النظام'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewDoc(doc)}
+                            className="px-2.5 py-1.5 bg-crobsa-50 hover:bg-crobsa-100 text-crobsa-800 text-xs font-bold rounded-lg border border-crobsa-200 transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
+                            title="معاينة المستند"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>معاينة</span>
+                          </button>
+                          {targetUrl && (
+                            <a
+                              href={targetUrl}
+                              download={doc.fileName || `${doc.name}.${isPdf ? 'pdf' : 'png'}`}
+                              className="p-1.5 hover:bg-slate-100 text-slate-700 bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                              title="تحميل المستند"
+                            >
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 

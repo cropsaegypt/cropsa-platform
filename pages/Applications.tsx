@@ -32,13 +32,17 @@ import {
   HelpCircle,
   Wallet,
   FileCheck,
-  Send
+  Send,
+  Eye,
+  Download,
+  FileText
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
 import { ClientDetailModal } from '../components/ClientDetailModal';
 import { CaseDiscussionModal } from '../components/CaseDiscussionModal';
 import { DisbursementModal } from '../components/DisbursementModal';
 import { ExternalCompanyDispatchModal } from '../components/ExternalCompanyDispatchModal';
+import { InternalDocViewerModal } from '../components/InternalDocViewerModal';
 
 const REJECTION_REASONS = [
   "درجة الائتمان منخفضة جداً",
@@ -101,6 +105,7 @@ export const Applications: React.FC = () => {
   const [discussionApp, setDiscussionApp] = useState<Application | null>(null);
   const [discussionTab, setDiscussionTab] = useState<'comments' | 'documents' | 'reroute'>('comments');
   const [externalDispatchApp, setExternalDispatchApp] = useState<Application | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<{ document: any; clientName?: string } | null>(null);
 
   // Modals state
   const [deductAmount, setDeductAmount] = useState<number>(0);
@@ -1158,50 +1163,113 @@ export const Applications: React.FC = () => {
                  )}
 
                  {/* Attached Documents List */}
-                 {selectedApp.documents && selectedApp.documents.length > 0 && (
-                   <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
-                     <div className="flex items-center justify-between border-b pb-2">
-                       <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                         <Paperclip className="h-4 w-4 text-blue-600" />
-                         المستندات والوثائق المرفوعة ({selectedApp.documents.length})
+                 <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+                   <div className="flex items-center justify-between border-b pb-2">
+                     <div className="flex items-center gap-2">
+                       <Paperclip className="h-4 w-4 text-blue-600" />
+                       <h4 className="text-sm font-bold text-gray-900">
+                         المستندات والوثائق المرفوعة
                        </h4>
-                       <button
-                         onClick={() => {
-                           setDiscussionApp(selectedApp);
-                           setDiscussionTab('documents');
-                         }}
-                         className="text-xs text-blue-600 hover:text-blue-700 font-bold"
-                       >
-                         إدارة ورفع مستندات جديدة +
-                       </button>
+                       <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                         {selectedApp.documents?.length || 0}
+                       </span>
                      </div>
+                     <button
+                       onClick={() => {
+                         setDiscussionApp(selectedApp);
+                         setDiscussionTab('documents');
+                       }}
+                       className="text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 cursor-pointer"
+                     >
+                       <span>إدارة ورفع مستندات جديدة</span>
+                       <span>+</span>
+                     </button>
+                   </div>
+
+                   {selectedApp.documents && selectedApp.documents.length > 0 ? (
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                       {selectedApp.documents.map(doc => (
-                         <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 transition-colors">
-                           <div className="flex items-center gap-2.5 min-w-0">
-                             <span className="p-2 bg-white rounded-lg text-blue-600 border border-slate-200 shrink-0">
-                               <Paperclip className="h-3.5 w-3.5" />
-                             </span>
-                             <div className="min-w-0">
-                               <p className="text-xs font-bold text-slate-800 truncate">{doc.name}</p>
-                               <p className="text-[10px] text-slate-400 font-mono">
-                                 {doc.size || '1.0 MB'} • بواسطة {doc.uploadedByName}
-                               </p>
+                       {selectedApp.documents.map(doc => {
+                         const targetUrl = doc.fileUrl || doc.url;
+                         const isImg = targetUrl?.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(targetUrl || '') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(doc.fileName || '');
+                         const isPdf = targetUrl?.startsWith('data:application/pdf') || doc.fileName?.toLowerCase().endsWith('.pdf') || doc.type === 'application/pdf';
+
+                         return (
+                           <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 transition-colors">
+                             <div className="flex items-center gap-2.5 min-w-0">
+                               {isImg && targetUrl ? (
+                                 <img
+                                   src={targetUrl}
+                                   alt={doc.name}
+                                   className="h-10 w-10 object-cover rounded-lg border border-slate-200 shrink-0 cursor-pointer hover:opacity-90"
+                                   onClick={() => setViewingDoc({
+                                     document: {
+                                       name: doc.name,
+                                       url: targetUrl,
+                                       type: 'image/jpeg',
+                                       size: doc.fileSize || doc.size,
+                                       uploadedByName: doc.uploadedByName,
+                                       uploadedAt: doc.uploadedAt
+                                     },
+                                     clientName: selectedApp.clientName
+                                   })}
+                                 />
+                               ) : (
+                                 <span className="p-2.5 bg-white rounded-lg text-blue-600 border border-slate-200 shrink-0">
+                                   <FileText className="h-4 w-4" />
+                                 </span>
+                               )}
+                               <div className="min-w-0">
+                                 <p className="text-xs font-bold text-slate-800 truncate" title={doc.name}>{doc.name}</p>
+                                 <p className="text-[10px] text-slate-400 font-mono">
+                                   {doc.fileName ? `${doc.fileName} • ` : ''}{doc.fileSize || doc.size || '1.0 MB'} • بواسطة {doc.uploadedByName || 'النظام'}
+                                 </p>
+                               </div>
+                             </div>
+
+                             <div className="flex items-center gap-1.5 shrink-0">
+                               <button
+                                 type="button"
+                                 onClick={() => setViewingDoc({
+                                   document: {
+                                     name: doc.name,
+                                     url: targetUrl,
+                                     type: isPdf ? 'application/pdf' : 'image/jpeg',
+                                     size: doc.fileSize || doc.size,
+                                     uploadedByName: doc.uploadedByName,
+                                     uploadedAt: doc.uploadedAt
+                                   },
+                                   clientName: selectedApp.clientName
+                                 })}
+                                 className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                 title="معاينة المستند"
+                               >
+                                 <Eye className="h-3.5 w-3.5" />
+                                 <span>معاينة</span>
+                               </button>
+
+                               {targetUrl && (
+                                 <a
+                                   href={targetUrl}
+                                   download={doc.fileName || `${doc.name}.${isPdf ? 'pdf' : 'png'}`}
+                                   className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                                   title="تحميل الملف إلى جهازك"
+                                 >
+                                   <Download className="h-3.5 w-3.5" />
+                                 </a>
+                               )}
                              </div>
                            </div>
-                           <a
-                             href={doc.url}
-                             target="_blank"
-                             rel="noreferrer"
-                             className="text-xs font-bold text-blue-600 hover:text-blue-800 p-1.5 shrink-0"
-                           >
-                             عرض
-                           </a>
-                         </div>
-                       ))}
+                         );
+                       })}
                      </div>
-                   </div>
-                 )}
+                   ) : (
+                     <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-500">
+                       <FileText className="h-8 w-8 text-slate-400 mx-auto mb-1.5" />
+                       <p className="text-xs font-bold text-slate-700">لم يتم إرفاق مستندات حتى الآن لهذا الطلب</p>
+                       <p className="text-[11px] text-slate-400 mt-0.5">يمكنك النقر على "إدارة ورفع مستندات جديدة +" لإرفاق أوراق العميل</p>
+                     </div>
+                   )}
+                 </div>
 
                  {/* Document Link */}
                  <a 
@@ -1547,6 +1615,15 @@ export const Applications: React.FC = () => {
           onClose={() => setExternalDispatchApp(null)}
           application={externalDispatchApp}
           initialCategory="NEW_APPLICATION"
+        />
+      )}
+
+      {/* Internal Document Viewer Modal for Admin */}
+      {viewingDoc && (
+        <InternalDocViewerModal
+          document={viewingDoc.document}
+          clientName={viewingDoc.clientName}
+          onClose={() => setViewingDoc(null)}
         />
       )}
     </div>

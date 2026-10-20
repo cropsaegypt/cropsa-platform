@@ -46,7 +46,8 @@ import {
   X,
   Check,
   ArrowLeft,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
 import { SmartCaseAssignmentModal } from './SmartCaseAssignmentModal';
 import { InternalDocViewerModal } from './InternalDocViewerModal';
@@ -1894,32 +1895,103 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
 
                               {/* Documents Tab */}
                               {inlineFollowupTab[app.id] === 'documents' && (
-                                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Paperclip className="h-4 w-4 text-sky-700" />
+                                      <h5 className="font-bold text-slate-900 text-xs">المستندات والوثائق المرفوعة للعميل</h5>
+                                      <span className="text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">
+                                        {app.documents?.length || 0} مستندات
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenDiscussion(app, 'documents')}
+                                      className="text-xs text-sky-700 hover:text-sky-900 font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <span>إدارة ومناقشة المستندات</span>
+                                      <span>+</span>
+                                    </button>
+                                  </div>
+
                                   {(!app.documents || app.documents.length === 0) ? (
-                                    <p className="text-center text-xs text-slate-400 py-3">لم يتم رفع مستندات مرفقة لهذا الطلب بعد.</p>
+                                    <div className="text-center py-6 bg-white rounded-xl border border-dashed border-slate-200">
+                                      <FileText className="h-8 w-8 text-slate-300 mx-auto mb-1" />
+                                      <p className="text-xs font-bold text-slate-600">لم يتم رفع أوراق لهذا الطلب بعد</p>
+                                    </div>
                                   ) : (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                      {app.documents.map((docItem, dIdx) => (
-                                        <div key={dIdx} className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 text-xs">
-                                          <div className="flex items-center gap-2 truncate">
-                                            <FileText className="h-4 w-4 text-sky-600 shrink-0" />
-                                            <span className="font-bold text-slate-800 truncate">{docItem.name}</span>
-                                          </div>
-                                          <div className="flex items-center gap-1.5 shrink-0">
-                                            <span className="text-[10px] text-slate-400 font-mono">{docItem.size || 'ملف'}</span>
-                                            {docItem.fileUrl && (
-                                              <a
-                                                href={docItem.fileUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-sky-600 hover:text-sky-800 p-1 bg-sky-50 rounded-md font-bold text-[10px]"
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                      {app.documents.map((docItem, dIdx) => {
+                                        const docTargetUrl = docItem.fileUrl || (docItem as any).url;
+                                        const isImg = docTargetUrl?.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(docTargetUrl || '') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(docItem.fileName || '');
+                                        const isPdf = docTargetUrl?.startsWith('data:application/pdf') || docItem.fileName?.toLowerCase().endsWith('.pdf') || docItem.type === 'application/pdf';
+
+                                        return (
+                                          <div key={dIdx} className="p-2.5 bg-white rounded-xl border border-slate-200 hover:border-sky-300 flex items-center justify-between gap-2 text-xs shadow-2xs transition-all">
+                                            <div className="flex items-center gap-2 truncate min-w-0">
+                                              {isImg && docTargetUrl ? (
+                                                <img 
+                                                  src={docTargetUrl} 
+                                                  alt={docItem.name} 
+                                                  className="h-8 w-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-pointer hover:opacity-90"
+                                                  onClick={() => setDocModalData({
+                                                    document: {
+                                                      name: docItem.name,
+                                                      url: docTargetUrl,
+                                                      size: docItem.fileSize || (docItem as any).size,
+                                                      type: 'image/jpeg'
+                                                    },
+                                                    clientName: app.clientName
+                                                  })}
+                                                />
+                                              ) : (
+                                                <div className="h-8 w-8 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 flex items-center justify-center shrink-0">
+                                                  <FileText className="h-4 w-4" />
+                                                </div>
+                                              )}
+                                              <div className="truncate min-w-0">
+                                                <span className="font-bold text-slate-800 truncate block text-xs" title={docItem.name}>
+                                                  {docItem.name}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 font-mono block">
+                                                  {docItem.fileSize || (docItem as any).size || 'ملف'}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1 shrink-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => setDocModalData({
+                                                  document: {
+                                                    name: docItem.name,
+                                                    url: docTargetUrl,
+                                                    size: docItem.fileSize || (docItem as any).size,
+                                                    type: isPdf ? 'application/pdf' : 'image/jpeg'
+                                                  },
+                                                  clientName: app.clientName
+                                                })}
+                                                className="text-sky-700 hover:text-sky-900 px-2 py-1 bg-sky-50 hover:bg-sky-100 rounded-lg font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                                                title="معاينة المستند"
                                               >
-                                                معاينة
-                                              </a>
-                                            )}
+                                                <Eye className="h-3 w-3" />
+                                                <span>معاينة</span>
+                                              </button>
+
+                                              {docTargetUrl && (
+                                                <a
+                                                  href={docTargetUrl}
+                                                  download={docItem.fileName || `${docItem.name}.${isPdf ? 'pdf' : 'png'}`}
+                                                  className="p-1 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg text-[11px] flex items-center transition-colors cursor-pointer"
+                                                  title="تحميل المستند"
+                                                >
+                                                  <Download className="h-3 w-3" />
+                                                </a>
+                                              )}
+                                            </div>
                                           </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -2023,14 +2095,102 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
 
                               {/* Document and Notes Info */}
                               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-                                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 border-b pb-2">
-                                  <Paperclip className="h-4 w-4 text-blue-700" />
-                                  وثائق وملاحظات المعاينة
-                                </h4>
+                                <div className="flex items-center justify-between border-b pb-2">
+                                  <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs sm:text-sm">
+                                    <Paperclip className="h-4 w-4 text-blue-700" />
+                                    <span>وثائق وأوراق العميل المرفوعة بالطلب ({app.documents?.length || 0})</span>
+                                  </h4>
+                                  {app.documents && app.documents.length > 0 && (
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold px-2 py-0.5 rounded-full">
+                                      مكتمل الإرفاق
+                                    </span>
+                                  )}
+                                </div>
+
+                                {app.documents && app.documents.length > 0 ? (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {app.documents.map((docItem, dIdx) => {
+                                      const docTargetUrl = docItem.fileUrl || (docItem as any).url;
+                                      const isImg = docTargetUrl?.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(docTargetUrl || '') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(docItem.fileName || '');
+                                      const isPdf = docTargetUrl?.startsWith('data:application/pdf') || docItem.fileName?.toLowerCase().endsWith('.pdf') || docItem.type === 'application/pdf';
+
+                                      return (
+                                        <div key={dIdx} className="p-2.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 flex items-center justify-between gap-2 text-xs transition-colors">
+                                          <div className="flex items-center gap-2 truncate min-w-0">
+                                            {isImg && docTargetUrl ? (
+                                              <img 
+                                                src={docTargetUrl} 
+                                                alt={docItem.name} 
+                                                className="h-8 w-8 rounded-lg object-cover border border-slate-200 shrink-0 cursor-pointer hover:opacity-90"
+                                                onClick={() => setDocModalData({
+                                                  document: {
+                                                    name: docItem.name,
+                                                    url: docTargetUrl,
+                                                    size: docItem.fileSize || (docItem as any).size,
+                                                    type: 'image/jpeg'
+                                                  },
+                                                  clientName: app.clientName
+                                                })}
+                                              />
+                                            ) : (
+                                              <div className="h-8 w-8 rounded-lg bg-white border border-slate-200 text-sky-700 flex items-center justify-center shrink-0">
+                                                <FileText className="h-4 w-4" />
+                                              </div>
+                                            )}
+                                            <div className="truncate min-w-0">
+                                              <p className="font-bold text-slate-800 truncate text-xs" title={docItem.name}>
+                                                {docItem.name}
+                                              </p>
+                                              <p className="text-[10px] text-slate-400 font-mono">
+                                                {docItem.fileSize || (docItem as any).size || 'ملف'}
+                                              </p>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => setDocModalData({
+                                                document: {
+                                                  name: docItem.name,
+                                                  url: docTargetUrl,
+                                                  size: docItem.fileSize || (docItem as any).size,
+                                                  type: isPdf ? 'application/pdf' : 'image/jpeg'
+                                                },
+                                                clientName: app.clientName
+                                              })}
+                                              className="px-2 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                              title="معاينة المستند"
+                                            >
+                                              <Eye className="h-3 w-3" />
+                                              <span>معاينة</span>
+                                            </button>
+
+                                            {docTargetUrl && (
+                                              <a
+                                                href={docTargetUrl}
+                                                download={docItem.fileName || `${docItem.name}.${isPdf ? 'pdf' : 'png'}`}
+                                                className="p-1 bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-[11px] flex items-center transition-colors cursor-pointer"
+                                                title="تحميل الملف"
+                                              >
+                                                <Download className="h-3 w-3" />
+                                              </a>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs">
+                                    لا توجد مستندات مرفقة مباشرة بالطلب.
+                                  </div>
+                                )}
+
                                 {app.description && (
                                   <div>
                                     <p className="text-[10px] font-bold text-slate-400">ملاحظات التقديم:</p>
-                                    <p className="text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 mt-1 leading-relaxed">
+                                    <p className="text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100 mt-1 leading-relaxed text-xs">
                                       {app.description}
                                     </p>
                                   </div>
@@ -2045,36 +2205,25 @@ export const CompanyApplicationsTab: React.FC<CompanyApplicationsTabProps> = ({
                                 )}
                                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => setDocModalData({
-                                        document: {
-                                          name: `ملف مستندات الطلب الرسمي - ${app.clientName}`,
-                                          url: (app.documents && app.documents[0]?.fileUrl) || app.documentLink || 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=1200&q=80',
-                                          size: '2.4 MB',
-                                          type: 'image/jpeg'
-                                        },
-                                        clientName: app.clientName
-                                      })}
-                                      className="bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 text-xs font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
-                                    >
-                                      <Eye className="h-3.5 w-3.5 text-sky-600" />
-                                      <span>استعراض ملفات ومستندات العميل بالبوابة</span>
-                                    </button>
-
-                                    {app.documents && app.documents.length > 0 && (
-                                      <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded-lg">
-                                        {app.documents.length} ملفات مؤرشفة
-                                      </span>
+                                    {app.documentLink && (
+                                      <a
+                                        href={app.documentLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-sky-700 hover:text-sky-900 font-bold flex items-center gap-1 bg-sky-50 px-3 py-1.5 rounded-xl border border-sky-200"
+                                      >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        <span>مجلد Google Drive الخارجي</span>
+                                      </a>
                                     )}
                                   </div>
 
                                   <button
-                                    onClick={() => onOpenDiscussion(app, 'comments')}
-                                    className="bg-crobsa-700 hover:bg-crobsa-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                                    onClick={() => onOpenDiscussion(app, 'documents')}
+                                    className="bg-crobsa-700 hover:bg-crobsa-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                                   >
                                     <MessageSquare className="h-3.5 w-3.5" />
-                                    فتح شاشة المناقشة الكاملة
+                                    <span>شاشة المستندات والمناقشة الكاملة</span>
                                   </button>
                                 </div>
                               </div>

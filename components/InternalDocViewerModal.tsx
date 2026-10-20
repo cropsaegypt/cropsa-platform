@@ -37,12 +37,34 @@ export const InternalDocViewerModal: React.FC<InternalDocViewerModalProps> = ({
   const [rotation, setRotation] = useState<number>(0);
   const [verified, setVerified] = useState<boolean>(true);
 
-  const docUrl = document.url || 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=1200&q=80';
-  const isImage = /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(docUrl) || document.type?.toLowerCase().includes('image') || true;
+  const docUrl = document.url || (document as any).fileUrl || '';
+  const isPdf = docUrl.startsWith('data:application/pdf') || 
+                /\.pdf$/i.test(docUrl) || 
+                document.type === 'application/pdf' || 
+                document.name.toLowerCase().endsWith('.pdf') ||
+                Boolean((document as any).fileName?.toLowerCase().endsWith('.pdf'));
+
+  const isImage = !isPdf && (
+    docUrl.startsWith('data:image') || 
+    /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(docUrl) || 
+    document.type?.toLowerCase().includes('image') || 
+    Boolean(docUrl)
+  );
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50));
   const handleRotate = () => setRotation(prev => (prev + 90) % 360);
+
+  const handleDownload = () => {
+    if (!docUrl) return;
+    const link = window.document.createElement('a');
+    link.href = docUrl;
+    const baseName = (document as any).fileName || document.name || 'document';
+    link.download = baseName.includes('.') ? baseName : `${baseName}.${isPdf ? 'pdf' : 'png'}`;
+    window.document.body.appendChild(link);
+    link.click();
+    window.document.body.removeChild(link);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md" dir="rtl">
@@ -105,16 +127,14 @@ export const InternalDocViewerModal: React.FC<InternalDocViewerModalProps> = ({
               <span className="hidden sm:inline">طباعة</span>
             </button>
 
-            <a
-              href={docUrl}
-              target="_blank"
-              rel="noreferrer"
-              download
-              className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-sky-600/30 flex items-center gap-1.5 transition-all"
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-sky-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">تحميل</span>
-            </a>
+              <span>تحميل المستند</span>
+            </button>
 
             <button
               onClick={onClose}
@@ -126,14 +146,22 @@ export const InternalDocViewerModal: React.FC<InternalDocViewerModalProps> = ({
         </div>
 
         {/* Viewport Area */}
-        <div className="flex-1 bg-slate-950 overflow-auto flex items-center justify-center p-6 relative">
+        <div className="flex-1 bg-slate-950 overflow-auto flex items-center justify-center p-4 sm:p-6 relative">
           <div 
             className="transition-transform duration-200 ease-out flex items-center justify-center max-w-full max-h-full"
             style={{ 
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)` 
             }}
           >
-            {isImage && Boolean(docUrl?.trim()) ? (
+            {isPdf && Boolean(docUrl?.trim()) ? (
+              <div className="w-[88vw] max-w-4xl h-[70vh] bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
+                <iframe
+                  src={docUrl}
+                  title={document.name}
+                  className="w-full h-full border-none"
+                />
+              </div>
+            ) : isImage && Boolean(docUrl?.trim()) ? (
               <div className="relative shadow-2xl rounded-2xl overflow-hidden border border-slate-800 bg-white">
                 <img
                   src={docUrl}
@@ -146,12 +174,22 @@ export const InternalDocViewerModal: React.FC<InternalDocViewerModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl p-10 max-w-2xl text-slate-800 shadow-2xl">
-                <FileText className="h-16 w-16 text-sky-600 mb-4" />
-                <h4 className="text-xl font-bold">{document.name}</h4>
-                <p className="text-sm text-slate-500 mt-2">
-                  هذا المستند مخزن ومؤمن مشفراً ضمن قاعدة مستندات كروبسا المركزية.
+              <div className="bg-white rounded-2xl p-10 max-w-xl text-slate-800 shadow-2xl text-center space-y-3">
+                <FileText className="h-16 w-16 text-sky-600 mb-2 mx-auto" />
+                <h4 className="text-lg font-black text-slate-900">{document.name}</h4>
+                <p className="text-xs text-slate-500">
+                  هذا الملف مرفق ومؤمن، يمكنك النقر على زر التحميل لحفظه على جهازك ومراجعته.
                 </p>
+                {docUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 shadow-md"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>تحميل المستند الآن</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
