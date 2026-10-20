@@ -954,6 +954,14 @@ export interface Client {
   monthlyIncome?: number;
   monthlyObligations?: number;
   
+  // Renewal Classification & Validation Status
+  hasMissingNationalId?: boolean; // هل العميل مضاف بدون رقم قومي وبحاجة لاستكمال البطاقة
+  temporaryNationalId?: string; // الرقم المرجعي المؤقت في حالة عدم توفر الرقم القومي
+  renewalClassification?: 'ELIGIBLE' | 'RECENT_ACTIVE' | 'DELINQUENT' | 'NEEDS_DATA' | 'NEW_CLIENT'; // تصنيف التجديد
+  renewalEligibleMonths?: number; // عدد الأشهر المنقضية منذ آخر تمويل
+  suggestedRenewalLimit?: number; // الحد الائتماني المقترح للتجديد
+  renewalNotes?: string; // ملخص وملاحظات أهلية التجديد
+  
   manualEntry?: {
     installmentCompanyId: string;
     companyName?: string;

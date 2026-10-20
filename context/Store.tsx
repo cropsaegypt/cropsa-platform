@@ -5269,8 +5269,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     initialApps?: Partial<Application>[]
   ): Promise<{ importedCount: number; errors: string[] }> => {
     if (!currentUser) return { importedCount: 0, errors: ['غير مسجل الدخول'] };
-    if (currentUser.role !== Role.SUPER_ADMIN) {
-      return { importedCount: 0, errors: ['هذه الخاصية متاحة حصرياً لمدير النظام العام (Super Admin)'] };
+    const isAllowedRole = currentUser.role === Role.SUPER_ADMIN || 
+                          currentUser.role === Role.ADMIN || 
+                          currentUser.role === Role.INSTALLMENT_COMPANY;
+    if (!isAllowedRole) {
+      return { importedCount: 0, errors: ['هذه الخاصية متاحة للإدارة ولمسؤولي المنظومة وشركات التقسيط'] };
     }
 
     const errors: string[] = [];
@@ -5282,35 +5285,106 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     for (let i = 0; i < importedClients.length; i++) {
       const row = importedClients[i];
-      if (!row.name || !row.nationalId) {
-        errors.push(`صف ${i + 1}: الاسم أو الرقم القومي غير مكتمل`);
+      if (!row.name || !row.name.trim()) {
+        errors.push(`صف ${i + 1}: اسم العميل مفقود`);
         continue;
       }
 
-      const existingIndex = clients.findIndex(c => c.nationalId === row.nationalId);
-      const clientId = existingIndex >= 0 ? clients[existingIndex].id : `c_import_${Date.now()}_${i}`;
+      // National ID handling: Accept even if missing or partial!
+      const rawNid = row.nationalId ? String(row.nationalId).replace(/\D/g, '') : '';
+      const isMissingNid = !rawNid || rawNid.length !== 14;
+      const finalNationalId = isMissingNid
+        ? (row.temporaryNationalId || `TEMP-NID-${Date.now().toString().slice(-6)}-${i + 1}`)
+        : rawNid;
+
+      // Smart Duplicate Resolution: by national ID (if valid) or by exact name + phone
+      let existingIndex = -1;
+      if (!isMissingNid) {
+        existingIndex = clients.findIndex(c => c.nationalId === finalNationalId);
+      } else if (row.phoneNumber && row.phoneNumber.trim().length >= 10) {
+        existingIndex = clients.findIndex(c => 
+          c.name.trim().toLowerCase() === row.name!.trim().toLowerCase() && 
+          c.phoneNumber?.replace(/\s+/g, '') === row.phoneNumber?.replace(/\s+/g, '')
+        );
+      } else {
+        existingIndex = clients.findIndex(c => c.name.trim().toLowerCase() === row.name!.trim().toLowerCase());
+      }
+
+      const existingClient = existingIndex >= 0 ? clients[existingIndex] : null;
+      const clientId = existingClient ? existingClient.id : `c_import_${Date.now()}_${i}`;
+
+      // Calculate elapsed time from last finance date to determine renewal eligibility
+      const financeDate = row.lastFinanceDate || nowStr.split('T')[0];
+      const financeTimestamp = new Date(financeDate).getTime();
+      const daysElapsed = Math.max(1, Math.floor((Date.now() - (isNaN(financeTimestamp) ? Date.now() : financeTimestamp)) / (1000 * 60 * 60 * 24)));
+      const monthsElapsed = Math.max(0, Math.floor(daysElapsed / 30));
+
+      const isDelinquent = row.isDelinquent || 
+                           (row.notes && (row.notes.includes('تعثر') || row.notes.includes('قضية') || row.notes.includes('شيك') || row.notes.includes('مرفوض') || row.notes.includes('اي سكور')));
+      
+      let computedClassification: 'ELIGIBLE' | 'RECENT_ACTIVE' | 'DELINQUENT' | 'NEEDS_DATA' | 'NEW_CLIENT' = 'NEW_CLIENT';
+      if (isDelinquent) {
+        computedClassification = 'DELINQUENT';
+      } else if (isMissingNid) {
+        computedClassification = 'NEEDS_DATA';
+      } else if (Number(row.disbursedAmount || row.totalApprovedAmount || 0) > 0) {
+        if (daysElapsed >= 90 || monthsElapsed >= 3) {
+          computedClassification = 'ELIGIBLE';
+        } else {
+          computedClassification = 'RECENT_ACTIVE';
+        }
+      }
 
       const clientObj: Client = {
         id: clientId,
         name: row.name.trim(),
-        nationalId: row.nationalId.trim(),
-        phoneNumber: row.phoneNumber?.trim() || '',
-        governorate: row.governorate || 'القاهرة',
-        profession: row.profession || 'MERCHANT',
+        nationalId: finalNationalId,
+        hasMissingNationalId: isMissingNid,
+        temporaryNationalId: isMissingNid ? finalNationalId : undefined,
+        renewalClassification: row.renewalClassification || computedClassification,
+        renewalEligibleMonths: row.renewalEligibleMonths !== undefined ? row.renewalEligibleMonths : monthsElapsed,
+        suggestedRenewalLimit: row.suggestedRenewalLimit || Math.round((Number(row.totalApprovedAmount || row.disbursedAmount || 50000)) * 1.3),
+        renewalNotes: row.renewalNotes || (
+          computedClassification === 'ELIGIBLE' 
+            ? `مؤهل للتجديد الفوري (مضى ${monthsElapsed} أشهر على التمويل السابق)` 
+            : computedClassification === 'RECENT_ACTIVE'
+              ? `تمويل حديث نشط (متبقي ${Math.max(0, 90 - daysElapsed)} يوماً لاستيفاء مهلة الـ 3 أشهر)`
+              : isMissingNid
+                ? 'تم الاستيراد بنجاح - بحاجة لتسجيل وتحديث الرقم القومي'
+                : 'سجل عميل محفوظ'
+        ),
+        phoneNumber: row.phoneNumber?.trim() || existingClient?.phoneNumber || '',
+        governorate: row.governorate || existingClient?.governorate || 'القاهرة',
+        profession: row.profession || existingClient?.profession || 'MERCHANT',
         addedBy: currentUser.id,
-        addedAt: row.addedAt || nowStr,
-        creditRating: row.creditRating || 'A',
-        totalApprovedAmount: Number(row.totalApprovedAmount) || 0,
-        disbursedAmount: Number(row.disbursedAmount) || 0,
-        companyName: row.companyName || 'شركة أمان لتمويل المشروعات والتقسيط',
-        lastFinanceDate: row.lastFinanceDate || nowStr,
-        isHistoricalOnly: !!row.isHistoricalOnly,
-        notes: row.notes || 'مستورد مجمعاً عبر شيت قاعدة بيانات كروبسا',
-        authorizedCompanies: row.authorizedCompanies || [],
-        aiSolvencyScore: row.aiSolvencyScore || 85,
-        aiRiskTier: row.aiRiskTier || 'LOW',
-        manualEntry: row.manualEntry,
-        timeline: [
+        addedAt: row.addedAt || existingClient?.addedAt || nowStr,
+        creditRating: row.creditRating || existingClient?.creditRating || (isDelinquent ? 'D' : 'A'),
+        totalApprovedAmount: Number(row.totalApprovedAmount) || existingClient?.totalApprovedAmount || 0,
+        disbursedAmount: Number(row.disbursedAmount) || existingClient?.disbursedAmount || 0,
+        companyName: row.companyName || existingClient?.companyName || 'شركة أمان لتمويل المشروعات والتقسيط',
+        lastFinanceDate: row.lastFinanceDate || existingClient?.lastFinanceDate || financeDate,
+        isHistoricalOnly: row.isHistoricalOnly !== undefined ? !!row.isHistoricalOnly : true,
+        notes: isMissingNid 
+          ? `${row.notes || ''} [⚠️ تم الاستيراد بدون رقم قومي مؤقتاً بحاجة لاستكمال البطاقة]`.trim()
+          : (row.notes || existingClient?.notes || 'مستورد مجمعاً عبر شيت قاعدة بيانات كروبسا'),
+        authorizedCompanies: row.authorizedCompanies || existingClient?.authorizedCompanies || [],
+        aiSolvencyScore: row.aiSolvencyScore || existingClient?.aiSolvencyScore || (isDelinquent ? 45 : isMissingNid ? 70 : 88),
+        aiRiskTier: row.aiRiskTier || existingClient?.aiRiskTier || (isDelinquent ? 'HIGH' : 'LOW'),
+        manualEntry: row.manualEntry || existingClient?.manualEntry,
+        timeline: existingClient?.timeline ? [
+          ...existingClient.timeline,
+          {
+            id: `t_imp_${Date.now()}_${i}`,
+            clientId,
+            action: 'تحديث بيانات وسجل من الشيت المجمع',
+            actionType: 'NOTE',
+            performedBy: currentUser.id,
+            performedByName: currentUser.name,
+            timestamp: nowStr,
+            details: `تحديث تمويل: ${Number(row.totalApprovedAmount || 0).toLocaleString()} ج.م - الشركة: ${row.companyName || 'غير محدد'}${isMissingNid ? ' (بدون رقم قومي)' : ''}`,
+            badgeColor: 'amber'
+          }
+        ] : [
           {
             id: `t_imp_${Date.now()}_${i}`,
             clientId,
@@ -5319,8 +5393,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             performedBy: currentUser.id,
             performedByName: currentUser.name,
             timestamp: nowStr,
-            details: `تم الاستيراد المجمع للعميل. التمويل السابق: ${Number(row.totalApprovedAmount || 0).toLocaleString()} ج.م - الشركة: ${row.companyName || 'غير محدد'}`,
-            badgeColor: 'blue'
+            details: `تم الاستيراد المجمع للعميل. التمويل السابق: ${Number(row.totalApprovedAmount || 0).toLocaleString()} ج.م - الشركة: ${row.companyName || 'غير محدد'}${isMissingNid ? ' (بدون رقم قومي - مؤقت)' : ''}`,
+            badgeColor: isMissingNid ? 'amber' : 'blue'
           }
         ]
       };
@@ -5332,15 +5406,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (initialApps && initialApps.length > 0) {
       for (let j = 0; j < initialApps.length; j++) {
         const appRow = initialApps[j];
-        if (appRow.clientNationalId) {
+        if (appRow.clientName) {
+          const matchedClient = newClientsToAdd[j] || newClientsToAdd.find(c => c.name === appRow.clientName);
+          const appNid = appRow.clientNationalId || matchedClient?.nationalId || `TEMP-NID-${Date.now().toString().slice(-6)}-${j + 1}`;
           const newApp: Application = {
             id: `app_imp_${Date.now()}_${j}`,
             clientName: appRow.clientName || 'عميل',
-            clientNationalId: appRow.clientNationalId,
-            phoneNumber: appRow.phoneNumber || '',
-            whatsappNumber: appRow.whatsappNumber || appRow.phoneNumber || '',
-            governorate: appRow.governorate || 'القاهرة',
-            profession: (appRow.profession as any) || 'MERCHANT',
+            clientNationalId: appNid,
+            phoneNumber: appRow.phoneNumber || matchedClient?.phoneNumber || '',
+            whatsappNumber: appRow.whatsappNumber || appRow.phoneNumber || matchedClient?.phoneNumber || '',
+            governorate: appRow.governorate || matchedClient?.governorate || 'القاهرة',
+            profession: (appRow.profession as any) || matchedClient?.profession || 'MERCHANT',
             financeType: 'INSTALLMENT',
             durationMonths: Number(appRow.durationMonths) || 12,
             hasRecentInstallment: true,
@@ -5369,9 +5445,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     setClients(prev => {
-      const existingMap = new Map(prev.map(c => [c.nationalId, c]));
+      const existingMap = new Map<string, Client>();
+      prev.forEach(c => existingMap.set(c.id, c));
       for (const nc of newClientsToAdd) {
-        existingMap.set(nc.nationalId, nc);
+        existingMap.set(nc.id, nc);
       }
       return Array.from(existingMap.values());
     });

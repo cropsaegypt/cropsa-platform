@@ -63,7 +63,7 @@ export const Clients: React.FC = () => {
   const [dateFilter, setDateFilter] = useState('ALL'); // ALL, THIS_MONTH, LAST_MONTH, 3_MONTHS_PLUS, 6_MONTHS_PLUS, CUSTOM
   const [customMonth, setCustomMonth] = useState('');
   const [governorateFilter, setGovernorateFilter] = useState('ALL');
-  const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'ELIGIBLE_RENEWAL' | 'RECENT_ACTIVE' | 'HISTORICAL'>('ALL');
+  const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'ELIGIBLE_RENEWAL' | 'RECENT_ACTIVE' | 'MISSING_NID' | 'DELINQUENT' | 'HISTORICAL'>('ALL');
 
   // Permission check
   if (
@@ -213,8 +213,12 @@ export const Clients: React.FC = () => {
         a.status === ApplicationStatus.ISCORE_CHECK
       );
 
+      const isMissingNid = !!client.hasMissingNationalId || (!!client.nationalId && client.nationalId.startsWith('TEMP-NID'));
+      const isDelinquent = !!client.isDelinquent || client.renewalClassification === 'DELINQUENT' || (!!client.notes && (client.notes.includes('تعثر') || client.notes.includes('شيك')));
+      
       // 3-Month Renewal Eligibility (عدا عليه 3 شهور ومتاح له تجديد)
-      const isEligibleForRenewal = (daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry);
+      const isEligibleForRenewal = (client.renewalClassification === 'ELIGIBLE') || 
+        (((daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry) && !isDelinquent && !isMissingNid));
 
       return {
         ...client,
@@ -227,6 +231,8 @@ export const Clients: React.FC = () => {
         daysElapsed,
         monthsElapsed,
         hasPendingApp,
+        isMissingNid,
+        isDelinquent,
         isEligibleForRenewal
       };
     });
@@ -239,13 +245,17 @@ export const Clients: React.FC = () => {
     const totalApprovedCeiling = enrichedClients.reduce((acc, c) => acc + c.approvedTotal, 0);
     const eligibleRenewalCount = enrichedClients.filter(c => c.isEligibleForRenewal).length;
     const activeRecentCount = enrichedClients.filter(c => c.daysElapsed < 90 && c.disbursedTotal > 0).length;
+    const missingNidCount = enrichedClients.filter(c => c.isMissingNid).length;
+    const delinquentCount = enrichedClients.filter(c => c.isDelinquent).length;
 
     return {
       totalClientsCount,
       totalDisbursedAmount,
       totalApprovedCeiling,
       eligibleRenewalCount,
-      activeRecentCount
+      activeRecentCount,
+      missingNidCount,
+      delinquentCount
     };
   }, [enrichedClients]);
 
@@ -268,6 +278,8 @@ export const Clients: React.FC = () => {
       // 2. Active Tab filter
       if (activeTabFilter === 'ELIGIBLE_RENEWAL' && !c.isEligibleForRenewal) return false;
       if (activeTabFilter === 'RECENT_ACTIVE' && (c.daysElapsed >= 90 || c.disbursedTotal === 0)) return false;
+      if (activeTabFilter === 'MISSING_NID' && !c.isMissingNid) return false;
+      if (activeTabFilter === 'DELINQUENT' && !c.isDelinquent) return false;
       if (activeTabFilter === 'HISTORICAL' && !c.isHistoricalOnly && !c.manualEntry) return false;
 
       // 3. Company filter (من مين)
@@ -533,6 +545,32 @@ export const Clients: React.FC = () => {
           >
             سجلات وشركات سابقة ({enrichedClients.filter(c => c.isHistoricalOnly || c.manualEntry).length})
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTabFilter('MISSING_NID')}
+            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTabFilter === 'MISSING_NID'
+                ? 'bg-amber-700 text-white shadow-xs'
+                : 'text-amber-700 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80'
+            }`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+            بدون رقم قومي (مؤقت) ({stats.missingNidCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTabFilter('DELINQUENT')}
+            className={`px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+              activeTabFilter === 'DELINQUENT'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-rose-700 bg-rose-50 hover:bg-rose-100/80 border border-rose-200/80'
+            }`}
+          >
+            <AlertCircle className="h-3.5 w-3.5 text-rose-600" />
+            متعثرون / ملاحظات سلبية ({stats.delinquentCount})
+          </button>
         </div>
 
         {/* Dimensional Filters Grid */}
@@ -666,18 +704,52 @@ export const Clients: React.FC = () => {
                 {/* Header */}
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h3 className="font-bold text-slate-900 text-sm">{c.name}</h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="font-bold text-slate-900 text-sm">{c.name}</h3>
+                      {c.isHistoricalOnly && (
+                        <span className="bg-purple-100 text-purple-700 text-[9px] font-bold px-1.5 py-0.2 rounded-sm">سابق</span>
+                      )}
+                      {c.isMissingNid && (
+                        <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded-sm inline-flex items-center gap-0.5">
+                          <AlertTriangle className="h-2.5 w-2.5" />
+                          مؤقت
+                        </span>
+                      )}
+                      {c.isDelinquent && (
+                        <span className="bg-rose-100 text-rose-800 border border-rose-200 text-[9px] font-bold px-1.5 py-0.2 rounded-sm inline-flex items-center gap-0.5">
+                          <AlertCircle className="h-2.5 w-2.5 text-rose-600" />
+                          متعثر
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 font-mono">
-                      <span>الرقم القومي: {c.nationalId}</span>
+                      <span>{c.isMissingNid ? 'رقم مؤقت: ' + c.nationalId : `الرقم القومي: ${c.nationalId}`}</span>
                       <span>•</span>
                       <span>{c.governorate || 'القاهرة'}</span>
                     </div>
                   </div>
                   
-                  {c.isEligibleForRenewal ? (
-                    <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 animate-pulse">
-                      <Sparkles className="h-3 w-3" />
-                      مؤهل للتجديد (مر {c.monthsElapsed} شهر)
+                  {c.isDelinquent ? (
+                    <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3 text-rose-600" />
+                      متعثر
+                    </span>
+                  ) : c.isEligibleForRenewal ? (
+                    <div className="text-right">
+                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 animate-pulse">
+                        <Sparkles className="h-3 w-3" />
+                        مؤهل للتجديد (مر {c.monthsElapsed} شهر)
+                      </span>
+                      {c.suggestedRenewalLimit && c.suggestedRenewalLimit > 0 && (
+                        <span className="block text-[9px] text-amber-800 font-bold mt-0.5 font-mono">
+                          سقف: {c.suggestedRenewalLimit.toLocaleString()} ج.م
+                        </span>
+                      )}
+                    </div>
+                  ) : c.daysElapsed < 90 && c.disbursedTotal > 0 ? (
+                    <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                      تمويل حديث
                     </span>
                   ) : (
                     <span className="bg-slate-100 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-lg">
@@ -805,11 +877,22 @@ export const Clients: React.FC = () => {
                   >
                     {/* Name & Activity */}
                     <td className="px-5 py-3.5">
-                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
                         <span>{c.name}</span>
                         {c.creditRating && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-mono font-bold">
                             {c.creditRating}
+                          </span>
+                        )}
+                        {c.isHistoricalOnly && (
+                          <span className="bg-purple-100 text-purple-700 text-[9px] font-bold px-1.5 py-0.2 rounded-sm">
+                            سابق
+                          </span>
+                        )}
+                        {c.isMissingNid && (
+                          <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded-sm inline-flex items-center gap-0.5">
+                            <AlertTriangle className="h-2.5 w-2.5 text-amber-600" />
+                            مؤقت
                           </span>
                         )}
                       </div>
@@ -820,7 +903,28 @@ export const Clients: React.FC = () => {
 
                     {/* National ID */}
                     <td className="px-5 py-3.5 font-mono text-slate-700">
-                      {c.nationalId}
+                      {c.isMissingNid ? (
+                        <div className="flex flex-col gap-0.5 items-start">
+                          <span className="bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3 text-amber-600" />
+                            بدون رقم قومي (مؤقت)
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono select-all">
+                            {c.nationalId}
+                          </span>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingClient(c)}
+                              className="text-[10px] text-cropsa-600 hover:text-cropsa-700 font-bold underline flex items-center gap-0.5 mt-0.5"
+                            >
+                              <Edit className="h-2.5 w-2.5" /> استكمال الرقم القومي
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span>{c.nationalId}</span>
+                      )}
                     </td>
 
                     {/* Approved Total */}
@@ -862,10 +966,27 @@ export const Clients: React.FC = () => {
 
                     {/* 3-Month Renewal Status Badge */}
                     <td className="px-5 py-3.5">
-                      {c.isEligibleForRenewal ? (
-                        <span className="bg-amber-100 text-amber-900 border border-amber-300 font-bold px-2.5 py-1 rounded-xl text-[10px] inline-flex items-center gap-1 animate-pulse">
-                          <Sparkles className="h-3 w-3 text-amber-600" />
-                          متاح للتجديد (مر 3+ شهور)
+                      {c.isDelinquent ? (
+                        <span className="bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold px-2 py-1 rounded-lg inline-flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3 text-rose-600" />
+                          متعثر / ملاحظات سلبية
+                        </span>
+                      ) : c.isEligibleForRenewal ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="bg-amber-100 text-amber-900 border border-amber-300 font-bold px-2.5 py-1 rounded-xl text-[10px] inline-flex items-center gap-1 animate-pulse">
+                            <Sparkles className="h-3 w-3 text-amber-600" />
+                            متاح للتجديد (مر 3+ شهور)
+                          </span>
+                          {c.suggestedRenewalLimit && c.suggestedRenewalLimit > 0 && (
+                            <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm border border-amber-200">
+                              سقف مقترح: {c.suggestedRenewalLimit.toLocaleString()} ج.م
+                            </span>
+                          )}
+                        </div>
+                      ) : c.isMissingNid ? (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-lg inline-flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3 text-amber-500" />
+                          يلزم استكمال البيانات
                         </span>
                       ) : c.daysElapsed < 90 && c.disbursedTotal > 0 ? (
                         <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-lg inline-flex items-center gap-1">

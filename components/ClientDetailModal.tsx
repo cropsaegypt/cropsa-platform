@@ -52,8 +52,17 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                     </span>
                                 )}
                             </div>
-                            <p className="text-xs sm:text-sm text-sky-200/80 font-mono mt-0.5">
-                                الرقم القومي: {client.nationalId || 'غير مسجل'} • {client.governorate || 'المحافظة غير محددة'}
+                            <p className="text-xs sm:text-sm text-sky-200/80 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>الرقم القومي:</span>
+                                {client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID')) ? (
+                                    <span className="bg-amber-500/30 text-amber-200 border border-amber-400/40 px-2 py-0.5 rounded text-xs font-bold">
+                                        معرف مؤقت (بدون بطاقة): {client.nationalId}
+                                    </span>
+                                ) : (
+                                    <span>{client.nationalId || 'غير مسجل'}</span>
+                                )}
+                                <span>•</span>
+                                <span>{client.governorate || 'المحافظة غير محددة'}</span>
                             </p>
                         </div>
                     </div>

@@ -37,7 +37,8 @@ export const EditClientModal: React.FC<EditClientModalProps> = ({ client, isOpen
   useEffect(() => {
     if (client) {
       setName(client.name || '');
-      setNationalId(client.nationalId || '');
+      const isTemp = !!client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID'));
+      setNationalId(isTemp ? '' : (client.nationalId || ''));
       setPhoneNumber(client.phoneNumber || '');
       setGovernorate(client.governorate || 'القاهرة');
       setProfession(client.profession || '');
@@ -58,16 +59,27 @@ export const EditClientModal: React.FC<EditClientModalProps> = ({ client, isOpen
       setError('يرجى إدخال اسم العميل');
       return;
     }
-    if (nationalId.length !== 14) {
-      setError('الرقم القومي يجب أن يتكون من 14 رقماً');
+
+    const trimmedNid = nationalId.trim().replace(/\D/g, '');
+    const isTempCurrently = !!client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID'));
+
+    if (trimmedNid && trimmedNid.length !== 14) {
+      setError('الرقم القومي يجب أن يتكون من 14 رقماً بالضبط (أو اتركه فارغاً للاحتفاظ بالمعرف المؤقت)');
       return;
     }
+
+    const finalNid = trimmedNid.length === 14 
+      ? trimmedNid 
+      : (client.nationalId || `TEMP-NID-${Date.now()}`);
+    const isMissingNid = trimmedNid.length !== 14 && isTempCurrently;
 
     setLoading(true);
     try {
       await updateClient(client.id, {
         name: name.trim(),
-        nationalId: nationalId.trim(),
+        nationalId: finalNid,
+        hasMissingNationalId: isMissingNid,
+        temporaryNationalId: isMissingNid ? finalNid : undefined,
         phoneNumber: phoneNumber.trim(),
         governorate,
         profession: profession.trim(),
@@ -139,22 +151,41 @@ export const EditClientModal: React.FC<EditClientModalProps> = ({ client, isOpen
 
             {/* National ID */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                <span>الرقم القومي (14 رقم)</span>
-                <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span>الرقم القومي (14 رقم)</span>
+                  {client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID')) ? (
+                    <span className="text-amber-700 bg-amber-50 border border-amber-200 text-[10px] font-bold px-1.5 py-0.2 rounded">
+                      معرف مؤقت - بانتظار استكمال البطاقة
+                    </span>
+                  ) : (
+                    <span className="text-rose-500">*</span>
+                  )}
+                </label>
+              </div>
               <div className="relative">
                 <input
                   type="text"
-                  required
                   maxLength={14}
                   value={nationalId}
                   onChange={(e) => setNationalId(e.target.value.replace(/\D/g, ''))}
                   className="w-full pr-10 pl-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                  placeholder="2980101..."
+                  placeholder={
+                    client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID'))
+                      ? "أدخل 14 رقماً لاعتماد البطاقة أو اتركه للمعرف المؤقت"
+                      : "2980101..."
+                  }
                 />
                 <CreditCard className="h-4 w-4 text-slate-400 absolute right-3 top-3" />
               </div>
+              {(client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID'))) && !nationalId && (
+                <p className="text-[10px] text-amber-800 bg-amber-50/90 p-2 rounded-xl border border-amber-200 flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  <span>
+                    العميل مسجل حالياً بمعرف مؤقت: <code className="font-mono font-bold">{client.nationalId}</code>. عند إدخال 14 رقماً سيتم تحديث سجله تلقائياً إلى مكتمل.
+                  </span>
+                </p>
+              )}
             </div>
 
             {/* Phone */}
