@@ -149,6 +149,119 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
     return { code: 'comp_01', nameAr: companyInput };
   };
 
+  // Smart Currency & Amount Parser (handles "50,000", "40.000", "40 ألف", "40" in thousands, etc.)
+  const parseSmartAmount = (val: any): number => {
+    if (val === undefined || val === null) return 0;
+    if (typeof val === 'number') {
+      if (isNaN(val)) return 0;
+      // Auto-detect numbers entered in thousands (e.g. 40, 50, 60): no loan in Egypt is 40 or 60 EGP
+      if (val > 0 && val <= 500) return val * 1000;
+      return Math.round(val);
+    }
+    let str = String(val).trim();
+    if (!str) return 0;
+
+    // Convert Arabic numbers: ٠١٢٣٤٥٦٧٨٩ -> 0123456789
+    const arabicDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    arabicDigits.forEach((d, i) => {
+      str = str.replace(new RegExp(d, 'g'), String(i));
+    });
+
+    const isK = str.toLowerCase().includes('k') || str.includes('ألف') || str.includes('الف');
+
+    // Strip out currency words (ج.م, جنيه, LE, EGP, إلخ) keeping digits, dot and comma
+    str = str.replace(/[^\d.,]/g, '');
+
+    // Handle dot vs comma as thousands separator (e.g. 40.000 or 50,000 or 1.500.000)
+    if (/^\d{1,3}(\.\d{3})+$/.test(str) || /^\d+\.\d{3}$/.test(str)) {
+      str = str.replace(/\./g, '');
+    } else if (/^\d{1,3}(,\d{3})+$/.test(str) || /^\d+,\d{3}$/.test(str)) {
+      str = str.replace(/,/g, '');
+    } else {
+      str = str.replace(/,/g, '');
+    }
+
+    let num = parseFloat(str) || 0;
+    if (isK) num *= 1000;
+
+    // Auto-detect numbers entered in thousands (40 => 40,000, 60 => 60,000)
+    if (num > 0 && num <= 500) {
+      num *= 1000;
+    }
+
+    return Math.round(num);
+  };
+
+  // Smart Date Parser (handles Egyptian DD/MM/YYYY, Excel serial dates, "00", ancient years like 2023, etc.)
+  const parseSmartDate = (val: any): { dateStr: string; daysElapsed: number; monthsElapsed: number; isAncient: boolean } => {
+    const now = Date.now();
+    if (val === undefined || val === null) {
+      return { dateStr: '2023-01-01', daysElapsed: 1200, monthsElapsed: 40, isAncient: true };
+    }
+
+    // Handle Excel Serial Number (e.g. 45231)
+    if (typeof val === 'number' && val > 20000 && val < 60000) {
+      const jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
+      const yyyy = jsDate.getFullYear();
+      const mm = String(jsDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(jsDate.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const days = Math.max(0, Math.floor((now - jsDate.getTime()) / (1000 * 60 * 60 * 24)));
+      return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
+    }
+
+    let str = String(val).trim();
+    // Handle empty, "00", "0", "-", or placeholder (historical cases from long ago)
+    if (!str || str === '0' || str === '00' || str === '-' || str.startsWith('00/') || str.startsWith('00-')) {
+      return { dateStr: '2023-01-01', daysElapsed: 1200, monthsElapsed: 40, isAncient: true };
+    }
+
+    // Handle Egyptian format DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if (dmyMatch) {
+      const day = dmyMatch[1].padStart(2, '0');
+      const month = dmyMatch[2].padStart(2, '0');
+      const year = dmyMatch[3];
+      const dateStr = `${year}-${month}-${day}`;
+      const timestamp = new Date(dateStr).getTime();
+      const days = Math.max(0, Math.floor((now - timestamp) / (1000 * 60 * 60 * 24)));
+      return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
+    }
+
+    // Handle YYYY/MM/DD or YYYY-MM-DD
+    const ymdMatch = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, '0');
+      const day = ymdMatch[3].padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+      const timestamp = new Date(dateStr).getTime();
+      const days = Math.max(0, Math.floor((now - timestamp) / (1000 * 60 * 60 * 24)));
+      return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
+    }
+
+    // Handle Year only like "2023", "2022", "2024"
+    if (/^(19\d\d|20\d\d)$/.test(str)) {
+      const dateStr = `${str}-01-01`;
+      const timestamp = new Date(dateStr).getTime();
+      const days = Math.max(0, Math.floor((now - timestamp) / (1000 * 60 * 60 * 24)));
+      return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
+    }
+
+    // Fallback to JS Date parse
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      const yyyy = parsed.getFullYear();
+      const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+      const dd = String(parsed.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const days = Math.max(0, Math.floor((now - parsed.getTime()) / (1000 * 60 * 60 * 24)));
+      return { dateStr, daysElapsed: days, monthsElapsed: Math.floor(days / 30), isAncient: days >= 90 };
+    }
+
+    return { dateStr: '2023-01-01', daysElapsed: 1200, monthsElapsed: 40, isAncient: true };
+  };
+
   // Core Analytical Engine for a single row
   const analyzeClientRow = (
     name: string,
@@ -173,15 +286,11 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
     const hasMissingNationalId = !cleanNid || cleanNid.length !== 14;
     const tempNid = `TEMP-NID-${Date.now().toString().slice(-5)}-${idx + 1}`;
 
-    // Dates & elapsed calculation
-    const now = Date.now();
-    let validDateStr = financeDateInput?.trim();
-    if (!validDateStr || isNaN(new Date(validDateStr).getTime())) {
-      validDateStr = new Date().toISOString().split('T')[0];
-    }
-    const timestamp = new Date(validDateStr).getTime();
-    const daysElapsed = Math.max(0, Math.floor((now - timestamp) / (1000 * 60 * 60 * 24)));
-    const monthsElapsed = Math.max(0, Math.floor(daysElapsed / 30));
+    // Smart Dates & elapsed calculation
+    const parsedDate = parseSmartDate(financeDateInput);
+    const validDateStr = parsedDate.dateStr;
+    const daysElapsed = parsedDate.daysElapsed;
+    const monthsElapsed = parsedDate.monthsElapsed;
 
     // Delinquency check based on notes & negative markers
     const notesLower = (notes || '').toLowerCase();
@@ -229,7 +338,9 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
       warnings.push('تنبيه: ملاحظات تعثر أو شيكات مسجلة على العميل');
     }
 
-    // Renewal Classification
+    // Renewal Classification:
+    // Any case financed >= 3 months ago (or from ancient dates) qualifies for renewal!
+    // This applies whether they have a national ID or temporary ID.
     let renewalClassification: 'ELIGIBLE' | 'RECENT_ACTIVE' | 'DELINQUENT' | 'NEEDS_DATA' | 'NEW_CLIENT' = 'NEW_CLIENT';
     let suggestedRenewalLimit = Math.round((approvedAmount || disbursedAmount || 50000) * 1.35);
     let renewalBadgeText = '🌱 عميل جديد';
@@ -238,18 +349,20 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
       renewalClassification = 'DELINQUENT';
       renewalBadgeText = '⛔ غير مؤهل (تنبيه تعثر ومخاطر)';
       suggestedRenewalLimit = 0;
-    } else if (hasMissingNationalId) {
-      renewalClassification = 'NEEDS_DATA';
-      renewalBadgeText = '📋 بحاجة لاستكمال الرقم القومي';
-    } else if (disbursedAmount > 0 || approvedAmount > 0) {
-      if (daysElapsed >= 90 || monthsElapsed >= 3) {
+    } else if (disbursedAmount > 0 || approvedAmount > 0 || parsedDate.isAncient) {
+      if (daysElapsed >= 90 || monthsElapsed >= 3 || parsedDate.isAncient) {
         renewalClassification = 'ELIGIBLE';
-        renewalBadgeText = `✨ مؤهل للتجديد (استوفى ${monthsElapsed} أشهر)`;
+        renewalBadgeText = hasMissingNationalId
+          ? `✨ مؤهل للتجديد (استوفى ${monthsElapsed} شهراً - برقم مؤقت)`
+          : `✨ مؤهل للتجديد (استوفى ${monthsElapsed} شهراً)`;
       } else {
         renewalClassification = 'RECENT_ACTIVE';
         renewalBadgeText = `⚡ تمويل حديث (متبقي ${Math.max(0, 90 - daysElapsed)} يوماً)`;
         suggestedRenewalLimit = approvedAmount || disbursedAmount;
       }
+    } else if (hasMissingNationalId) {
+      renewalClassification = 'NEEDS_DATA';
+      renewalBadgeText = '📋 بحاجة لاستكمال الرقم القومي';
     }
 
     return {
@@ -293,40 +406,95 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
     const cleanedRows = rawRows.filter(r => r && r.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== ''));
     if (cleanedRows.length === 0) return;
 
-    // Detect header mapping
+    // Detect header mapping with strict priorities
     let headerRowIdx = -1;
-    let nameIdx = 0;
-    let nidIdx = 1;
-    let phoneIdx = 2;
-    let govIdx = 3;
-    let profIdx = 4;
-    let compIdx = 5;
-    let apprIdx = 6;
-    let disbIdx = 7;
-    let dateIdx = 8;
-    let notesIdx = 9;
+    let nameIdx = -1;
+    let nidIdx = -1;
+    let phoneIdx = -1;
+    let govIdx = -1;
+    let profIdx = -1;
+    let compIdx = -1;
+    let apprIdx = -1;
+    let disbIdx = -1;
+    let generalAmountIdx = -1;
+    let dateIdx = -1;
+    let notesIdx = -1;
 
     // Try finding header row
     for (let r = 0; r < Math.min(cleanedRows.length, 5); r++) {
       const rowStr = cleanedRows[r].map(c => String(c || '').toLowerCase()).join(' ');
-      if (rowStr.includes('اسم') || rowStr.includes('قومي') || rowStr.includes('name') || rowStr.includes('هاتف') || rowStr.includes('مبلغ')) {
+      if (rowStr.includes('اسم') || rowStr.includes('قومي') || rowStr.includes('name') || rowStr.includes('هاتف') || rowStr.includes('مبلغ') || rowStr.includes('تمويل')) {
         headerRowIdx = r;
         cleanedRows[r].forEach((headerCell, colIdx) => {
-          const str = String(headerCell || '').toLowerCase();
-          if (str.includes('اسم') || str.includes('name') || str.includes('عميل')) nameIdx = colIdx;
-          else if (str.includes('قومي') || str.includes('بطاق') || str.includes('nid') || str.includes('national')) nidIdx = colIdx;
-          else if (str.includes('هاتف') || str.includes('موبا') || str.includes('تليف') || str.includes('phone') || str.includes('mobile')) phoneIdx = colIdx;
-          else if (str.includes('محافظ') || str.includes('gov') || str.includes('مدين') || str.includes('city')) govIdx = colIdx;
-          else if (str.includes('مهن') || str.includes('عمل') || str.includes('وظي') || str.includes('job') || str.includes('prof')) profIdx = colIdx;
-          else if (str.includes('شرك') || str.includes('ممول') || str.includes('comp')) compIdx = colIdx;
-          else if (str.includes('معتمد') || str.includes('appr') || str.includes('تمويل')) apprIdx = colIdx;
-          else if (str.includes('منصرف') || str.includes('مسحوب') || str.includes('disb')) disbIdx = colIdx;
-          else if (str.includes('تاريخ') || str.includes('date') || str.includes('شهر') || str.includes('month')) dateIdx = colIdx;
-          else if (str.includes('ملاحظ') || str.includes('بيان') || str.includes('note')) notesIdx = colIdx;
+          const str = String(headerCell || '').toLowerCase().trim();
+          if (!str) return;
+
+          // 1. Name
+          if ((str.includes('اسم') || str.includes('name') || str.includes('عميل') || str.includes('تاجر')) && !str.includes('شرك') && !str.includes('فرع') && !str.includes('موظف')) {
+            if (nameIdx === -1) nameIdx = colIdx;
+          }
+          // 2. National ID
+          else if (str.includes('قومي') || str.includes('بطاق') || str.includes('nid') || str.includes('national') || str.includes('هوية')) {
+            if (nidIdx === -1) nidIdx = colIdx;
+          }
+          // 3. Phone
+          else if (str.includes('هاتف') || str.includes('موبا') || str.includes('تليف') || str.includes('phone') || str.includes('mobile') || str.includes('واتس')) {
+            if (phoneIdx === -1) phoneIdx = colIdx;
+          }
+          // 4. Governorate / City
+          else if (str.includes('محافظ') || str.includes('gov') || str.includes('مدين') || str.includes('city') || str.includes('عنوان')) {
+            if (govIdx === -1) govIdx = colIdx;
+          }
+          // 5. Profession
+          else if (str.includes('مهن') || str.includes('عمل') || str.includes('وظي') || str.includes('job') || str.includes('prof') || str.includes('نشاط')) {
+            if (profIdx === -1) profIdx = colIdx;
+          }
+          // 6. Company
+          else if (str.includes('شرك') || str.includes('ممول') || str.includes('comp') || str.includes('جهة') || str.includes('بنك')) {
+            if (compIdx === -1) compIdx = colIdx;
+          }
+          // 7. DATE (CRITICAL: Must match before amounts so "تاريخ التمويل" is NOT parsed as amount!)
+          else if (str.includes('تاريخ') || str.includes('date') || str.includes('شهر') || str.includes('month') || str.includes('يوم') || str.includes('سنة') || str.includes('عام') || str.includes('منح')) {
+            if (dateIdx === -1) dateIdx = colIdx;
+          }
+          // 8. Approved Amount
+          else if ((str.includes('معتمد') || str.includes('appr') || str.includes('سقف') || str.includes('حد ائتمان')) && !str.includes('تاريخ')) {
+            if (apprIdx === -1) apprIdx = colIdx;
+          }
+          // 9. Disbursed Amount
+          else if ((str.includes('منصرف') || str.includes('مسحوب') || str.includes('disb') || str.includes('صرف') || str.includes('مصروف')) && !str.includes('تاريخ')) {
+            if (disbIdx === -1) disbIdx = colIdx;
+          }
+          // 10. General Amount (e.g. "مبلغ التمويل", "قيمة التمويل", "المبلغ")
+          else if ((str.includes('مبلغ') || str.includes('تمويل') || str.includes('قيمة') || str.includes('amount')) && !str.includes('تاريخ') && !str.includes('شرك')) {
+            if (generalAmountIdx === -1) generalAmountIdx = colIdx;
+          }
+          // 11. Notes
+          else if (str.includes('ملاحظ') || str.includes('بيان') || str.includes('note') || str.includes('وصف') || str.includes('تعليق')) {
+            if (notesIdx === -1) notesIdx = colIdx;
+          }
         });
         break;
       }
     }
+
+    // Resolve general amounts if specific approved/disbursed were not separated
+    if (apprIdx === -1 && generalAmountIdx !== -1) apprIdx = generalAmountIdx;
+    if (disbIdx === -1 && generalAmountIdx !== -1) disbIdx = generalAmountIdx;
+    if (apprIdx === -1 && disbIdx !== -1) apprIdx = disbIdx;
+    if (disbIdx === -1 && apprIdx !== -1) disbIdx = apprIdx;
+
+    // Fallbacks if no header detected
+    if (nameIdx === -1) nameIdx = 0;
+    if (nidIdx === -1) nidIdx = 1;
+    if (phoneIdx === -1) phoneIdx = 2;
+    if (govIdx === -1) govIdx = 3;
+    if (profIdx === -1) profIdx = 4;
+    if (compIdx === -1) compIdx = 5;
+    if (apprIdx === -1) apprIdx = 6;
+    if (disbIdx === -1) disbIdx = 7;
+    if (dateIdx === -1) dateIdx = 8;
+    if (notesIdx === -1) notesIdx = 9;
 
     const dataRows = headerRowIdx >= 0 ? cleanedRows.slice(headerRowIdx + 1) : cleanedRows;
     const finalParsed: ParsedClientRow[] = [];
@@ -340,8 +508,9 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
       const governorate = String(row[govIdx] || 'القاهرة').trim();
       const profession = String(row[profIdx] || 'تاجر').trim();
       const companyName = String(row[compIdx] || 'شركة أمان لتمويل المشروعات').trim();
-      const approvedAmount = Number(String(row[apprIdx] || '0').replace(/[^\d.]/g, '')) || 0;
-      const disbursedAmount = Number(String(row[disbIdx] || '0').replace(/[^\d.]/g, '')) || approvedAmount;
+      
+      const approvedAmount = parseSmartAmount(row[apprIdx]);
+      const disbursedAmount = parseSmartAmount(row[disbIdx]) || approvedAmount;
       const financeDate = String(row[dateIdx] || '').trim();
       const notes = String(row[notesIdx] || '').trim();
 
@@ -391,10 +560,10 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
       reader.onload = (event) => {
         try {
           const data = new Uint8Array(event.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const jsonTable = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          const jsonTable = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' }) as any[][];
           parse2DData(jsonTable);
         } catch (err: any) {
           console.error('Error parsing binary Excel file:', err);
@@ -456,6 +625,49 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
         updated.disbursedAmount,
         updated.financeDate,
         updated.notes,
+        r.index - 1
+      );
+    }));
+  };
+
+  // Quick helper to multiply any amounts <= 500 by 1,000 (if entered in thousands like 40 => 40,000)
+  const handleMultiplySmallAmounts = () => {
+    setParsedRows(prev => prev.map(r => {
+      let appr = r.approvedAmount;
+      let disb = r.disbursedAmount;
+      if (appr > 0 && appr <= 500) appr *= 1000;
+      if (disb > 0 && disb <= 500) disb *= 1000;
+      return analyzeClientRow(
+        r.name,
+        r.nationalId,
+        r.phoneNumber,
+        r.governorate,
+        r.profession,
+        r.companyName,
+        appr,
+        disb,
+        r.financeDate,
+        r.notes,
+        r.index - 1
+      );
+    }));
+  };
+
+  // Quick helper to make approved amount match disbursed amount
+  const handleSyncApprovedToDisbursed = () => {
+    setParsedRows(prev => prev.map(r => {
+      const amt = r.disbursedAmount || r.approvedAmount;
+      return analyzeClientRow(
+        r.name,
+        r.nationalId,
+        r.phoneNumber,
+        r.governorate,
+        r.profession,
+        r.companyName,
+        amt,
+        amt,
+        r.financeDate,
+        r.notes,
         r.index - 1
       );
     }));
@@ -893,6 +1105,25 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
                   >
                     إلغاء التحديد
                   </button>
+
+                  <div className="flex items-center gap-1.5 mr-auto">
+                    <button
+                      type="button"
+                      onClick={handleMultiplySmallAmounts}
+                      className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg text-[10px] font-bold text-sky-800 transition-colors"
+                      title="ضرب أي مبالغ صغيرة (أقل من 500) في 1,000 إذا تم إدخالها بالآلاف"
+                    >
+                      💡 تصحيح الآلاف (×1,000 للمبالغ الصغيرة)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSyncApprovedToDisbursed}
+                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 rounded-lg text-[10px] font-bold text-slate-700 transition-colors"
+                      title="مساواة المعتمد بالمنصرف لجميع السجلات"
+                    >
+                      🔄 مساواة المعتمد بالمنصرف
+                    </button>
+                  </div>
                 </div>
 
                 {/* Import Confirmation Buttons */}
@@ -1096,14 +1327,30 @@ export const SmartClientBulkImportModal: React.FC<SmartClientBulkImportModalProp
                           </span>
                         </td>
 
-                        {/* Approved Amount */}
+                        {/* Approved Amount (editable) */}
                         <td className="p-2.5 font-mono font-bold text-slate-900">
-                          {row.approvedAmount.toLocaleString()} ج.م
+                          <input
+                            type="text"
+                            value={row.approvedAmount ? row.approvedAmount.toLocaleString() : '0'}
+                            onChange={e => {
+                              const val = parseSmartAmount(e.target.value);
+                              handleUpdateRowCell(row.id, 'approvedAmount', val);
+                            }}
+                            className="bg-transparent hover:bg-white focus:bg-white border-b border-transparent hover:border-slate-300 focus:border-cropsa-500 px-1 py-0.5 rounded outline-none font-mono text-[11px] w-24 text-slate-900 font-bold"
+                          />
                         </td>
 
-                        {/* Disbursed Amount */}
+                        {/* Disbursed Amount (editable) */}
                         <td className="p-2.5 font-mono font-bold text-emerald-700">
-                          {row.disbursedAmount.toLocaleString()} ج.م
+                          <input
+                            type="text"
+                            value={row.disbursedAmount ? row.disbursedAmount.toLocaleString() : '0'}
+                            onChange={e => {
+                              const val = parseSmartAmount(e.target.value);
+                              handleUpdateRowCell(row.id, 'disbursedAmount', val);
+                            }}
+                            className="bg-transparent hover:bg-white focus:bg-white border-b border-transparent hover:border-slate-300 focus:border-cropsa-500 px-1 py-0.5 rounded outline-none font-mono text-[11px] w-24 text-emerald-700 font-bold"
+                          />
                         </td>
 
                         {/* Date */}

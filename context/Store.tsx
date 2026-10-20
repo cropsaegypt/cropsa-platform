@@ -5347,14 +5347,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       let computedClassification: 'ELIGIBLE' | 'RECENT_ACTIVE' | 'DELINQUENT' | 'NEEDS_DATA' | 'NEW_CLIENT' = 'NEW_CLIENT';
       if (isDelinquent) {
         computedClassification = 'DELINQUENT';
+      } else if (row.renewalClassification === 'ELIGIBLE' || (Number(row.disbursedAmount || row.totalApprovedAmount || 0) > 0 && (daysElapsed >= 90 || monthsElapsed >= 3))) {
+        computedClassification = 'ELIGIBLE';
+      } else if (Number(row.disbursedAmount || row.totalApprovedAmount || 0) > 0 && daysElapsed < 90) {
+        computedClassification = 'RECENT_ACTIVE';
       } else if (isMissingNid) {
         computedClassification = 'NEEDS_DATA';
-      } else if (Number(row.disbursedAmount || row.totalApprovedAmount || 0) > 0) {
-        if (daysElapsed >= 90 || monthsElapsed >= 3) {
-          computedClassification = 'ELIGIBLE';
-        } else {
-          computedClassification = 'RECENT_ACTIVE';
-        }
       }
 
       const clientObj: Client = {

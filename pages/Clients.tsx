@@ -216,9 +216,9 @@ export const Clients: React.FC = () => {
       const isMissingNid = !!client.hasMissingNationalId || (!!client.nationalId && client.nationalId.startsWith('TEMP-NID'));
       const isDelinquent = !!client.isDelinquent || client.renewalClassification === 'DELINQUENT' || (!!client.notes && (client.notes.includes('تعثر') || client.notes.includes('شيك')));
       
-      // 3-Month Renewal Eligibility (عدا عليه 3 شهور ومتاح له تجديد)
+      // 3-Month Renewal Eligibility (عدا عليه 3 شهور ومتاح له تجديد حتى لو برقم مؤقت)
       const isEligibleForRenewal = (client.renewalClassification === 'ELIGIBLE') || 
-        (((daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry) && !isDelinquent && !isMissingNid));
+        (((daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry) && !isDelinquent));
 
       return {
         ...client,
