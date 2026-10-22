@@ -1,7 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '../context/Store';
-import { X, User as UserIcon, FileText, Clock, AlertOctagon, CheckCircle2, ShieldAlert, Sparkles } from 'lucide-react';
-import { Client, ApplicationStatus } from '../types';
+import { 
+  X, 
+  User as UserIcon, 
+  FileText, 
+  Clock, 
+  AlertOctagon, 
+  CheckCircle2, 
+  ShieldAlert, 
+  Sparkles,
+  Building2,
+  Plus,
+  Upload,
+  Trash2,
+  Check,
+  ArrowRight,
+  Layers
+} from 'lucide-react';
+import { Client, ApplicationStatus, STATUS_ARABIC } from '../types';
 import { ClientSolvencyGauge } from './ClientSolvencyGauge';
 
 interface ClientDetailModalProps {
@@ -11,25 +27,170 @@ interface ClientDetailModalProps {
 }
 
 export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: propClient, clientId, onClose }) => {
-    const { clients, applications, users } = useStore();
-    const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'apps'>('overview');
+    const { clients, applications, users, companies, financingPrograms, createApplication } = useStore();
+    const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'apps' | 'add_company'>('overview');
 
     const client = propClient || (clientId ? clients.find(c => c.id === clientId) : undefined);
 
-    if (!client) {
-        return null;
-    }
+    // New Company Routing Form State
+    const [targetCompanyId, setTargetCompanyId] = useState<string>(companies[0]?.id || '');
+    const [targetProgramId, setTargetProgramId] = useState<string>('');
+    const [targetAmount, setTargetAmount] = useState<number>(30000);
+    const [targetDuration, setTargetDuration] = useState<number>(12);
+    const [targetDocs, setTargetDocs] = useState<Array<{ name: string; fileName: string; fileSize: string; fileUrl: string; type: string }>>([]);
+    const [isSubmittingNewCompany, setIsSubmittingNewCompany] = useState(false);
+    const [newDocName, setNewDocName] = useState('');
+    const [routeSuccessMsg, setRouteSuccessMsg] = useState<string | null>(null);
 
-    const clientNationalId = client.nationalId || '';
+    const clientNationalId = client?.nationalId || '';
 
     // Calculate Client Stats
-    const clientApps = applications.filter(a => a.clientNationalId === clientNationalId);
+    const clientApps = useMemo(() => {
+        return applications.filter(a => {
+            if (client?.id && a.clientId === client.id) return true;
+            if (clientNationalId && a.clientNationalId === clientNationalId) return true;
+            return false;
+        });
+    }, [applications, client, clientNationalId]);
+
     const approvedApps = clientApps.filter(a => a.status === ApplicationStatus.APPROVED);
     const rejectedApps = clientApps.filter(a => a.status === ApplicationStatus.REJECTED);
     
     const approvedTotal = approvedApps.reduce((acc, curr) => acc + (curr.approvedAmount || 0), 0);
     const usedTotal = approvedApps.reduce((acc, curr) => acc + (curr.usedAmount || 0), 0);
     const available = approvedTotal - usedTotal;
+
+    // Companies this client is associated with
+    const clientCompanies = useMemo(() => {
+        const compMap = new Map<string, {
+            companyId: string;
+            companyName: string;
+            status: ApplicationStatus;
+            statusText: string;
+            requestedAmount: number;
+            approvedAmount?: number;
+            lastDate: string;
+            programName?: string;
+        }>();
+
+        clientApps.forEach(app => {
+            const compId = app.companyId || app.assignedCompanyIds?.[0] || 'default';
+            const compObj = companies.find(c => c.id === compId || c.name === app.companyName);
+            const compName = app.companyName || compObj?.name || 'شركة تمويل';
+            
+            if (!compMap.has(compName)) {
+                compMap.set(compName, {
+                    companyId: compId,
+                    companyName: compName,
+                    status: app.status,
+                    statusText: STATUS_ARABIC[app.status] || app.status,
+                    requestedAmount: app.requestedAmount,
+                    approvedAmount: app.approvedAmount,
+                    lastDate: app.submittedAt,
+                    programName: app.selectedProgramName
+                });
+            }
+        });
+
+        if (client?.companyName && !compMap.has(client.companyName)) {
+            compMap.set(client.companyName, {
+                companyId: client.companyName,
+                companyName: client.companyName,
+                status: ApplicationStatus.APPROVED,
+                statusText: 'تمويل سابق معتمد',
+                requestedAmount: 0,
+                lastDate: client.lastFinanceDate || client.addedAt
+            });
+        }
+
+        return Array.from(compMap.values());
+    }, [clientApps, client, companies]);
+
+    // Available programs for target company
+    const targetCompanyPrograms = useMemo(() => {
+        const progs = (financingPrograms || []).filter(p => p.companyId === targetCompanyId && p.active !== false);
+        if (progs.length > 0) return progs;
+        const comp = companies.find(c => c.id === targetCompanyId);
+        return (comp?.financingPrograms || []).filter(p => p.active !== false);
+    }, [financingPrograms, targetCompanyId, companies]);
+
+    if (!client) {
+        return null;
+    }
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 15 * 1024 * 1024) {
+            alert('حجم الملف كبير جداً. الحد الأقصى 15 ميجابايت.');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const sizeStr = `${(file.size / 1024).toFixed(1)} KB`;
+            setTargetDocs(prev => [
+                ...prev,
+                {
+                    name: newDocName.trim() || file.name.replace(/\.[^/.]+$/, ""),
+                    fileName: file.name,
+                    fileSize: sizeStr,
+                    fileUrl: dataUrl,
+                    type: 'OTHER'
+                }
+            ]);
+            setNewDocName('');
+            e.target.value = '';
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleRouteToNewCompany = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmittingNewCompany(true);
+        try {
+            const targetCompany = companies.find(c => c.id === targetCompanyId) || companies[0];
+            const targetProgram = targetCompanyPrograms.find(p => p.id === targetProgramId) || targetCompanyPrograms[0];
+
+            await createApplication({
+                clientName: client.name,
+                clientNationalId: client.nationalId,
+                phoneNumber: client.phoneNumber,
+                whatsappNumber: client.phoneNumber,
+                governorate: client.governorate,
+                profession: client.profession as any || 'MERCHANT',
+                financeType: 'INSTALLMENT',
+                durationMonths: Number(targetDuration),
+                requestedAmount: Number(targetAmount),
+                companyId: targetCompanyId,
+                companyName: targetCompany?.name,
+                assignedCompanyIds: [targetCompanyId],
+                assignedCompanyNames: [targetCompany?.name].filter(Boolean) as string[],
+                selectedProgramId: targetProgram?.id,
+                selectedProgramName: targetProgram?.name,
+                documents: targetDocs.map((d, idx) => ({
+                    id: `doc_route_${Date.now()}_${idx}`,
+                    name: d.name,
+                    fileName: d.fileName,
+                    fileSize: d.fileSize,
+                    fileUrl: d.fileUrl,
+                    type: d.type as any,
+                    uploadedAt: new Date().toISOString()
+                }))
+            });
+
+            setRouteSuccessMsg(`تم إرسال الطلب والأوراق بنجاح إلى شركة ${targetCompany?.name || ''}! يمكنك متابعة حالته في سجل الطلبات.`);
+            setTargetDocs([]);
+            setTimeout(() => {
+                setRouteSuccessMsg(null);
+                setActiveTab('apps');
+            }, 2000);
+        } catch (err) {
+            alert('حدث خطأ أثناء إرسال الطلب، يرجى المحاولة لاحقاً.');
+        } finally {
+            setIsSubmittingNewCompany(false);
+        }
+    };
 
     // Default or calculated AI solvency score
     const solvencyScore = client.aiSolvencyScore ?? (client.creditRating === 'A+' ? 92 : client.creditRating === 'A' ? 85 : client.creditRating === 'B' ? 72 : client.creditRating === 'C' ? 52 : 38);
@@ -64,6 +225,22 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                 <span>•</span>
                                 <span>{client.governorate || 'المحافظة غير محددة'}</span>
                             </p>
+                            
+                            {/* Companies Badge Row */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                                <span className="text-[11px] text-sky-200 font-bold">الشركات التابع لها:</span>
+                                {clientCompanies.length > 0 ? (
+                                    clientCompanies.map(c => (
+                                        <span key={c.companyName} className="text-[11px] px-2.5 py-0.5 rounded-full bg-white/20 text-white border border-white/20 font-bold flex items-center gap-1">
+                                            <Building2 className="w-3 h-3 text-sky-300" />
+                                            <span>{c.companyName}</span>
+                                            <span className="text-[10px] text-emerald-300 bg-emerald-500/30 px-1 rounded font-black">({c.statusText})</span>
+                                        </span>
+                                    ))
+                                ) : (
+                                    <span className="text-[11px] text-slate-300 bg-white/10 px-2 py-0.5 rounded">غير مسجل مع شركات تمويل</span>
+                                )}
+                            </div>
                         </div>
                     </div>
                     <button 
@@ -76,21 +253,21 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                 </div>
 
                 {/* Sub-nav tabs */}
-                <div className="flex items-center gap-2 px-6 pt-3 border-b border-slate-100 bg-slate-50/70 text-xs font-bold text-slate-600">
+                <div className="flex items-center gap-2 px-6 pt-3 border-b border-slate-100 bg-slate-50/70 text-xs font-bold text-slate-600 overflow-x-auto">
                     <button
                         onClick={() => setActiveTab('overview')}
-                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors ${
+                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
                             activeTab === 'overview'
                                 ? 'border-cropsa-600 text-cropsa-700'
                                 : 'border-transparent text-slate-500 hover:text-slate-900'
                         }`}
                     >
                         <Sparkles className="h-4 w-4" />
-                        نظرة عامة والملاءة الائتمانية
+                        نظرة عامة والشركات
                     </button>
                     <button
                         onClick={() => setActiveTab('timeline')}
-                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors ${
+                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
                             activeTab === 'timeline'
                                 ? 'border-cropsa-600 text-cropsa-700'
                                 : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -101,7 +278,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                     </button>
                     <button
                         onClick={() => setActiveTab('apps')}
-                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors ${
+                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
                             activeTab === 'apps'
                                 ? 'border-cropsa-600 text-cropsa-700'
                                 : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -114,6 +291,17 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                 {rejectedApps.length} مرفوض
                             </span>
                         )}
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('add_company')}
+                        className={`pb-3 px-3 border-b-2 flex items-center gap-1.5 transition-colors shrink-0 font-black ${
+                            activeTab === 'add_company'
+                                ? 'border-emerald-600 text-emerald-800 bg-emerald-50/80 rounded-t-xl'
+                                : 'border-transparent text-emerald-700 hover:text-emerald-900 bg-emerald-50/40 rounded-t-xl'
+                        }`}
+                    >
+                        <Plus className="h-4 w-4 text-emerald-600" />
+                        إضافة وتوجيه لشركة تمويل جديدة +
                     </button>
                 </div>
                 
@@ -180,6 +368,59 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                                     {new Date(client.addedAt).toLocaleDateString()}
                                                 </p>
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Companies Status Card in Overview */}
+                                    <div className="bg-gradient-to-br from-sky-50/80 to-slate-50 border border-sky-200/90 rounded-2xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                                                <Building2 className="w-4 h-4 text-sky-600" />
+                                                <span>شركات التمويل التابع لها العميل ({clientCompanies.length} شركة):</span>
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveTab('add_company')}
+                                                className="text-[11px] font-black text-emerald-700 hover:text-emerald-800 bg-white px-2.5 py-1 rounded-xl border border-emerald-300 shadow-xs flex items-center gap-1 transition-all"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span>إضافة وتوجيه لشركة أخرى +</span>
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            {clientCompanies.map(c => (
+                                                <div key={c.companyName} className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between shadow-xs">
+                                                    <div>
+                                                        <span className="text-xs font-black text-slate-900 block">{c.companyName}</span>
+                                                        {c.programName ? (
+                                                            <span className="text-[10px] text-sky-700 font-bold block">{c.programName}</span>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-400 font-medium">برنامج معتمد</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                                            c.status === ApplicationStatus.APPROVED 
+                                                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                                                : c.status === ApplicationStatus.REJECTED
+                                                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                                                : 'bg-sky-100 text-sky-800 border border-sky-200'
+                                                        }`}>
+                                                            {c.statusText}
+                                                        </span>
+                                                        {c.approvedAmount ? (
+                                                            <span className="text-xs font-mono font-black text-emerald-700 block mt-0.5">
+                                                                {c.approvedAmount.toLocaleString()} ج.م
+                                                            </span>
+                                                        ) : c.requestedAmount > 0 ? (
+                                                            <span className="text-xs font-mono font-bold text-slate-700 block mt-0.5">
+                                                                {c.requestedAmount.toLocaleString()} ج.م
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
@@ -307,13 +548,193 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                                     {app.rejectionReason ? `سبب الرفض: ${app.rejectionReason}` : app.reviewNote || '-'}
                                                 </td>
                                                 <td className="px-4 py-3 text-[11px] text-slate-500">
-                                                    {app.assignedCompanyIds.map(cid => users.find(u => u.id === cid)?.name).join(', ') || 'كروبسا'}
+                                                    {app.companyName || app.assignedCompanyIds.map(cid => users.find(u => u.id === cid)?.name).join(', ') || 'كروبسا'}
                                                 </td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    )}
+
+                    {/* New Tab: Add & Route to New Financing Company */}
+                    {activeTab === 'add_company' && (
+                        <div className="space-y-5 animate-in fade-in duration-150">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                                <div>
+                                    <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                                        <Building2 className="h-4 w-4 text-emerald-600" />
+                                        إضافة وتوجيه العميل إلى شركة تمويل أخرى ورفع مستنداتها
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        يمكنك إنشاء طلب تمويل جديد لهذا العميل مباشرة مع شركة تمويل أخرى ورفع كافة الأوراق والمستندات المطلوبة لها
+                                    </p>
+                                </div>
+                                <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                                    توجيه مباشر من الكارت
+                                </span>
+                            </div>
+
+                            {routeSuccessMsg && (
+                                <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center gap-3 text-emerald-900 text-xs font-black animate-in fade-in">
+                                    <Check className="w-5 h-5 text-emerald-600 shrink-0" />
+                                    <span>{routeSuccessMsg}</span>
+                                </div>
+                            )}
+
+                            <form onSubmit={handleRouteToNewCompany} className="space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* Company Selector */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                                            <Building2 className="w-3.5 h-3.5 text-sky-600" />
+                                            <span>شركة التمويل المستهدفة *</span>
+                                        </label>
+                                        <select
+                                            value={targetCompanyId}
+                                            onChange={e => {
+                                                setTargetCompanyId(e.target.value);
+                                                const progs = (financingPrograms || []).filter(p => p.companyId === e.target.value && p.active !== false);
+                                                if (progs.length > 0) setTargetProgramId(progs[0].id);
+                                            }}
+                                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                                            required
+                                        >
+                                            {companies.map(c => (
+                                                <option key={c.id} value={c.id}>
+                                                    {c.name} — سقف: {c.creditCeiling?.toLocaleString()} ج.م
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Program Selector */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                                            <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                                            <span>البرنامج التمويلي للشركة *</span>
+                                        </label>
+                                        <select
+                                            value={targetProgramId}
+                                            onChange={e => setTargetProgramId(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                                        >
+                                            {targetCompanyPrograms.map(p => (
+                                                <option key={p.id} value={p.id}>
+                                                    {p.name} (حد {p.maxAmount?.toLocaleString()} ج.م - فائدة {p.interestRate || 0}%)
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Requested Amount */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                            المبلغ المطلوب تمويله (ج.م) *
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1000"
+                                            step="500"
+                                            value={targetAmount || ''}
+                                            onChange={e => setTargetAmount(Number(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                                            required
+                                        />
+                                    </div>
+
+                                    {/* Duration */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                            مدة التقسيط (بالأشهر)
+                                        </label>
+                                        <select
+                                            value={targetDuration}
+                                            onChange={e => setTargetDuration(Number(e.target.value))}
+                                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                                        >
+                                            {[3, 6, 9, 12, 18, 24, 36, 48].map(m => (
+                                                <option key={m} value={m}>{m} شهر</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Document Upload Section */}
+                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/90 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                            <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>إرفاق مستندات وأوراق العميل المخصصة للشركة:</span>
+                                        </span>
+                                        <span className="text-[11px] font-bold text-slate-500">
+                                            مرفق: {targetDocs.length} مستند
+                                        </span>
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder="اسم المستند (مثال: صورة البطاقة، إيصال مرافق، عقد الإيجار)..."
+                                            value={newDocName}
+                                            onChange={e => setNewDocName(e.target.value)}
+                                            className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                                        />
+                                        <label className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black cursor-pointer flex items-center justify-center gap-1.5 transition-colors shrink-0 shadow-xs">
+                                            <Upload className="w-3.5 h-3.5" />
+                                            <span>اختيار ورفع ملف</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*,application/pdf"
+                                                onChange={handleFileUpload}
+                                                className="hidden"
+                                            />
+                                        </label>
+                                    </div>
+
+                                    {/* Uploaded Documents List */}
+                                    {targetDocs.length > 0 ? (
+                                        <div className="space-y-1.5 pt-1">
+                                            {targetDocs.map((doc, idx) => (
+                                                <div key={idx} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 text-xs">
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                        <span className="font-bold text-slate-800 truncate">{doc.name}</span>
+                                                        <span className="text-[10px] text-slate-400 font-mono">({doc.fileSize})</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTargetDocs(prev => prev.filter((_, i) => i !== idx))}
+                                                        className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-[11px] text-slate-400 italic">
+                                            لم يتم إرفاق مستندات بعد. يمكنك رفع صورة البطاقة، الضامن، أو أي أوراق مطلوبة من هذه الشركة.
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="pt-2">
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmittingNewCompany}
+                                        className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-sky-700 hover:from-emerald-700 hover:to-sky-800 text-white font-black text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 disabled:opacity-60 cursor-pointer"
+                                    >
+                                        <Building2 className="w-4 h-4" />
+                                        <span>
+                                            {isSubmittingNewCompany 
+                                                ? 'جاري إرسال الطلب والأوراق...' 
+                                                : 'إرسال وتوجيه الطلب لشركة التمويل فوراً 🚀'}
+                                        </span>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     )}
                 </div>

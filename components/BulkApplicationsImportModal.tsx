@@ -471,6 +471,8 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
             status: row.status,
             submittedAt: row.submittedAt ? `${row.submittedAt}T10:00:00.000Z` : new Date().toISOString(),
             lastStageDate: row.lastStageDate ? `${row.lastStageDate}T12:00:00.000Z` : new Date().toISOString(),
+            companyId: row.companyId,
+            companyName: row.companyName,
             assignedCompanyIds: [row.companyId],
             selectedProgramId: row.programId,
             selectedProgramName: row.programName,

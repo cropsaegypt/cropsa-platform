@@ -18,7 +18,8 @@ import {
   WorkflowStageConfig,
   CompanyWorkflowConfig,
   ExternalDispatchTemplate,
-  SmtpConfig
+  SmtpConfig,
+  InboxMessage
 } from '../types';
 
 export const DEFAULT_WORKFLOW_STAGES: WorkflowStageConfig[] = [
@@ -469,7 +470,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_wa_new_app',
     type: 'WHATSAPP',
+    channel: 'WHATSAPP',
     category: 'NEW_APPLICATION',
+    name: 'تقديم طلب تمويل جديد (متضمن رابط المستندات)',
     nameAr: 'تقديم طلب تمويل جديد (متضمن رابط المستندات)',
     nameEn: 'Submit New Application (Drive Link Included)',
     isDefault: true,
@@ -494,7 +497,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_wa_expedite',
     type: 'WHATSAPP',
+    channel: 'WHATSAPP',
     category: 'EXPEDITE_URGENT',
+    name: 'استعجال فحص طلب تمويل ⚡',
     nameAr: 'استعجال فحص طلب تمويل ⚡',
     nameEn: 'Urgent Decision Expedite ⚡',
     isDefault: true,
@@ -511,7 +516,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_wa_docs_update',
     type: 'WHATSAPP',
+    channel: 'WHATSAPP',
     category: 'DOCS_UPDATE',
+    name: 'استيفاء وتحديث مستندات العميل',
     nameAr: 'استيفاء وتحديث مستندات العميل',
     nameEn: 'Client Documents Update',
     isDefault: true,
@@ -526,7 +533,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_wa_inquiry',
     type: 'WHATSAPP',
+    channel: 'WHATSAPP',
     category: 'STATUS_INQUIRY',
+    name: 'استفسار عن موقف دراسة الطلب',
     nameAr: 'استفسار عن موقف دراسة الطلب',
     nameEn: 'Case Status Inquiry',
     isDefault: true,
@@ -540,7 +549,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_mail_new_app',
     type: 'EMAIL',
+    channel: 'EMAIL',
     category: 'NEW_APPLICATION',
+    name: 'تقديم ملف طلب تمويل رسمي جديد',
     nameAr: 'تقديم ملف طلب تمويل رسمي جديد',
     nameEn: 'Official Financing Application Submission',
     isDefault: true,
@@ -573,7 +584,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_mail_expedite',
     type: 'EMAIL',
+    channel: 'EMAIL',
     category: 'EXPEDITE_URGENT',
+    name: 'استعجال رسمي لسرعة إصدار القرار الائتماني ⚡',
     nameAr: 'استعجال رسمي لسرعة إصدار القرار الائتماني ⚡',
     nameEn: 'Official Case Decision Expedite ⚡',
     isDefault: true,
@@ -594,7 +607,9 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
   {
     id: 'tmpl_mail_docs_update',
     type: 'EMAIL',
+    channel: 'EMAIL',
     category: 'DOCS_UPDATE',
+    name: 'إشعار استيفاء وإرفاق مستندات إضافية',
     nameAr: 'إشعار استيفاء وإرفاق مستندات إضافية',
     nameEn: 'Additional Documents Submission Notice',
     isDefault: true,
@@ -611,6 +626,72 @@ export const DEFAULT_EXTERNAL_DISPATCH_TEMPLATES: ExternalDispatchTemplate[] = [
 
 وتفضلوا بقبول فائق التقدير،،
 {senderName}`
+  }
+];
+
+export const DEFAULT_INBOX_MESSAGES: InboxMessage[] = [
+  {
+    id: 'msg_01',
+    applicationId: 'app_01',
+    clientName: 'الحاج إبراهيم متولي السيد',
+    companyName: 'شركة أمان للتقسيط وتمويل المشروعات',
+    companyId: 'comp_01',
+    senderName: 'إدارة الائتمان والمخاطر - شركة أمان',
+    senderContact: 'credit-approvals@aman-credit.eg',
+    subject: 'موافقة ائتمانية مبدئية: طلب تمويل العميل إبراهيم متولي #app_01',
+    content: `عناية إدارة العمليات بمنصة كروبسا،
+تحية طيبة وبعد،،
+نفيدكم بصدور الموافقة الائتمانية المبدئية لطلب التمويل رقم #app_01 الخاص بالعميل إبراهيم متولي السيد، بمبلغ معتمد قدره 85,000 ج.م.
+
+الشروط المطلوبة قبل الصرف:
+1. إرفاق إيصال مرافق حديث (كهرباء أو مياه) لمقر النشاط.
+2. صورة بطاقة الضامن سارية.
+
+يرجى التوجيه باستكمال الأوراق على رابط درايف لنقوم برفع الملف على السيستم وإصدار أمر الصرف.
+تحياتنا،
+لجنة الائتمان - شركة أمان`,
+    channel: 'EMAIL',
+    receivedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+    status: 'UNREAD',
+    isProcessed: false
+  },
+  {
+    id: 'msg_02',
+    applicationId: 'app_02',
+    clientName: 'محمود عبد الرازق حسن',
+    companyName: 'شركة سهولة للتمويل الاستهلاكي (Souhoola)',
+    companyId: 'comp_souhoola',
+    senderName: 'فريق فحص المستندات - سهولة',
+    senderContact: '01019283746',
+    subject: 'طلب استيفاء مستندات عاجلة للعميل محمود عبد الرازق',
+    content: `مرحباً فريق كروبسا،
+بخصوص طلب التمويل للعميل محمود عبد الرازق (#app_02):
+تم الاطلاع على ملف درايف وتوجد نواقص بالمستندات:
+- مطلوب كشف حساب بنكي حديث لآخر 6 شهور مختوم.
+- صورة البطاقة الشخصية للعميل غير واضحة من الخلف.
+يرجى إعادة رفعها وموافاتنا للتنفيذ.`,
+    channel: 'WHATSAPP',
+    receivedAt: new Date(Date.now() - 3600000 * 8).toISOString(),
+    status: 'UNREAD',
+    isProcessed: false
+  },
+  {
+    id: 'msg_03',
+    applicationId: 'app_03',
+    clientName: 'سمير خليل منصور',
+    companyName: 'شركة كونتكت للتمويل (Contact)',
+    companyId: 'comp_contact',
+    senderName: 'إدارة المخاطر والائتمان - كونتكت',
+    senderContact: 'operations@contact-finance.com',
+    subject: 'قرار ائتماني بخصوص طلب التمويل #app_03',
+    content: `السادة منصة كروبسا،
+نعتذر عن عدم إمكانية قبول طلب التمويل رقم #app_03 للعميل سمير خليل منصور، وذلك نظراً لانخفاض تقييم الآي سكور I-Score ووجود تأخيرات سابقة مسجلة بالتقرير.
+يمكن إعادة تقديم الطلب بعد 3 أشهر بعد تسوية المتأخرات.
+شاكرين حسن تعاونكم.`,
+    channel: 'EMAIL',
+    receivedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+    status: 'READ',
+    isProcessed: false
   }
 ];
 

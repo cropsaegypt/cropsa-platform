@@ -45,7 +45,9 @@ import {
   ALL_KNOWN_INSTALLMENT_COMPANIES,
   ExternalDispatchTemplate,
   ExternalDispatchRecord,
-  SmtpConfig
+  SmtpConfig,
+  InboxMessage,
+  InboxMessageAiAnalysis
 } from '../types';
 import { generateBranchCredentials } from '../utils/branchCredentials';
 import { 
@@ -64,10 +66,12 @@ import {
   MOCK_APPLICATION_QUESTIONS,
   DEFAULT_BRANDING,
   DEFAULT_EXTERNAL_DISPATCH_TEMPLATES,
-  DEFAULT_SMTP_CONFIG
+  DEFAULT_SMTP_CONFIG,
+  DEFAULT_INBOX_MESSAGES
 } from '../services/mockData';
 import { translations } from '../services/translations';
 import { supabase } from '../services/supabase';
+import { analyzeCompanyReplyWithAi } from '../services/gemini';
 
 interface NavigationTarget {
   page: string;
@@ -311,6 +315,13 @@ interface StoreContextType {
       deliveryMethod?: 'DIRECT_SMTP' | 'CLIENT_MAILTO' | 'WHATSAPP_LINK';
     }
   ) => Promise<{ success: boolean; message: string }>;
+
+  // Internal Inbox & AI Response Ingestion
+  inboxMessages: InboxMessage[];
+  addInboxMessage: (msg: Partial<InboxMessage>) => Promise<InboxMessage>;
+  analyzeInboxMessageWithAi: (messageId: string) => Promise<InboxMessageAiAnalysis | undefined>;
+  applyInboxMessageToPlatform: (messageId: string) => Promise<boolean>;
+  deleteInboxMessage: (messageId: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -2787,35 +2798,116 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const addClient = async (clientData: Partial<Client>) => {
     if (!currentUser) return;
     const nowStr = new Date().toISOString();
+    const approvedAmt = Number(clientData.totalApprovedAmount || clientData.manualEntry?.approvedAmount || 0);
+    const disbursedAmt = Number(clientData.disbursedAmount || clientData.manualEntry?.disbursedAmount || approvedAmt);
+    const companyTitle = clientData.companyName || clientData.manualEntry?.companyName || 'شركة أمان للتقسيط';
+    const financeDate = clientData.lastFinanceDate || clientData.manualEntry?.approvalDate || clientData.manualEntry?.lastWithdrawalDate || '2024-01-01';
+    const compId = clientData.manualEntry?.installmentCompanyId || 'comp_01';
+
+    const cleanNatId = clientData.nationalId?.trim() || '';
+    const isMissingNid = !cleanNatId || cleanNatId.length !== 14 || cleanNatId.startsWith('TEMP-');
+    const clientId = `c_${Date.now()}`;
+
+    // Calculate elapsed time from historical finance date
+    const financeTs = new Date(financeDate).getTime();
+    const daysElapsed = Math.max(1, Math.floor((Date.now() - (isNaN(financeTs) ? Date.now() : financeTs)) / (1000 * 60 * 60 * 24)));
+    const monthsElapsed = Math.floor(daysElapsed / 30);
+    const isEligible = daysElapsed >= 90 || monthsElapsed >= 3;
+
     const newClient: Client = {
-      id: `c_${Date.now()}`,
-      name: clientData.name || 'عميل جديد',
-      nationalId: clientData.nationalId || '',
+      id: clientId,
+      name: clientData.name?.trim() || 'عميل جديد',
+      nationalId: cleanNatId || (isMissingNid ? `TEMP-NID-${Date.now().toString().slice(-6)}` : ''),
+      hasMissingNationalId: isMissingNid,
+      temporaryNationalId: isMissingNid ? `TEMP-NID-${Date.now().toString().slice(-6)}` : undefined,
       phoneNumber: clientData.phoneNumber || '',
       governorate: clientData.governorate || 'القاهرة',
       profession: clientData.profession || 'MERCHANT',
       addedBy: currentUser.id,
       addedAt: nowStr,
-      creditRating: 'A',
-      totalApprovedAmount: clientData.manualEntry?.approvedAmount || 0,
-      authorizedCompanies: clientData.manualEntry ? [clientData.manualEntry.installmentCompanyId] : [],
+      creditRating: clientData.creditRating || 'A',
+      totalApprovedAmount: approvedAmt,
+      disbursedAmount: disbursedAmt,
+      companyName: companyTitle,
+      lastFinanceDate: financeDate,
+      isHistoricalOnly: clientData.isHistoricalOnly !== undefined ? clientData.isHistoricalOnly : true,
+      renewalClassification: isEligible ? 'ELIGIBLE' : 'RECENT_ACTIVE',
+      renewalEligibleMonths: monthsElapsed,
+      renewalNotes: isEligible
+        ? `مؤهل للتجديد الفوري (مضى ${monthsElapsed} أشهر على التمويل السابق)`
+        : `تمويل حديث نشط (متبقي ${Math.max(0, 90 - daysElapsed)} يوماً لاستيفاء مهلة الـ 3 أشهر)`,
+      authorizedCompanies: clientData.authorizedCompanies || [compId],
       manualEntry: clientData.manualEntry,
-      timeline: [
+      notes: clientData.notes || 'تمت الإضافة عبر شاشة إدخال العملاء',
+      timeline: clientData.timeline || [
         {
           id: `t_${Date.now()}`,
-          clientId: `c_${Date.now()}`,
-          action: 'إضافة العميل للنظام',
+          clientId,
+          action: 'إضافة العميل للنظام كتمويل سابق معتمد',
           actionType: 'NOTE',
           performedBy: currentUser.id,
           performedByName: currentUser.name,
           timestamp: nowStr,
-          details: 'تم تسجيل بيانات العميل بنجاح في قاعدة بيانات كروبسا',
+          details: `تم تسجيل بيانات العميل بنجاح. التمويل السابق: ${approvedAmt.toLocaleString()} ج.م من ${companyTitle} بتاريخ ${financeDate}`,
           badgeColor: 'blue'
         }
       ]
     };
 
     setClients(prev => [newClient, ...prev]);
+
+    // Create corresponding historical financing application with exact date and company!
+    if (approvedAmt > 0 || disbursedAmt > 0) {
+      const histApp: Application = {
+        id: `app_hist_${Date.now()}`,
+        clientId: newClient.id,
+        clientName: newClient.name,
+        clientNationalId: newClient.nationalId,
+        phoneNumber: newClient.phoneNumber,
+        governorate: newClient.governorate,
+        profession: newClient.profession,
+        financeType: 'INSTALLMENT',
+        durationMonths: 12,
+        hasRecentInstallment: true,
+        hasRecentReceipt: true,
+        requestedAmount: approvedAmt,
+        approvedAmount: approvedAmt,
+        usedAmount: disbursedAmt,
+        status: ApplicationStatus.APPROVED,
+        companyName: companyTitle,
+        companyId: compId,
+        assignedCompanyIds: [compId],
+        submittedBy: currentUser.id,
+        submittedByName: currentUser.name,
+        submittedAt: financeDate ? `${financeDate}T09:00:00.000Z` : nowStr,
+        reviewedAt: financeDate ? `${financeDate}T10:00:00.000Z` : nowStr,
+        description: `طلب تمويل سابق معتمد ومسجل بقاعدة بيانات كروبسا (${companyTitle}) بمبلغ ${disbursedAmt.toLocaleString()} ج.م`,
+        history: [
+          {
+            action: 'AMOUNT_TRANSFERRED',
+            timestamp: financeDate ? `${financeDate}T10:00:00.000Z` : nowStr,
+            performedBy: currentUser.id,
+            performedByName: currentUser.name,
+            details: `تمويل تاريخي معتمد ومنفذ من ${companyTitle} بتاريخ ${financeDate}`
+          }
+        ]
+      };
+
+      setApplications(prev => [histApp, ...prev]);
+      if (supabase) {
+        supabase.from('applications').upsert({
+          id: histApp.id,
+          client_id: newClient.id,
+          client_name: newClient.name,
+          client_national_id: newClient.nationalId,
+          total_amount: approvedAmt,
+          financed_amount: approvedAmt,
+          status: 'APPROVED',
+          company_id: compId,
+          created_at: histApp.submittedAt
+        }).catch((e: any) => console.warn('Supabase histApp save fallback:', e));
+      }
+    }
     try {
       if (supabase) {
         await supabase.from('clients').upsert({
@@ -3437,6 +3529,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const newApp: Application = {
       id: appId,
+      clientId: clientId,
+      companyId: appData.companyId || (assignedCompIds[0] ? assignedCompIds[0] : undefined),
+      companyName: appData.companyName || (assignedCompIds[0] ? (companies.find(c => c.id === assignedCompIds[0])?.name) : undefined),
+      assignedCompanyNames: appData.assignedCompanyNames || (assignedCompIds.map(cid => companies.find(c => c.id === cid)?.name).filter(Boolean) as string[]),
       clientName: appData.clientName!,
       clientNationalId: appData.clientNationalId!,
       phoneNumber: appData.phoneNumber!,
@@ -4963,7 +5059,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
 
-    setFinancingPrograms(prev => [newProg, ...prev]);
+    setFinancingPrograms(prev => {
+      const updated = [newProg, ...prev];
+      try {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'financing_programs',
+          data: updated,
+          updated_at: new Date().toISOString()
+        }).catch((e: any) => console.warn('Supabase financing_programs save fallback:', e));
+      }
+      return updated;
+    });
 
     // Keep companies[comp.id].financingPrograms synchronized
     if (comp) {
@@ -4994,17 +5103,30 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateFinancingProgram = async (id: string, updates: Partial<FinancingProgram>) => {
-    setFinancingPrograms(prev => prev.map(p => {
-      if (p.id === id) {
-        const comp = companies.find(c => c.id === (updates.companyId || p.companyId));
-        return {
-          ...p,
-          ...updates,
-          companyName: comp ? comp.name : p.companyName
-        };
+    setFinancingPrograms(prev => {
+      const updated = prev.map(p => {
+        if (p.id === id) {
+          const comp = companies.find(c => c.id === (updates.companyId || p.companyId));
+          return {
+            ...p,
+            ...updates,
+            companyName: comp ? comp.name : p.companyName
+          };
+        }
+        return p;
+      });
+      try {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'financing_programs',
+          data: updated,
+          updated_at: new Date().toISOString()
+        }).catch((e: any) => console.warn('Supabase financing_programs update fallback:', e));
       }
-      return p;
-    }));
+      return updated;
+    });
 
     // Update in companies state
     setCompanies(prev => prev.map(c => {
@@ -5027,7 +5149,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteFinancingProgram = async (id: string) => {
-    setFinancingPrograms(prev => prev.filter(p => p.id !== id));
+    setFinancingPrograms(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      try {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'financing_programs',
+          data: updated,
+          updated_at: new Date().toISOString()
+        }).catch((e: any) => console.warn('Supabase financing_programs delete fallback:', e));
+      }
+      return updated;
+    });
     setCompanies(prev => prev.map(c => {
       if (c.financingPrograms && c.financingPrograms.some(p => p.id === id)) {
         return {
@@ -5045,6 +5180,204 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     addAuditLog('DELETE_PROGRAM', `Deleted financing program ${id}`, id);
+  };
+
+  // =========================================================================
+  // Internal Inbox & AI Response Ingestion Methods
+  // =========================================================================
+  const addInboxMessage = async (msgData: Partial<InboxMessage>): Promise<InboxMessage> => {
+    const nowStr = new Date().toISOString();
+    const newMsg: InboxMessage = {
+      id: msgData.id || `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      applicationId: msgData.applicationId,
+      clientId: msgData.clientId,
+      clientName: msgData.clientName,
+      clientNationalId: msgData.clientNationalId,
+      companyId: msgData.companyId,
+      companyName: msgData.companyName || 'شركة تقسيط',
+      senderName: msgData.senderName || 'إدارة الائتمان بالشركة',
+      senderContact: msgData.senderContact || 'operations@company.eg',
+      subject: msgData.subject || 'رد وارد بخصوص طلب تمويل',
+      content: msgData.content || '',
+      channel: msgData.channel || 'EMAIL',
+      receivedAt: msgData.receivedAt || nowStr,
+      status: 'UNREAD',
+      isProcessed: false,
+      aiAnalysis: msgData.aiAnalysis
+    };
+
+    setInboxMessages(prev => {
+      const updated = [newMsg, ...prev];
+      try {
+        localStorage.setItem('cropsa_inbox_messages', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'inbox_messages',
+          data: updated,
+          updated_at: nowStr
+        }).catch((e: any) => console.warn('Supabase inbox_messages upsert error:', e));
+      }
+      return updated;
+    });
+
+    addAuditLog('INBOX_MESSAGE_RECEIVED', `Received inbox message from ${newMsg.senderName} (${newMsg.subject})`, newMsg.applicationId);
+    return newMsg;
+  };
+
+  const analyzeInboxMessageWithAi = async (messageId: string): Promise<InboxMessageAiAnalysis | undefined> => {
+    const targetMsg = inboxMessages.find(m => m.id === messageId);
+    if (!targetMsg) return undefined;
+
+    const targetApp = targetMsg.applicationId ? applications.find(a => a.id === targetMsg.applicationId) : undefined;
+    const analysis = await analyzeCompanyReplyWithAi({
+      messageText: targetMsg.content,
+      senderName: targetMsg.senderName,
+      application: targetApp
+    });
+
+    setInboxMessages(prev => {
+      const updated = prev.map(m => m.id === messageId ? { ...m, aiAnalysis: analysis, status: 'READ' as const } : m);
+      try {
+        localStorage.setItem('cropsa_inbox_messages', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'inbox_messages',
+          data: updated,
+          updated_at: new Date().toISOString()
+        }).catch((e: any) => console.warn('Supabase inbox_messages analysis update error:', e));
+      }
+      return updated;
+    });
+
+    return analysis;
+  };
+
+  const applyInboxMessageToPlatform = async (messageId: string): Promise<boolean> => {
+    const targetMsg = inboxMessages.find(m => m.id === messageId);
+    if (!targetMsg || !targetMsg.aiAnalysis) return false;
+
+    const analysis = targetMsg.aiAnalysis;
+    const nowStr = new Date().toISOString();
+    const targetApp = targetMsg.applicationId 
+      ? applications.find(a => a.id === targetMsg.applicationId) 
+      : (targetMsg.clientName ? applications.find(a => a.clientName.trim() === targetMsg.clientName?.trim()) : undefined);
+
+    if (!targetApp) {
+      console.warn('Target application not found for inbox message:', targetMsg);
+      return false;
+    }
+
+    const appId = targetApp.id;
+    let newStatus = analysis.suggestedStatus || targetApp.status;
+    let approvedAmt = targetApp.approvedAmount;
+    let isFullyApproved = false;
+
+    if (analysis.decision === 'APPROVED') {
+      newStatus = ApplicationStatus.APPROVED;
+      approvedAmt = analysis.approvedAmount || targetApp.approvedAmount || targetApp.requestedAmount;
+      isFullyApproved = true;
+    } else if (analysis.decision === 'REJECTED') {
+      newStatus = ApplicationStatus.REJECTED;
+    } else if (analysis.decision === 'DOCS_REQUIRED') {
+      newStatus = ApplicationStatus.PAPER_REVIEW;
+    } else if (analysis.decision === 'UNDER_REVIEW') {
+      newStatus = ApplicationStatus.FIELD_INVESTIGATION;
+    }
+
+    const actionTitle = analysis.decision === 'APPROVED' ? 'اعتماد موافقة ائتمانية للشركة' :
+                        analysis.decision === 'REJECTED' ? 'رفض الطلب من شركة التمويل' :
+                        analysis.decision === 'DOCS_REQUIRED' ? 'طلب استيفاء مستندات من رافع الطلب' : 'تحديث مرحلة الطلب';
+
+    const historyItem: ApplicationHistoryItem = {
+      action: analysis.decision === 'APPROVED' ? 'APPROVED' : analysis.decision === 'REJECTED' ? 'REJECTED' : 'UPDATE_REQUESTED',
+      timestamp: nowStr,
+      performedBy: currentUser?.id || 'SYSTEM',
+      performedByName: `${currentUser?.name || 'النظام'} [اعتماد رد AI من صندوق الوارد]`,
+      details: `${actionTitle} - ${targetMsg.companyName}: ${analysis.summaryNotes}`
+    };
+
+    const newComment: ApplicationComment = {
+      id: `c_ai_inbox_${Date.now()}`,
+      authorId: currentUser?.id || 'SYSTEM',
+      authorName: `تحليل الذكاء الاصطناعي (${currentUser?.name || 'الإدارة'})`,
+      authorRole: Role.SUPER_ADMIN,
+      companyName: targetMsg.companyName,
+      message: `🤖 [اعتماد رد ذكي من صندوق الوارد]:\n${analysis.summaryNotes}${analysis.approvedAmount ? `\n💰 المبلغ المعتمد: ${analysis.approvedAmount.toLocaleString()} ج.م` : ''}${analysis.requestedDocuments && analysis.requestedDocuments.length > 0 ? `\n📑 المستندات المطلوبة: ${analysis.requestedDocuments.join('، ')}` : ''}`,
+      createdAt: nowStr,
+      isUrgent: analysis.decision === 'DOCS_REQUIRED',
+      notificationType: analysis.decision === 'DOCS_REQUIRED' ? 'DOCS_REQUIRED' : 'DECISION_ISSUED'
+    };
+
+    const appUpdates: Partial<Application> = {
+      status: newStatus,
+      approvedAmount: approvedAmt,
+      history: [historyItem, ...(targetApp.history || [])],
+      comments: [...(targetApp.comments || []), newComment],
+      needsUpdate: analysis.decision === 'DOCS_REQUIRED',
+      updateRequestReason: analysis.decision === 'DOCS_REQUIRED' ? `مطلوب استيفاء: ${(analysis.requestedDocuments || []).join('، ')}` : undefined,
+      updateRequestedAt: analysis.decision === 'DOCS_REQUIRED' ? nowStr : undefined
+    };
+
+    // Update application in state
+    setApplications(prev => prev.map(a => a.id === appId ? { ...a, ...appUpdates } : a));
+
+    // Update message state as processed
+    setInboxMessages(prev => {
+      const updated = prev.map(m => m.id === messageId ? {
+        ...m,
+        status: 'PROCESSED' as const,
+        isProcessed: true,
+        processedAt: nowStr,
+        processedBy: currentUser?.id,
+        processedByName: currentUser?.name,
+        appliedActionDetails: `تم تطبيق القرار: (${actionTitle}) وتحديث حالة الطلب إلى (${newStatus}) بنجاح.`
+      } : m);
+      try {
+        localStorage.setItem('cropsa_inbox_messages', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'inbox_messages',
+          data: updated,
+          updated_at: nowStr
+        }).catch((e: any) => console.warn('Supabase inbox apply update error:', e));
+      }
+      return updated;
+    });
+
+    // Notify submitter and admin
+    if (targetApp.submittedBy) {
+      addNotification(
+        targetApp.submittedBy,
+        `📢 تم استلام واعتماد رد شركة ${targetMsg.companyName} لطلب العميل (${targetApp.clientName}): ${actionTitle}`,
+        analysis.decision === 'APPROVED' ? 'SUCCESS' : analysis.decision === 'REJECTED' ? 'ERROR' : 'WARNING',
+        appId,
+        undefined,
+        'APPLICATION'
+      );
+    }
+
+    addAuditLog('APPLY_INBOX_AI_UPDATE', `Applied AI analyzed company response for application #${appId} (${targetApp.clientName}) - Status: ${newStatus}`, appId);
+    return true;
+  };
+
+  const deleteInboxMessage = async (messageId: string): Promise<void> => {
+    setInboxMessages(prev => {
+      const updated = prev.filter(m => m.id !== messageId);
+      try {
+        localStorage.setItem('cropsa_inbox_messages', JSON.stringify(updated));
+      } catch (e) {}
+      if (supabase) {
+        supabase.from('system_settings').upsert({
+          id: 'inbox_messages',
+          data: updated,
+          updated_at: new Date().toISOString()
+        }).catch((e: any) => console.warn('Supabase inbox delete error:', e));
+      }
+      return updated;
+    });
   };
 
   // =========================================================================
@@ -5374,7 +5707,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const clientId = existingClient ? existingClient.id : `c_import_${Date.now()}_${i}`;
 
       // Calculate elapsed time from last finance date to determine renewal eligibility
-      const financeDate = row.lastFinanceDate || nowStr.split('T')[0];
+      const financeDate = row.lastFinanceDate || existingClient?.lastFinanceDate || '2024-01-01';
       const financeTimestamp = new Date(financeDate).getTime();
       const daysElapsed = Math.max(1, Math.floor((Date.now() - (isNaN(financeTimestamp) ? Date.now() : financeTimestamp)) / (1000 * 60 * 60 * 24)));
       const monthsElapsed = Math.max(0, Math.floor(daysElapsed / 30));
@@ -5458,6 +5791,51 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
 
       newClientsToAdd.push(clientObj);
+
+      // Auto-register approved historical financing application with exact date & company
+      const histAmt = Number(row.totalApprovedAmount || row.disbursedAmount || existingClient?.totalApprovedAmount || 0);
+      const histDisbursed = Number(row.disbursedAmount || row.totalApprovedAmount || existingClient?.disbursedAmount || histAmt);
+      if (histAmt > 0 || histDisbursed > 0) {
+        const compTitle = row.companyName || existingClient?.companyName || 'شركة أمان للتقسيط';
+        const compId = row.companyCode || existingClient?.manualEntry?.installmentCompanyId || 'comp_01';
+        const histApp: Application = {
+          id: `app_hist_${Date.now()}_${i}`,
+          clientId,
+          clientName: row.name.trim(),
+          clientNationalId: finalNationalId,
+          phoneNumber: row.phoneNumber?.trim() || existingClient?.phoneNumber || '',
+          whatsappNumber: row.phoneNumber?.trim() || existingClient?.phoneNumber || '',
+          governorate: row.governorate || existingClient?.governorate || 'القاهرة',
+          profession: (row.profession as any) || existingClient?.profession || 'MERCHANT',
+          financeType: 'INSTALLMENT',
+          durationMonths: 12,
+          hasRecentInstallment: true,
+          hasRecentReceipt: true,
+          requestedAmount: histAmt,
+          approvedAmount: histAmt,
+          usedAmount: histDisbursed,
+          status: ApplicationStatus.APPROVED,
+          companyName: compTitle,
+          companyId: compId,
+          assignedCompanyIds: [compId],
+          submittedBy: currentUser.id,
+          submittedByName: currentUser.name,
+          submittedAt: financeDate ? `${financeDate}T09:00:00.000Z` : '2024-01-01T09:00:00.000Z',
+          reviewedAt: financeDate ? `${financeDate}T10:00:00.000Z` : '2024-01-01T10:00:00.000Z',
+          description: `طلب تمويل سابق معتمد ومسجل بقاعدة بيانات كروبسا (${compTitle}) بمبلغ ${histDisbursed.toLocaleString()} ج.م`,
+          history: [
+            {
+              action: 'AMOUNT_TRANSFERRED',
+              timestamp: financeDate ? `${financeDate}T10:00:00.000Z` : nowStr,
+              performedBy: currentUser.id,
+              performedByName: currentUser.name,
+              details: `تمويل تاريخي سابق معتمد من ${compTitle} بتاريخ ${financeDate}`
+            }
+          ]
+        };
+        newAppsToAdd.push(histApp);
+      }
+
       count++;
     }
 
@@ -5641,6 +6019,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const lastStageDate = aData.lastStageDate || aData.reviewedAt || submittedDate;
       const appStatus = aData.status || ApplicationStatus.SUBMITTED;
 
+      const targetComp = aData.companyId 
+        ? companies.find(c => c.id === aData.companyId)
+        : (aData.assignedCompanyIds?.[0] ? companies.find(c => c.id === aData.assignedCompanyIds![0]) : companies[0]);
+
+      const compId = aData.companyId || targetComp?.id || aData.assignedCompanyIds?.[0] || 'comp_01';
+      const compName = aData.companyName || targetComp?.name || 'شركة تقسيط';
+
       const newApp: Application = {
         id: appId,
         clientId,
@@ -5656,12 +6041,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         approvedAmount: Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0,
         usedAmount: appStatus === ApplicationStatus.AMOUNT_TRANSFERRED ? (Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0) : 0,
         status: appStatus,
+        companyId: compId,
+        companyName: compName,
         submittedBy: currentUser.id,
         submittedByName: currentUser.name,
         submittedAt: submittedDate,
         reviewedAt: lastStageDate,
         lastStageDate: lastStageDate,
-        assignedCompanyIds: (aData.assignedCompanyIds && aData.assignedCompanyIds.length > 0) ? aData.assignedCompanyIds : [companies[0]?.id || 'comp_01'],
+        assignedCompanyIds: (aData.assignedCompanyIds && aData.assignedCompanyIds.length > 0) ? aData.assignedCompanyIds : [compId],
         selectedProgramId: aData.selectedProgramId,
         selectedProgramName: aData.selectedProgramName,
         programInterestRate: aData.programInterestRate,
@@ -6461,7 +6848,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createExternalDispatchTemplate,
       deleteExternalDispatchTemplate,
       resetExternalDispatchTemplatesToDefault,
-      dispatchApplicationToExternalCompany
+      dispatchApplicationToExternalCompany,
+
+      inboxMessages,
+      addInboxMessage,
+      analyzeInboxMessageWithAi,
+      applyInboxMessageToPlatform,
+      deleteInboxMessage
     }}>
       {children}
     </StoreContext.Provider>

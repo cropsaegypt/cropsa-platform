@@ -3,8 +3,10 @@ import {
   AiCreditAnalysis, 
   Client, 
   Application, 
+  ApplicationStatus,
   RenewalAiAnalysisResult, 
-  ALL_KNOWN_INSTALLMENT_COMPANIES 
+  ALL_KNOWN_INSTALLMENT_COMPANIES,
+  InboxMessageAiAnalysis
 } from '../types';
 
 interface CreditAnalysisParams {
@@ -361,5 +363,190 @@ export async function runClientRenewalAiAnalysis(params: RenewalAiParams): Promi
       'استيفاء مستند إثبات دخل أو سجل نشاط حديث لتوثيق الملف'
     ],
     confidence: 91
+  };
+}
+
+// =====================================================================
+// Internal Inbox Company Response Analyzer (AI Reply Ingestion)
+// =====================================================================
+export interface AnalyzeCompanyReplyParams {
+  messageText: string;
+  senderName?: string;
+  application?: Application;
+}
+
+export async function analyzeCompanyReplyWithAi(params: AnalyzeCompanyReplyParams): Promise<InboxMessageAiAnalysis> {
+  const { messageText, senderName, application } = params;
+  const rawText = messageText || '';
+
+  const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) ||
+                 (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) ||
+                 '';
+
+  if (apiKey && rawText.trim()) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `أنت خبير الذكاء الاصطناعي وكبير مسؤولي الائتمان في منصة كروبسا مصر للتمويل الرقمي (Cropsa Egypt).
+المهمة: قم بتحليل دقيق وشامل لنص الرد الوارد من شركة التمويل أو البنك (مثل أمان، فاليو، فرصة، كونتكت، سهولة...) واستخراج القرار الائتماني والبيانات والمستندات المطلوبة.
+
+الرسالة الواردة من الشركة (${senderName || 'شركة التقسيط'}):
+"""
+${rawText}
+"""
+
+${application ? `سياق الطلب بالمنصة:
+- رقم الطلب: #${application.id}
+- اسم العميل: ${application.clientName}
+- المبلغ المطلوب: ${Number(application.requestedAmount || 0).toLocaleString()} ج.م
+- الشركة المستهدفة: ${application.companyName || 'شركة التمويل'}
+` : ''}
+
+أجب حصرياً وبدقة بصيغة كائن JSON خالص بدون Markdown وبدون أي نصوص قبله أو بعده:
+{
+  "decision": "APPROVED" | "REJECTED" | "DOCS_REQUIRED" | "UNDER_REVIEW" | "GENERAL_UPDATE",
+  "confidence": number, // 70 - 99
+  "approvedAmount": number | null, // المبلغ المعتمد إذا كان الرد موافقة
+  "rejectionReason": string | null, // سبب الرفض إن وجد
+  "requestedDocuments": string[], // قائمة بأسماء المستندات المطلوبة مثل ["إيصال مرافق حديث", "بطاقة ضامن"] أو []
+  "summaryNotes": string, // ملخص تنفيذي عربي دقيق وموجز لفحوى الرد
+  "suggestedStatus": "APPROVED" | "REJECTED" | "PAPER_REVIEW" | "ISCORE_CHECK" | "FIELD_INVESTIGATION" | "PENDING_ADMIN",
+  "suggestedActionLabel": string // عنوان الإجراء المقترح للتطبيق على المنصة بنقرة واحدة
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      });
+
+      const responseText = response.text || '';
+      const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+
+      let suggestedStatus = ApplicationStatus.PAPER_REVIEW;
+      if (parsed.decision === 'APPROVED') suggestedStatus = ApplicationStatus.APPROVED;
+      else if (parsed.decision === 'REJECTED') suggestedStatus = ApplicationStatus.REJECTED;
+      else if (parsed.decision === 'UNDER_REVIEW') suggestedStatus = ApplicationStatus.FIELD_INVESTIGATION;
+      else if (parsed.decision === 'DOCS_REQUIRED') suggestedStatus = ApplicationStatus.PAPER_REVIEW;
+
+      return {
+        decision: parsed.decision || 'DOCS_REQUIRED',
+        confidence: Number(parsed.confidence) || 90,
+        approvedAmount: parsed.approvedAmount ? Number(parsed.approvedAmount) : undefined,
+        rejectionReason: parsed.rejectionReason || undefined,
+        requestedDocuments: Array.isArray(parsed.requestedDocuments) ? parsed.requestedDocuments : [],
+        summaryNotes: parsed.summaryNotes || 'تم تحليل الرد بنجاح بواسطة الذكاء الاصطناعي.',
+        suggestedStatus,
+        suggestedActionLabel: parsed.suggestedActionLabel || (
+          parsed.decision === 'APPROVED' ? `اعتماد الموافقة وتحديث المبلغ المعتمد` :
+          parsed.decision === 'REJECTED' ? `تسجيل رفض الطلب وتوثيق السبب` :
+          parsed.decision === 'DOCS_REQUIRED' ? `طلب استيفاء المستندات الناقصة` :
+          `تحديث حالة الملف للدراسة والاستعلام`
+        )
+      };
+    } catch (aiErr) {
+      console.warn('Gemini company reply analysis error, using smart fallback heuristic:', aiErr);
+    }
+  }
+
+  // Smart Heuristic Fallback Analysis (Regex & Natural Language Rules)
+  const lower = rawText.toLowerCase();
+  
+  // 1. Approval Check
+  const isApproved = lower.includes('موافق') || lower.includes('تم اعتماد') || lower.includes('معتمد') || 
+                     lower.includes('قبول') || lower.includes('approved') || lower.includes('تمت الموافقة');
+
+  // 2. Rejection Check
+  const isRejected = lower.includes('رفض') || lower.includes('نعتذر') || lower.includes('غير مطابق') || 
+                     lower.includes('غير مؤهل') || lower.includes('rejected') || lower.includes('decline') ||
+                     lower.includes('اي سكور منخفض') || lower.includes('تعثر');
+
+  // 3. Document Request Check
+  const isDocsRequired = lower.includes('مطلوب') || lower.includes('استيفاء') || lower.includes('إرفاق') || 
+                         lower.includes('نواقص') || lower.includes('أوراق') || lower.includes('مستندات') || 
+                         lower.includes('ضامن') || lower.includes('كشف حساب') || lower.includes('إيصال');
+
+  // 4. Investigation / Review Check
+  const isReview = lower.includes('استعلام') || lower.includes('زيارة') || lower.includes('اي سكور') || 
+                   lower.includes('i-score') || lower.includes('جاري الفحص') || lower.includes('تحت الدراسة');
+
+  // Extract amount if present
+  let extractedAmount: number | undefined;
+  const amountMatch = rawText.match(/(\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\d{4,7})\s*(?:ج\.?م|جنيه|egp|ألف)?/i);
+  if (amountMatch) {
+    const rawNum = amountMatch[1].replace(/[,\s]/g, '');
+    const num = Number(rawNum);
+    if (!isNaN(num) && num >= 5000 && num <= 5000000) {
+      extractedAmount = num;
+    }
+  }
+
+  // Extract documents
+  const docsList: string[] = [];
+  if (rawText.includes('كشف حساب')) docsList.push('كشف حساب بنكي حديث');
+  if (rawText.includes('ضامن') || rawText.includes('الضامن')) docsList.push('بطاقة ومستندات الضامن');
+  if (rawText.includes('إيصال مرافق') || rawText.includes('وصل كهرباء') || rawText.includes('مرافق')) docsList.push('إيصال مرافق حديث (كهرباء/غاز)');
+  if (rawText.includes('سجل تجاري') || rawText.includes('بطاقة ضريبية')) docsList.push('سجل تجاري وبطاقة ضريبية سارية');
+  if (rawText.includes('مفردات مرتب') || rawText.includes('إثبات دخل')) docsList.push('شهادة إثبات دخل / مفردات مرتب');
+  if (rawText.includes('عقد إيجار') || rawText.includes('عقد ملكية')) docsList.push('عقد مقر النشاط / السكن');
+
+  if (isApproved && !isRejected) {
+    const appAmt = extractedAmount || application?.requestedAmount || 60000;
+    return {
+      decision: 'APPROVED',
+      confidence: 88,
+      approvedAmount: appAmt,
+      requestedDocuments: docsList,
+      summaryNotes: `أفادت الشركة بالموافقة الائتمانية المبدئية على الطلب بمبلغ ${appAmt.toLocaleString()} ج.م${docsList.length > 0 ? ` مع اشتراط استيفاء: ${docsList.join('، ')} قبل التنفيذ` : '.'}`,
+      suggestedStatus: ApplicationStatus.APPROVED,
+      suggestedActionLabel: `اعتماد الموافقة بمبلغ ${appAmt.toLocaleString()} ج.م وتحديث الطلب`
+    };
+  }
+
+  if (isRejected) {
+    let reason = 'عدم استيفاء شروط وسياسات المنح الائتماني المعتمدة لدى الشركة.';
+    if (lower.includes('اي سكور') || lower.includes('i-score')) reason = 'درجة الاستعلام الائتماني I-Score غير كافية أو وجود تأخيرات سابقة.';
+    else if (lower.includes('دخل') || lower.includes('عبء دين')) reason = 'عدم كفاية الدخل الشهري لتغطية قسط التمويل المطلوب.';
+    else if (lower.includes('سن') || lower.includes('عمر')) reason = 'السن خارج النطاق الائتماني المسموح به لبرنامج التمويل.';
+
+    return {
+      decision: 'REJECTED',
+      confidence: 90,
+      rejectionReason: reason,
+      requestedDocuments: [],
+      summaryNotes: `أفادت الشركة برفض الطلب بسبب: ${reason}`,
+      suggestedStatus: ApplicationStatus.REJECTED,
+      suggestedActionLabel: 'تسجيل رفض الطلب وتوثيق السبب في ملف العميل'
+    };
+  }
+
+  if (isDocsRequired) {
+    return {
+      decision: 'DOCS_REQUIRED',
+      confidence: 86,
+      requestedDocuments: docsList.length > 0 ? docsList : ['مستندات إضافية مطلوبة من العميل'],
+      summaryNotes: `طلبت الشركة استكمال المستندات والأوراق التالية لمتابعة دراسة الملف: ${docsList.join('، ') || 'أوراق تكميلية'}.`,
+      suggestedStatus: ApplicationStatus.PAPER_REVIEW,
+      suggestedActionLabel: `إدراج الطلب بحاجة لتحديث أوراق: (${docsList.join(' + ') || 'مستندات إضافية'})`
+    };
+  }
+
+  if (isReview) {
+    return {
+      decision: 'UNDER_REVIEW',
+      confidence: 84,
+      requestedDocuments: [],
+      summaryNotes: 'الطلب قيد المراجعة والاستعلام الميداني/الائتماني لدى الشركة وبانتظار تقرير الزيارة.',
+      suggestedStatus: ApplicationStatus.FIELD_INVESTIGATION,
+      suggestedActionLabel: 'تحويل الطلب لمرحلة الاستعلام والزيارة الميدانية'
+    };
+  }
+
+  return {
+    decision: 'GENERAL_UPDATE',
+    confidence: 75,
+    requestedDocuments: [],
+    summaryNotes: rawText.slice(0, 180) + (rawText.length > 180 ? '...' : ''),
+    suggestedStatus: ApplicationStatus.PENDING_ADMIN,
+    suggestedActionLabel: 'توثيق رد الشركة في سجل متابعة الطلب'
   };
 }

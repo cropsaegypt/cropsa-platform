@@ -89,13 +89,51 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
   });
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
-    initialData?.assignedCompanyIds?.[0] || companies[0]?.id || ''
+    initialData?.companyId || initialData?.assignedCompanyIds?.[0] || companies[0]?.id || ''
   );
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>(() => {
+    if (initialData?.assignedCompanyIds && initialData.assignedCompanyIds.length > 0) {
+      return initialData.assignedCompanyIds;
+    }
+    const defaultId = initialData?.companyId || companies[0]?.id;
+    return defaultId ? [defaultId] : [];
+  });
   const [selectedProgramId, setSelectedProgramId] = useState<string>(
     initialData?.selectedProgramId || ''
   );
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId) || companies[0];
+
+  const handlePrimaryCompanyChange = (newCompId: string) => {
+    setSelectedCompanyId(newCompId);
+    setSelectedCompanyIds(prev => prev.includes(newCompId) ? prev : [newCompId, ...prev]);
+    const compPrograms = (financingPrograms || []).filter(p => p.companyId === newCompId && p.active !== false);
+    if (compPrograms.length > 0) {
+      setSelectedProgramId(compPrograms[0].id);
+    } else {
+      const comp = companies.find(c => c.id === newCompId);
+      if (comp?.financingPrograms && comp.financingPrograms.length > 0) {
+        setSelectedProgramId(comp.financingPrograms[0].id);
+      } else {
+        setSelectedProgramId('');
+      }
+    }
+  };
+
+  const handleToggleMultiCompany = (id: string) => {
+    setSelectedCompanyIds(prev => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev;
+        const filtered = prev.filter(cId => cId !== id);
+        if (selectedCompanyId === id) {
+          setSelectedCompanyId(filtered[0]);
+        }
+        return filtered;
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
 
   // Available programs for the selected installment company
   const availablePrograms = useMemo(() => {
@@ -228,8 +266,12 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
               description: initialData.description || '',
               assignedToCompanyId: initialData.assignedCompanyIds?.[0] || '' 
           });
-          if (initialData.assignedCompanyIds?.[0]) {
+          if (initialData.assignedCompanyIds && initialData.assignedCompanyIds.length > 0) {
+            setSelectedCompanyIds(initialData.assignedCompanyIds);
             setSelectedCompanyId(initialData.assignedCompanyIds[0]);
+          } else if (initialData.companyId) {
+            setSelectedCompanyIds([initialData.companyId]);
+            setSelectedCompanyId(initialData.companyId);
           }
           if (initialData.selectedProgramId) {
             setSelectedProgramId(initialData.selectedProgramId);
@@ -292,6 +334,10 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
       }
     }
 
+    const assignedCompanyNames = selectedCompanyIds
+      .map(id => companies.find(c => c.id === id)?.name)
+      .filter((name): name is string => Boolean(name));
+
     onSubmit({
       ...formData,
       // @ts-ignore
@@ -304,7 +350,10 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
       hasRecentReceipt: formData.hasRecentReceipt === 'yes',
       hasPreviousInstallmentHistory: formData.hasPreviousInstallmentHistory === 'yes', 
       recentReceiptAmount: formData.recentReceiptAmount ? Number(formData.recentReceiptAmount) : undefined,
-      assignedCompanyIds: selectedCompanyId ? [selectedCompanyId] : (initialData?.assignedCompanyIds || []),
+      companyId: selectedCompanyId,
+      companyName: selectedCompany?.name,
+      assignedCompanyIds: selectedCompanyIds.length > 0 ? selectedCompanyIds : (selectedCompanyId ? [selectedCompanyId] : []),
+      assignedCompanyNames,
       selectedProgramId: selectedProgram?.id,
       selectedProgramName: selectedProgram?.name,
       programInterestRate: selectedProgram?.interestRate,
@@ -438,21 +487,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
             <select
               className="w-full border-slate-300 border rounded-xl px-4 py-3 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-all bg-white text-sm font-bold"
               value={selectedCompanyId}
-              onChange={e => {
-                const newCompId = e.target.value;
-                setSelectedCompanyId(newCompId);
-                const compPrograms = (financingPrograms || []).filter(p => p.companyId === newCompId && p.active !== false);
-                if (compPrograms.length > 0) {
-                  setSelectedProgramId(compPrograms[0].id);
-                } else {
-                  const comp = companies.find(c => c.id === newCompId);
-                  if (comp?.financingPrograms && comp.financingPrograms.length > 0) {
-                    setSelectedProgramId(comp.financingPrograms[0].id);
-                  } else {
-                    setSelectedProgramId('');
-                  }
-                }
-              }}
+              onChange={e => handlePrimaryCompanyChange(e.target.value)}
             >
               {companies.map(c => (
                 <option key={c.id} value={c.id}>
@@ -507,6 +542,59 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
             )}
           </div>
         </div>
+
+        {/* Multi-Company Parallel Dispatch (إرسال لأكثر من شركة في نفس الوقت) */}
+        {companies.length > 1 && (
+          <div className="p-4 bg-gradient-to-r from-sky-50 via-indigo-50 to-emerald-50 rounded-2xl border border-sky-200/80 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <div>
+                <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  إرسال الطلب لأكثر من شركة في نفس الوقت (توزيع متوازي سريع):
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  يمكنك تحديد شركات إضافية لتصلها نسخة فورية من الطلب ومستنداته لزيادة فرصة الموافقة وسرعة الاعتماد.
+                </p>
+              </div>
+              <span className="text-[11px] font-black text-sky-800 bg-sky-100/90 border border-sky-300 px-2.5 py-1 rounded-xl self-start sm:self-auto shrink-0">
+                محدد: {selectedCompanyIds.length} من {companies.length}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {companies.map(c => {
+                const isSelected = selectedCompanyIds.includes(c.id);
+                const isPrimary = c.id === selectedCompanyId;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleToggleMultiCompany(c.id)}
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                      isSelected
+                        ? isPrimary
+                          ? 'bg-sky-600 text-white border-sky-700 ring-2 ring-sky-300'
+                          : 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-200'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      readOnly
+                      className="rounded text-sky-600 pointer-events-none w-3.5 h-3.5 accent-white"
+                    />
+                    <span>{c.name}</span>
+                    {isPrimary && (
+                      <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded font-black border border-white/30">
+                        الرئيسية ⭐
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              <div>

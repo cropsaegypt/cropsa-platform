@@ -606,6 +606,8 @@ export interface Application {
   id: string;
   clientId?: string;
   companyId?: string;
+  companyName?: string;
+  assignedCompanyNames?: string[];
   clientName: string;
   clientNationalId: string;
   phoneNumber: string;
@@ -779,6 +781,40 @@ export interface SmtpConfig {
   lastTestedAt?: string;
   lastTestStatus?: 'SUCCESS' | 'ERROR';
   lastTestMessage?: string;
+}
+
+export interface InboxMessageAiAnalysis {
+  decision: 'APPROVED' | 'REJECTED' | 'DOCS_REQUIRED' | 'UNDER_REVIEW' | 'GENERAL_UPDATE';
+  confidence: number;
+  approvedAmount?: number;
+  rejectionReason?: string;
+  requestedDocuments?: string[];
+  summaryNotes: string;
+  suggestedStatus: ApplicationStatus;
+  suggestedActionLabel: string;
+}
+
+export interface InboxMessage {
+  id: string;
+  applicationId?: string;
+  clientId?: string;
+  clientName?: string;
+  clientNationalId?: string;
+  companyId?: string;
+  companyName: string;
+  senderName: string;
+  senderContact: string; // email or phone
+  subject: string;
+  content: string; // The raw reply from the company
+  channel: 'EMAIL' | 'WHATSAPP' | 'PORTAL';
+  receivedAt: string;
+  status: 'UNREAD' | 'READ' | 'PROCESSED';
+  isProcessed?: boolean;
+  processedAt?: string;
+  processedBy?: string;
+  processedByName?: string;
+  appliedActionDetails?: string;
+  aiAnalysis?: InboxMessageAiAnalysis;
 }
 
 export interface ClientTimelineItem {

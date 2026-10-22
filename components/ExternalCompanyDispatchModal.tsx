@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../context/Store';
 import { Application, InstallmentCompany, ExternalDispatchTemplate } from '../types';
+import { DEFAULT_EXTERNAL_DISPATCH_TEMPLATES } from '../services/mockData';
 
 interface ExternalCompanyDispatchModalProps {
   isOpen: boolean;
@@ -57,8 +58,13 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
 
   // Filter templates for current channel
   const availableTemplates = useMemo(() => {
-    return externalDispatchTemplates.filter(t => 
+    const list = externalDispatchTemplates.filter(t => 
       (t.channel === channel || t.type === channel) && t.active !== false
+    );
+    if (list.length > 0) return list;
+    // Fallback to default templates if state was empty or corrupted
+    return (DEFAULT_EXTERNAL_DISPATCH_TEMPLATES || []).filter((t: any) => 
+      t.channel === channel || t.type === channel
     );
   }, [externalDispatchTemplates, channel]);
 
@@ -204,13 +210,48 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
     setIsSubmitting(true);
     setStatusFeedback(null);
 
-    // Record dispatch with DIRECT_SMTP status
+    let emailSentSuccessfully = false;
+    let emailErrorMessage = '';
+
+    // 1. Dispatch actual email via backend SMTP endpoint
+    try {
+      const emailRes = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: targetContact.trim(),
+          subject: emailSubject,
+          content: messageBody,
+          clientName: application.clientName,
+          applicationId: application.id,
+          driveLink: driveLink.trim() || undefined,
+          smtpConfig
+        })
+      });
+
+      if (emailRes.ok) {
+        const emailData = await emailRes.json();
+        if (emailData.success) {
+          emailSentSuccessfully = true;
+        } else {
+          emailErrorMessage = emailData.message || 'فشل إرسال الإيميل عبر خادم البريد';
+        }
+      } else {
+        const errJson = await emailRes.json().catch(() => ({}));
+        emailErrorMessage = errJson.message || `خطأ استجابة من خادم البريد (${emailRes.status})`;
+      }
+    } catch (netErr: any) {
+      console.warn('Network error dispatching email:', netErr);
+      emailErrorMessage = netErr?.message || 'تعذر الاتصال بخادم البريد المحلي';
+    }
+
+    // 2. Record dispatch with DIRECT_SMTP status in Store
     const res = await dispatchApplicationToExternalCompany(application.id, {
       companyId: selectedCompany.id,
       companyName: selectedCompany.name,
       channel: 'EMAIL',
       templateCategory: currentTemplate?.category || 'NEW_APPLICATION',
-      templateName: currentTemplate?.name || 'مراسلة بريد إلكتروني',
+      templateName: currentTemplate?.nameAr || currentTemplate?.name || 'مراسلة بريد إلكتروني',
       targetContact: targetContact.trim(),
       driveLink: driveLink.trim() || undefined,
       subject: emailSubject,
@@ -219,16 +260,20 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
     });
 
     setIsSubmitting(false);
-    if (res.success) {
+
+    if (emailSentSuccessfully) {
       setStatusFeedback({ 
         type: 'success', 
-        message: `تم إرسال الإيميل بنجاح إلى ${selectedCompany.name} وتنبيه رافع الطلب بتحديث الحالة في لوحة الإشعارات` 
+        message: `تم إرسال الإيميل بنجاح عبر خادم البريد إلى ${selectedCompany.name} (${targetContact.trim()}) وتوثيق الإرسال بنجاح 🟢` 
       });
       setTimeout(() => {
         onClose();
-      }, 1500);
+      }, 2000);
     } else {
-      setStatusFeedback({ type: 'error', message: res.message });
+      setStatusFeedback({ 
+        type: 'error', 
+        message: `تم توثيق الحالة في النظام، ولكن فشل الإرسال عبر SMTP (${emailErrorMessage}). يمكنك النقر على "فتح تطبيق البريد (Outlook)" لإرسالها فوراً.` 
+      });
     }
   };
 
@@ -434,13 +479,17 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
               <select
                 value={selectedTemplateId}
                 onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="w-full text-xs font-semibold p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                className="w-full text-xs font-bold text-slate-900 p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none shadow-xs cursor-pointer"
               >
-                {availableTemplates.map(tmpl => (
-                  <option key={tmpl.id} value={tmpl.id}>
-                    {tmpl.name} {tmpl.category === 'EXPEDITE' ? '⚡ (استعجال)' : ''}
-                  </option>
-                ))}
+                {availableTemplates.map(tmpl => {
+                  const title = tmpl.nameAr || tmpl.name || tmpl.nameEn || 'نموذج مراسلة معتمد';
+                  const isExp = tmpl.category === 'EXPEDITE' || tmpl.category === 'EXPEDITE_URGENT';
+                  return (
+                    <option key={tmpl.id} value={tmpl.id} className="text-slate-900 font-bold bg-white py-1.5">
+                      {title} {isExp ? '⚡ (استعجال فوري)' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -471,7 +520,7 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
               value={driveLink}
               onChange={(e) => setDriveLink(e.target.value)}
               placeholder="https://drive.google.com/drive/folders/..."
-              className="w-full text-xs p-2.5 bg-white border border-sky-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+              className="w-full text-xs p-2.5 bg-white text-slate-900 border border-sky-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
               dir="ltr"
             />
           </div>
@@ -486,7 +535,7 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
                 type="text"
                 value={emailSubject}
                 onChange={(e) => setEmailSubject(e.target.value)}
-                className="w-full text-xs p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
+                className="w-full text-xs p-2.5 bg-white text-slate-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-bold"
               />
             </div>
           )}
@@ -516,10 +565,10 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
               </button>
             </div>
             <textarea
-              rows={6}
+              rows={7}
               value={messageBody}
               onChange={(e) => setMessageBody(e.target.value)}
-              className="w-full text-xs p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none font-sans leading-relaxed resize-y"
+              className="w-full text-xs p-3.5 bg-white text-slate-900 font-medium border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none font-sans leading-relaxed resize-y shadow-xs"
               dir="rtl"
             />
           </div>

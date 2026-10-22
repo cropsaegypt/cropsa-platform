@@ -36,7 +36,10 @@ import {
   Eye,
   Download,
   FileText,
-  Trash2
+  Trash2,
+  Calculator,
+  Inbox,
+  Sparkles
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
 import { ClientDetailModal } from '../components/ClientDetailModal';
@@ -46,6 +49,8 @@ import { ExternalCompanyDispatchModal } from '../components/ExternalCompanyDispa
 import { InternalDocViewerModal } from '../components/InternalDocViewerModal';
 import { NeedsUpdateNotificationBoard } from '../components/NeedsUpdateNotificationBoard';
 import { BulkApplicationsImportModal } from '../components/BulkApplicationsImportModal';
+import { InternalInstallmentCalculatorModal } from '../components/InternalInstallmentCalculatorModal';
+import { InternalInboxModal } from '../components/InternalInboxModal';
 
 const REJECTION_REASONS = [
   "درجة الائتمان منخفضة جداً",
@@ -81,6 +86,7 @@ export const Applications: React.FC = () => {
     users, 
     branches,
     companies,
+    inboxMessages,
     assignApplication, 
     acknowledgeApplication, 
     reviewApplication, 
@@ -101,6 +107,9 @@ export const Applications: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterBranch, setFilterBranch] = useState<string>('ALL');
+  const [filterCompanyId, setFilterCompanyId] = useState<string>('ALL');
+  const [showCalculatorModal, setShowCalculatorModal] = useState<boolean>(false);
+  const [showInboxModal, setShowInboxModal] = useState<boolean>(false);
   const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | 'LAST_7_DAYS' | 'LAST_30_DAYS' | 'THIS_MONTH' | 'CUSTOM'>('ALL');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
@@ -269,6 +278,18 @@ export const Applications: React.FC = () => {
       return false;
     }
 
+    // Company Filter
+    if (filterCompanyId !== 'ALL') {
+      const targetCompany = companies.find(c => c.id === filterCompanyId);
+      const targetName = targetCompany?.name;
+      const matchesComp = 
+        app.companyId === filterCompanyId || 
+        app.assignedCompanyIds?.includes(filterCompanyId) ||
+        (targetName && app.companyName === targetName) ||
+        (targetName && (app as any).assignedCompanyNames?.includes(targetName));
+      if (!matchesComp) return false;
+    }
+
     // Company Branch Filter
     if (filterBranch !== 'ALL') {
       if (filterBranch === 'UNASSIGNED') {
@@ -318,6 +339,7 @@ export const Applications: React.FC = () => {
     setSearchTerm('');
     setFilterStatus('ALL');
     setFilterBranch('ALL');
+    setFilterCompanyId('ALL');
     setDatePreset('ALL');
     setDateFrom('');
     setDateTo('');
@@ -328,10 +350,35 @@ export const Applications: React.FC = () => {
     searchTerm.trim() !== '' || 
     filterStatus !== 'ALL' || 
     filterBranch !== 'ALL' || 
+    filterCompanyId !== 'ALL' ||
     datePreset !== 'ALL' || 
     dateFrom !== '' || 
     dateTo !== '' || 
     urgentOnly;
+
+  const companyStats = React.useMemo(() => {
+    return companies.map(comp => {
+      const compApps = applications.filter(app => {
+        return (
+          app.companyId === comp.id ||
+          app.assignedCompanyIds?.includes(comp.id) ||
+          app.companyName === comp.name ||
+          ((app as any).assignedCompanyNames && (app as any).assignedCompanyNames.includes(comp.name))
+        );
+      });
+      const clientCount = compApps.length;
+      const totalAmount = compApps.reduce((sum, a) => sum + (Number(a.requestedAmount) || 0), 0);
+      return {
+        ...comp,
+        clientCount,
+        totalAmount
+      };
+    });
+  }, [companies, applications]);
+
+  const unreadInboxCount = React.useMemo(() => {
+    return (inboxMessages || []).filter(m => !m.isRead || !m.applied).length;
+  }, [inboxMessages]);
 
   const handleWithdrawalRequest = (e: React.FormEvent) => {
     e.preventDefault();
@@ -464,7 +511,32 @@ export const Applications: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-stretch sm:self-auto font-mono text-xs">
+          <div className="flex items-center gap-2 self-stretch sm:self-auto font-mono text-xs flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowInboxModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer relative"
+              title="صندوق الوارد الداخلي لردود شركات التمويل والذكاء الاصطناعي"
+            >
+              <Inbox className="h-4 w-4 text-white" />
+              <span className="font-sans">صندوق الوارد (AI)</span>
+              {unreadInboxCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full border border-white">
+                  {unreadInboxCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCalculatorModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="حاسبة التقسيط والأجل الداخلية للموظفة"
+            >
+              <Calculator className="h-4 w-4 text-white" />
+              <span className="font-sans">حاسبة التقسيط والأجل 🧮</span>
+            </button>
+
             {(currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.ADMIN) && (
               <button
                 type="button"
@@ -473,12 +545,118 @@ export const Applications: React.FC = () => {
                 title="استيراد طلبات تقسيط مجمعة عبر شيت إكسيل"
               >
                 <FileText className="h-4 w-4 text-emerald-400" />
-                <span className="font-sans">رفع طلبات بالك (شيت إكسيل)</span>
+                <span className="font-sans">رفع طلبات بالك</span>
               </button>
             )}
             <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl font-bold border border-slate-200">
               إجمالي النتائج: <strong className="text-slate-950">{filteredApps.length}</strong> من أصل {applications.length}
             </span>
+          </div>
+        </div>
+
+        {/* Financing Companies Interactive Cards Grid (مربعات شركات التمويل واللوجو) */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <Building2 className="w-4 h-4 text-crobsa-700" />
+              <span>شركات التمويل الشريكة (تصفية سريعة بالشركة وعدد العملاء):</span>
+            </span>
+            {filterCompanyId !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setFilterCompanyId('ALL')}
+                className="text-xs font-black text-sky-600 hover:text-sky-700 flex items-center gap-1 cursor-pointer bg-sky-50 px-2.5 py-1 rounded-xl border border-sky-200"
+              >
+                <span>عرض جميع الشركات ({applications.length})</span>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {/* All Companies Card */}
+            <button
+              type="button"
+              onClick={() => setFilterCompanyId('ALL')}
+              className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between cursor-pointer ${
+                filterCompanyId === 'ALL'
+                  ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white border-slate-900 shadow-md ring-2 ring-slate-400'
+                  : 'bg-white text-slate-800 border-slate-200/90 hover:border-slate-300 hover:shadow-xs'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
+                  filterCompanyId === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                }`}>
+                  الكل
+                </div>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  filterCompanyId === 'ALL' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+                }`}>
+                  نشط
+                </span>
+              </div>
+              <div>
+                <div className="text-xs font-black">جميع الشركات</div>
+                <div className={`text-base font-black font-mono mt-0.5 ${
+                  filterCompanyId === 'ALL' ? 'text-white' : 'text-crobsa-800'
+                }`}>
+                  {applications.length} <span className="text-[10px] font-sans font-bold">عميل / طلب</span>
+                </div>
+              </div>
+            </button>
+
+            {/* Individual Company Cards */}
+            {companyStats.map(comp => {
+              const isSelected = filterCompanyId === comp.id;
+              return (
+                <button
+                  key={comp.id}
+                  type="button"
+                  onClick={() => setFilterCompanyId(isSelected ? 'ALL' : comp.id)}
+                  className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between relative cursor-pointer ${
+                    isSelected
+                      ? 'bg-gradient-to-br from-crobsa-800 to-sky-900 text-white border-crobsa-900 shadow-md ring-2 ring-crobsa-400'
+                      : 'bg-white text-slate-800 border-slate-200/90 hover:border-slate-300 hover:shadow-xs'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    {comp.logo ? (
+                      <img src={comp.logo} alt={comp.name} className="w-8 h-8 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-xs" />
+                    ) : (
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shadow-xs ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-sky-100 text-sky-800'
+                      }`}>
+                        {comp.name.substring(0, 2)}
+                      </div>
+                    )}
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      سقف {comp.creditCeiling ? `${Math.round(comp.creditCeiling / 1000)}k` : 'مفتوح'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-black truncate" title={comp.name}>
+                      {comp.name}
+                    </div>
+                    <div className={`text-base font-black font-mono mt-0.5 ${
+                      isSelected ? 'text-emerald-300' : 'text-crobsa-700'
+                    }`}>
+                      {comp.clientCount} <span className="text-[10px] font-sans font-bold">عميل</span>
+                    </div>
+                    {comp.totalAmount > 0 && (
+                      <div className={`text-[10px] font-mono mt-0.5 truncate ${
+                        isSelected ? 'text-white/80' : 'text-slate-400'
+                      }`}>
+                        {comp.totalAmount.toLocaleString()} ج.م
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -729,6 +907,17 @@ export const Applications: React.FC = () => {
                     )}
                   </div>
                   <p className="text-xs text-slate-500 font-mono mt-0.5">{app.clientNationalId}</p>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span className="text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                      <Building2 className="w-3 h-3 text-crobsa-700" />
+                      <span>{app.companyName || companies.find(c => c.id === app.companyId || app.assignedCompanyIds?.includes(c.id))?.name || 'غير محدد'}</span>
+                    </span>
+                    {app.selectedProgramName && (
+                      <span className="text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200 px-1.5 py-0.5 rounded-lg">
+                        {app.selectedProgramName}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getStatusColor(app.status)}`}>
                   {STATUS_ARABIC[app.status]}
@@ -859,10 +1048,14 @@ export const Applications: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <p className="text-xs text-slate-400 font-mono">{app.clientNationalId || 'بدون رقم قومي'}</p>
+                      <span className="text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                        <Building2 className="w-3 h-3 text-crobsa-700" />
+                        <span>{app.companyName || companies.find(c => c.id === app.companyId || app.assignedCompanyIds?.includes(c.id))?.name || 'غير محدد'}</span>
+                      </span>
                       {app.selectedProgramName && (
-                        <span className="text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200 px-1.5 py-0.2 rounded">
+                        <span className="text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200 px-1.5 py-0.5 rounded-lg">
                           {app.selectedProgramName}
                         </span>
                       )}
@@ -1841,6 +2034,21 @@ export const Applications: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Employee Installment & Deferred Calculator Modal */}
+      <InternalInstallmentCalculatorModal
+        isOpen={showCalculatorModal}
+        onClose={() => setShowCalculatorModal(false)}
+        onApplyCalculation={(calc) => {
+          setShowCalculatorModal(false);
+          setIsEditing(true);
+        }}
+      />
+
+      {/* Internal Inbox Modal with AI Analysis */}
+      <InternalInboxModal
+        isOpen={showInboxModal}
+        onClose={() => setShowInboxModal(false)}
+      />
     </div>
   );
 };

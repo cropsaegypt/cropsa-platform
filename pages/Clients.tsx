@@ -154,8 +154,16 @@ export const Clients: React.FC = () => {
   // Calculate integrated client data
   const enrichedClients = useMemo(() => {
     return scopedClients.map(client => {
-      const clientNatId = client.nationalId || '';
-      const clientApps = applications.filter(a => a.clientNationalId === clientNatId);
+      // Strict matching for applications: only match by unique clientId OR valid non-empty nationalId
+      const clientNatId = client.nationalId ? client.nationalId.trim() : '';
+      const isRealNatId = clientNatId.length >= 10 && !clientNatId.startsWith('TEMP-');
+      
+      const clientApps = applications.filter(a => {
+        if (client.id && a.clientId === client.id) return true;
+        if (isRealNatId && a.clientNationalId && a.clientNationalId.trim() === clientNatId) return true;
+        return false;
+      });
+
       const approvedApps = clientApps.filter(a => a.status === ApplicationStatus.APPROVED || a.status === ApplicationStatus.AMOUNT_TRANSFERRED);
       
       const appApprovedTotal = approvedApps.reduce((acc, curr) => acc + (curr.approvedAmount || 0), 0);
@@ -201,11 +209,18 @@ export const Clients: React.FC = () => {
         fundingCompanies.push(client.isHistoricalOnly ? 'سجل تقسيط سابق' : 'بانتظار الصرف');
       }
 
-      // Latest transaction / finance date (من شهر كام)
-      let latestDate = client.lastFinanceDate || client.manualEntry?.lastWithdrawalDate || client.manualEntry?.approvalDate || client.addedAt;
-      if (clientApps.length > 0) {
-        const sorted = [...clientApps].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
-        latestDate = sorted[0].reviewedAt || sorted[0].submittedAt || latestDate;
+      // Ground truth historical finance date:
+      // If client has an established lastFinanceDate or manualEntry, that is their true historical finance date.
+      // A pending / newly drafted request must NEVER overwrite an old client's past finance date!
+      let latestDate = client.lastFinanceDate || client.manualEntry?.lastWithdrawalDate || client.manualEntry?.approvalDate;
+      if (!latestDate && approvedApps.length > 0) {
+        const sorted = [...approvedApps].sort((a, b) => 
+          new Date(b.reviewedAt || b.submittedAt).getTime() - new Date(a.reviewedAt || a.submittedAt).getTime()
+        );
+        latestDate = sorted[0].reviewedAt || sorted[0].submittedAt;
+      }
+      if (!latestDate) {
+        latestDate = client.addedAt || new Date().toISOString();
       }
 
       const daysElapsed = latestDate 
@@ -226,7 +241,7 @@ export const Clients: React.FC = () => {
       
       // 3-Month Renewal Eligibility (عدا عليه 3 شهور ومتاح له تجديد حتى لو برقم مؤقت)
       const isEligibleForRenewal = (client.renewalClassification === 'ELIGIBLE') || 
-        (((daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry) && !isDelinquent));
+        (((daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry || !!client.lastFinanceDate) && !isDelinquent));
 
       return {
         ...client,
