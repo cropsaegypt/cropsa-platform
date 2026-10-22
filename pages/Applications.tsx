@@ -442,11 +442,24 @@ export const Applications: React.FC = () => {
     }
   };
 
+  const canEditApp = (app: Application) => {
+    return (
+      currentUser.role === Role.ADMIN ||
+      currentUser.role === Role.SUPER_ADMIN ||
+      app.submittedBy === currentUser.id ||
+      Boolean(app.needsUpdate) ||
+      Boolean(app.externalDispatches && app.externalDispatches.length > 0)
+    );
+  };
+
   const handleUpdate = (data: Partial<Application>) => {
       if (selectedApp) {
-          updateApplication(selectedApp.id, data);
+          updateApplication(selectedApp.id, {
+            ...data,
+            needsUpdate: false
+          });
           setIsEditing(false);
-          const updated = { ...selectedApp, ...data };
+          const updated = { ...selectedApp, ...data, needsUpdate: false };
           setSelectedApp(updated as Application);
       }
   };
@@ -627,7 +640,7 @@ export const Applications: React.FC = () => {
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shadow-xs ${
                         isSelected ? 'bg-white/20 text-white' : 'bg-sky-100 text-sky-800'
                       }`}>
-                        {comp.name.substring(0, 2)}
+                        {(comp.name || 'شركة').substring(0, 2)}
                       </div>
                     )}
                     <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
@@ -975,10 +988,26 @@ export const Applications: React.FC = () => {
                     <span>استعجال</span>
                   </button>
 
+                  {canEditApp(app) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedApp(app);
+                        setIsEditing(true);
+                      }}
+                      className="p-1.5 text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border border-blue-200 cursor-pointer"
+                      title="تعديل بيانات وأوراق الطلب"
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                      <span>تعديل</span>
+                    </button>
+                  )}
+
                   <button 
                     type="button"
                     onClick={() => { setSelectedApp(app); setIsEditing(false); setNextStatus(''); setIsRejecting(false); }}
-                    className="px-3 py-1.5 text-xs font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-xs font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-lg transition-colors cursor-pointer"
                   >
                     عرض التفاصيل
                   </button>
@@ -1154,9 +1183,24 @@ export const Applications: React.FC = () => {
                       </button>
                     )}
                     
+                    {canEditApp(app) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedApp(app);
+                          setIsEditing(true);
+                        }}
+                        className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors border border-blue-200 cursor-pointer"
+                        title="تعديل بيانات وأوراق الطلب"
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+
                     <button 
                       onClick={() => { setSelectedApp(app); setIsEditing(false); setNextStatus(''); setIsRejecting(false); }}
-                      className="text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 font-semibold text-xs rounded-lg px-3 py-1.5 transition-all border border-sky-100"
+                      className="text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 font-semibold text-xs rounded-lg px-3 py-1.5 transition-all border border-sky-100 cursor-pointer"
                     >
                       التفاصيل
                     </button>
@@ -1204,25 +1248,27 @@ export const Applications: React.FC = () => {
                   </h3>
                   <p className="text-xs text-gray-400 font-mono mt-1">#{selectedApp.id}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                    {canEditApp(selectedApp) && !isEditing && (
+                      <button 
+                          type="button"
+                          onClick={() => setIsEditing(true)} 
+                          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-colors font-bold text-xs flex items-center gap-1.5 border border-sky-200 cursor-pointer"
+                          title="تعديل بيانات وأوراق الطلب"
+                      >
+                          <Edit className="h-4 w-4" />
+                          <span>تعديل الطلب</span>
+                      </button>
+                    )}
                     {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && !isEditing && (
-                      <>
-                        <button 
-                            onClick={() => setIsEditing(true)} 
-                            className="p-2 hover:bg-blue-50 text-blue-600 rounded-full transition-colors"
-                            title="تعديل"
-                        >
-                            <Edit className="h-5 w-5" />
-                        </button>
-                        <button 
-                            type="button"
-                            onClick={() => setAppToDelete(selectedApp)} 
-                            className="p-2 hover:bg-rose-50 text-rose-600 rounded-full transition-colors"
-                            title="حذف الطلب نهائياً"
-                        >
-                            <Trash2 className="h-5 w-5" />
-                        </button>
-                      </>
+                      <button 
+                          type="button"
+                          onClick={() => setAppToDelete(selectedApp)} 
+                          className="p-2 hover:bg-rose-50 text-rose-600 rounded-xl transition-colors border border-rose-200 cursor-pointer"
+                          title="حذف الطلب نهائياً (صلاحية مدير النظام)"
+                      >
+                          <Trash2 className="h-4 w-4" />
+                      </button>
                     )}
                     <button onClick={() => { setSelectedApp(null); setIsRejecting(false); setIsEditing(false); setSelectedCompanyIds([]); setShowClientModal(false); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500">
                     <X className="h-6 w-6" />

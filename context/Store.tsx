@@ -394,27 +394,137 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const [applications, setApplications] = useState<Application[]>(() => {
     try {
-      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') {
-        const saved = localStorage.getItem('cropsa_applications');
-        return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem('cropsa_applications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
       return MOCK_APPLICATIONS;
     } catch {
-      return [];
+      return MOCK_APPLICATIONS;
     }
   });
 
   const [clients, setClients] = useState<Client[]>(() => {
     try {
-      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') {
-        const saved = localStorage.getItem('cropsa_clients');
-        return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem('cropsa_clients');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
       return MOCK_CLIENTS;
     } catch {
-      return [];
+      return MOCK_CLIENTS;
     }
   });
+
+  const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_inbox_messages');
+      if (saved) return JSON.parse(saved);
+      return DEFAULT_INBOX_MESSAGES;
+    } catch {
+      return DEFAULT_INBOX_MESSAGES;
+    }
+  });
+
+  // Ensure every client in the database has their historical completed/disbursed application
+  useEffect(() => {
+    if (!clients || clients.length === 0) return;
+
+    setApplications(prevApps => {
+      let hasChanges = false;
+      const updated = [...prevApps];
+
+      clients.forEach(client => {
+        const clientAppExists = updated.some(a => 
+          (client.id && a.clientId === client.id) || 
+          (client.nationalId && a.clientNationalId === client.nationalId)
+        );
+
+        if (!clientAppExists) {
+          hasChanges = true;
+          const assignedComp = companies.find(c => c.name === client.companyName) || companies[0];
+          const histAmount = client.approvedAmount || client.usedAmount || 50000;
+          const histDate = client.lastFinanceDate || client.addedAt || '2024-01-01T00:00:00.000Z';
+
+          updated.push({
+            id: `app_hist_${client.id || client.nationalId || Date.now()}`,
+            clientId: client.id,
+            clientName: client.name,
+            clientNationalId: client.nationalId || '',
+            phoneNumber: client.phoneNumber || '',
+            whatsappNumber: client.phoneNumber || '',
+            governorate: client.governorate || 'القاهرة',
+            profession: (client.profession as any) || 'MERCHANT',
+            financeType: 'INSTALLMENT',
+            durationMonths: 12,
+            requestedAmount: histAmount,
+            approvedAmount: histAmount,
+            usedAmount: histAmount,
+            status: ApplicationStatus.APPROVED,
+            submittedBy: client.addedBy || 'admin',
+            submittedAt: histDate,
+            companyId: assignedComp?.id || 'aman',
+            companyName: client.companyName || assignedComp?.name || 'أمان للتمويل',
+            assignedCompanyIds: [assignedComp?.id || 'aman'],
+            assignedCompanyNames: [client.companyName || assignedComp?.name || 'أمان للتمويل'],
+            selectedProgramName: 'تمويل سابق معتمد ومصروف بالكامل',
+            hasRecentInstallment: true,
+            hasRecentReceipt: true,
+            documents: [],
+            history: [
+              {
+                action: 'APPROVED',
+                timestamp: histDate,
+                performedBy: 'system',
+                performedByName: 'إدارة الائتمان',
+                details: `طلب تمويل تاريخي سابق معتمد ومصروف بالكامل عبر ${client.companyName || 'شركة التمويل'}`
+              }
+            ]
+          });
+        }
+      });
+
+      if (hasChanges) {
+        try {
+          localStorage.setItem('cropsa_applications', JSON.stringify(updated));
+        } catch (e) {
+          console.warn('Failed to persist applications:', e);
+        }
+        return updated;
+      }
+      return prevApps;
+    });
+  }, [clients, companies]);
+
+  useEffect(() => {
+    try {
+      if (applications.length > 0) {
+        localStorage.setItem('cropsa_applications', JSON.stringify(applications));
+      }
+    } catch (e) {
+      console.warn('Failed to persist applications to localStorage:', e);
+    }
+  }, [applications]);
+
+  useEffect(() => {
+    try {
+      if (clients.length > 0) {
+        localStorage.setItem('cropsa_clients', JSON.stringify(clients));
+      }
+    } catch (e) {
+      console.warn('Failed to persist clients to localStorage:', e);
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cropsa_inbox_messages', JSON.stringify(inboxMessages));
+    } catch (e) {
+      console.warn('Failed to persist inbox messages to localStorage:', e);
+    }
+  }, [inboxMessages]);
 
   const [clientRequests, setClientRequests] = useState<ClientAccessRequest[]>(MOCK_CLIENT_REQUESTS);
   const [overdueCases, setOverdueCases] = useState<OverdueCase[]>(() => {
@@ -454,6 +564,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   });
   const [applicationQuestions, setApplicationQuestions] = useState<ApplicationQuestion[]>(MOCK_APPLICATION_QUESTIONS);
   const [financingPrograms, setFinancingPrograms] = useState<FinancingProgram[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_financing_programs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to parse cropsa_financing_programs:', e);
+    }
     return MOCK_COMPANIES.flatMap(c => 
       (c.financingPrograms || []).map(p => ({
         ...p,
@@ -464,6 +583,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }))
     );
   });
+
+  useEffect(() => {
+    try {
+      if (financingPrograms && financingPrograms.length > 0) {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(financingPrograms));
+      }
+    } catch (e) {
+      console.warn('Failed to persist financing programs:', e);
+    }
+  }, [financingPrograms]);
   const [pendingNavigation, setPendingNavigation] = useState<NavigationTarget | null>(null);
   const [systemBranding, setSystemBranding] = useState<SystemBranding>(() => {
     try {
