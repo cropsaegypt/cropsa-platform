@@ -44,6 +44,7 @@ import { DisbursementModal } from '../components/DisbursementModal';
 import { ExternalCompanyDispatchModal } from '../components/ExternalCompanyDispatchModal';
 import { InternalDocViewerModal } from '../components/InternalDocViewerModal';
 import { NeedsUpdateNotificationBoard } from '../components/NeedsUpdateNotificationBoard';
+import { BulkApplicationsImportModal } from '../components/BulkApplicationsImportModal';
 
 const REJECTION_REASONS = [
   "درجة الائتمان منخفضة جداً",
@@ -107,6 +108,7 @@ export const Applications: React.FC = () => {
   const [discussionTab, setDiscussionTab] = useState<'comments' | 'documents' | 'reroute'>('comments');
   const [externalDispatchApp, setExternalDispatchApp] = useState<Application | null>(null);
   const [viewingDoc, setViewingDoc] = useState<{ document: any; clientName?: string } | null>(null);
+  const [showBulkImportAppsModal, setShowBulkImportAppsModal] = useState<boolean>(false);
 
   // Modals state
   const [deductAmount, setDeductAmount] = useState<number>(0);
@@ -459,6 +461,17 @@ export const Applications: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 self-stretch sm:self-auto font-mono text-xs">
+            {(currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.ADMIN) && (
+              <button
+                type="button"
+                onClick={() => setShowBulkImportAppsModal(true)}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors border border-slate-800 cursor-pointer"
+                title="استيراد طلبات تقسيط مجمعة عبر شيت إكسيل"
+              >
+                <FileText className="h-4 w-4 text-emerald-400" />
+                <span className="font-sans">رفع طلبات بالك (شيت إكسيل)</span>
+              </button>
+            )}
             <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl font-bold border border-slate-200">
               إجمالي النتائج: <strong className="text-slate-950">{filteredApps.length}</strong> من أصل {applications.length}
             </span>
@@ -828,7 +841,14 @@ export const Applications: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 font-mono mt-0.5">{app.clientNationalId}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-slate-400 font-mono">{app.clientNationalId || 'بدون رقم قومي'}</p>
+                      {app.selectedProgramName && (
+                        <span className="text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200 px-1.5 py-0.2 rounded">
+                          {app.selectedProgramName}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-3.5">
                     {app.status === ApplicationStatus.APPROVED ? (
@@ -1147,6 +1167,38 @@ export const Applications: React.FC = () => {
                        </div>
                     </div>
                  </div>
+
+                 {/* Selected Financing Program & Terms */}
+                 {(selectedApp.selectedProgramName || selectedApp.programInterestRate !== undefined) && (
+                   <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-4">
+                     <div className="flex items-center justify-between flex-wrap gap-2">
+                       <div className="flex items-center gap-2">
+                         <Layers className="h-4 w-4 text-sky-700" />
+                         <span className="text-xs font-bold text-sky-900">البرنامج التمويلي للطلب:</span>
+                         <span className="bg-sky-600 text-white text-xs font-black px-2.5 py-0.5 rounded-lg shadow-xs">
+                           {selectedApp.selectedProgramName || 'برنامج التمويل المباشر'}
+                         </span>
+                       </div>
+                       <div className="flex items-center gap-2 text-xs flex-wrap">
+                         {selectedApp.programInterestRate !== undefined && (
+                           <span className="bg-white text-sky-800 border border-sky-200 px-2 py-0.5 rounded-md font-bold">
+                             الفائدة: {selectedApp.programInterestRate}%
+                           </span>
+                         )}
+                         {selectedApp.programAdminFeePercent !== undefined && (
+                           <span className="bg-white text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
+                             المصاريف الإدارية: {selectedApp.programAdminFeePercent}%
+                           </span>
+                         )}
+                         {selectedApp.lastStageDate && (
+                           <span className="bg-white text-slate-700 border border-slate-200 px-2 py-0.5 rounded-md font-bold">
+                             آخر مرحلة: {new Date(selectedApp.lastStageDate).toLocaleDateString('ar-EG')}
+                           </span>
+                         )}
+                       </div>
+                     </div>
+                   </div>
+                 )}
 
                  {/* Description */}
                  {selectedApp.description && (
@@ -1660,6 +1712,14 @@ export const Applications: React.FC = () => {
           document={viewingDoc.document}
           clientName={viewingDoc.clientName}
           onClose={() => setViewingDoc(null)}
+        />
+      )}
+
+      {/* Bulk Applications Import Modal */}
+      {showBulkImportAppsModal && (
+        <BulkApplicationsImportModal
+          isOpen={showBulkImportAppsModal}
+          onClose={() => setShowBulkImportAppsModal(false)}
         />
       )}
     </div>

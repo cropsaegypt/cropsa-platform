@@ -120,6 +120,9 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
       .replace(/{amount}/g, `${formattedAmount} ج.م`)
       .replace(/{monthlyInstallment}/g, monthlyAmt)
       .replace(/{companyName}/g, selectedCompany?.name || 'الشركة')
+      .replace(/{programName}/g, application.selectedProgramName || 'برنامج التمويل المباشر')
+      .replace(/{programInterest}/g, application.programInterestRate ? `${application.programInterestRate}%` : '0%')
+      .replace(/{programFees}/g, application.programAdminFeePercent ? `${application.programAdminFeePercent}%` : '2.5%')
       .replace(/{driveLink}/g, driveLinkDisplay)
       .replace(/{appId}/g, application.id || '')
       .replace(/{governorate}/g, application.governorate || 'القاهرة')
@@ -372,6 +375,24 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
                   بريد إلكتروني
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Program & Paperwork Info Card */}
+          <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sky-950">البرنامج التمويلي المعتمد:</span>
+              <span className="bg-sky-600 text-white px-2 py-0.5 rounded-md font-black text-[11px]">
+                {application.selectedProgramName || 'البرنامج المباشر'}
+              </span>
+              {application.programInterestRate !== undefined && (
+                <span className="text-sky-800 font-bold bg-white px-2 py-0.5 rounded-md border border-sky-200 text-[10px]">
+                  فائدة: {application.programInterestRate}%
+                </span>
+              )}
+            </div>
+            <div className="text-slate-600 text-[11px] font-bold">
+              الأوراق المرفوعة: <strong className="text-emerald-700 font-black">{application.documents?.length || 0}</strong> ملفات موثقة
             </div>
           </div>
 

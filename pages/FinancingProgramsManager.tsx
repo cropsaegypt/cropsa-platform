@@ -3,7 +3,8 @@ import { useStore } from '../context/Store';
 import { 
   FinancingProgram, 
   ApplicationQuestion, 
-  Role 
+  Role,
+  ProgramDocumentItem
 } from '../types';
 import { 
   Layers, 
@@ -88,6 +89,7 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
     downPaymentPercent: number;
     adminFeePercent: number;
     requiredDocuments: string[];
+    documentsConfig: ProgramDocumentItem[];
     questionIds: string[];
     description: string;
     active: boolean;
@@ -102,10 +104,15 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
     downPaymentPercent: 0,
     adminFeePercent: 2.5,
     requiredDocuments: [STANDARD_DOCUMENT_PRESETS[0], STANDARD_DOCUMENT_PRESETS[1]],
+    documentsConfig: [
+      { id: 'doc_1', name: STANDARD_DOCUMENT_PRESETS[0], isRequired: true },
+      { id: 'doc_2', name: STANDARD_DOCUMENT_PRESETS[1], isRequired: false }
+    ],
     questionIds: [],
     description: '',
     active: true
   });
+  const [customDocIsRequired, setCustomDocIsRequired] = useState(true);
 
   // Question Modal State
   const [showQuestionModal, setShowQuestionModal] = useState(false);
@@ -162,6 +169,10 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
   // Handle open add program modal
   const handleOpenAddProgram = () => {
     setEditingProgram(null);
+    const initialDocsConfig: ProgramDocumentItem[] = [
+      { id: 'doc_1', name: STANDARD_DOCUMENT_PRESETS[0], isRequired: true },
+      { id: 'doc_2', name: STANDARD_DOCUMENT_PRESETS[1], isRequired: false }
+    ];
     setProgramForm({
       name: '',
       code: `PRG-${Date.now().toString().slice(-4)}`,
@@ -172,46 +183,87 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
       interestRate: 0,
       downPaymentPercent: 0,
       adminFeePercent: 2.5,
-      requiredDocuments: [STANDARD_DOCUMENT_PRESETS[0], STANDARD_DOCUMENT_PRESETS[1]],
+      requiredDocuments: initialDocsConfig.map(d => d.name),
+      documentsConfig: initialDocsConfig,
       questionIds: applicationQuestions.map(q => q.id),
       description: '',
       active: true
     });
     setCustomDocInput('');
+    setCustomDocIsRequired(true);
     setShowProgramModal(true);
   };
 
   // Handle open edit program modal
   const handleOpenEditProgram = (prog: FinancingProgram) => {
     setEditingProgram(prog);
+    let initialDocsConfig: ProgramDocumentItem[] = [];
+    if (prog.documentsConfig && prog.documentsConfig.length > 0) {
+      initialDocsConfig = prog.documentsConfig;
+    } else if (prog.requiredDocuments && prog.requiredDocuments.length > 0) {
+      initialDocsConfig = prog.requiredDocuments.map((d, i) => ({
+        id: `doc_${i}`,
+        name: d,
+        isRequired: true
+      }));
+    }
+
     setProgramForm({
       name: prog.name,
       code: prog.code || `PRG-${prog.id.slice(-4)}`,
-      companyId: prog.companyId,
+      companyId: prog.companyId || (companies[0]?.id || ''),
       maxAmount: prog.maxAmount,
       minAmount: prog.minAmount || 5000,
       durationMonths: prog.durationMonths,
       interestRate: prog.interestRate || 0,
       downPaymentPercent: prog.downPaymentPercent || 0,
       adminFeePercent: prog.adminFeePercent || 2.5,
-      requiredDocuments: prog.requiredDocuments || [],
+      requiredDocuments: prog.requiredDocuments || initialDocsConfig.map(d => d.name),
+      documentsConfig: initialDocsConfig,
       questionIds: prog.questionIds || [],
       description: prog.description || '',
       active: prog.active !== undefined ? prog.active : true
     });
     setCustomDocInput('');
+    setCustomDocIsRequired(true);
     setShowProgramModal(true);
   };
 
   // Toggle Document in Program Form
   const handleToggleDoc = (docTitle: string) => {
     setProgramForm(prev => {
-      const exists = prev.requiredDocuments.includes(docTitle);
+      const exists = prev.documentsConfig.some(d => d.name === docTitle);
+      const newDocsConfig = exists 
+        ? prev.documentsConfig.filter(d => d.name !== docTitle)
+        : [...prev.documentsConfig, { id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, name: docTitle, isRequired: true }];
       return {
         ...prev,
-        requiredDocuments: exists 
-          ? prev.requiredDocuments.filter(d => d !== docTitle)
-          : [...prev.requiredDocuments, docTitle]
+        documentsConfig: newDocsConfig,
+        requiredDocuments: newDocsConfig.map(d => d.name)
+      };
+    });
+  };
+
+  // Toggle single document requirement (Mandatory vs Optional)
+  const handleToggleDocRequired = (docName: string) => {
+    setProgramForm(prev => {
+      const newConfig = prev.documentsConfig.map(d => 
+        d.name === docName ? { ...d, isRequired: !d.isRequired } : d
+      );
+      return {
+        ...prev,
+        documentsConfig: newConfig
+      };
+    });
+  };
+
+  // Set all documents requirement
+  const handleSetAllDocsRequired = (required: boolean) => {
+    setProgramForm(prev => {
+      const newConfig = prev.documentsConfig.map(d => ({ ...d, isRequired: required }));
+      return {
+        ...prev,
+        documentsConfig: newConfig
       };
     });
   };
@@ -220,12 +272,18 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
   const handleAddCustomDoc = () => {
     if (!customDocInput.trim()) return;
     const cleanDoc = customDocInput.trim();
-    if (!programForm.requiredDocuments.includes(cleanDoc)) {
-      setProgramForm(prev => ({
+    setProgramForm(prev => {
+      if (prev.documentsConfig.some(d => d.name === cleanDoc)) return prev;
+      const newConfig: ProgramDocumentItem[] = [
+        ...prev.documentsConfig,
+        { id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, name: cleanDoc, isRequired: customDocIsRequired }
+      ];
+      return {
         ...prev,
-        requiredDocuments: [...prev.requiredDocuments, cleanDoc]
-      }));
-    }
+        documentsConfig: newConfig,
+        requiredDocuments: newConfig.map(d => d.name)
+      };
+    });
     setCustomDocInput('');
   };
 
@@ -247,10 +305,17 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
     e.preventDefault();
     if (!programForm.name.trim() || !programForm.companyId) return;
 
+    const linkedComp = companies.find(c => c.id === programForm.companyId);
+    const payload = {
+      ...programForm,
+      companyName: linkedComp?.name || programForm.companyId,
+      requiredDocuments: programForm.documentsConfig.map(d => d.name)
+    };
+
     if (editingProgram) {
-      await updateFinancingProgram(editingProgram.id, programForm);
+      await updateFinancingProgram(editingProgram.id, payload);
     } else {
-      await addFinancingProgram(programForm);
+      await addFinancingProgram(payload);
     }
     setShowProgramModal(false);
   };
@@ -524,9 +589,9 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                       )}
 
                       {/* Specs Pills */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
                         <div>
-                          <span className="text-[10px] text-slate-400 block font-bold">الحد الائتماني الأقصى</span>
+                          <span className="text-[10px] text-slate-400 block font-bold">الحد الائتماني</span>
                           <strong className="text-slate-900 font-black text-sm">{prog.maxAmount?.toLocaleString()} ج.م</strong>
                         </div>
                         <div>
@@ -534,9 +599,13 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                           <strong className="text-slate-900 font-bold">{prog.durationMonths} شهر</strong>
                         </div>
                         <div>
+                          <span className="text-[10px] text-slate-400 block font-bold">الفائدة السنوية</span>
+                          <strong className="text-sky-700 font-black">{prog.interestRate ? `${prog.interestRate}%` : '0%'}</strong>
+                        </div>
+                        <div>
                           <span className="text-[10px] text-slate-400 block font-bold">المقدم / الرسوم الإدارية</span>
                           <strong className="text-slate-700 font-bold">
-                            {prog.downPaymentPercent || 0}% مقدم / {prog.adminFeePercent || 2.5}% مصاريف
+                            {prog.downPaymentPercent || 0}% / {prog.adminFeePercent || 2.5}%
                           </strong>
                         </div>
                       </div>
@@ -546,11 +615,27 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-black text-slate-700 flex items-center gap-1">
                             <Paperclip className="h-3.5 w-3.5 text-sky-600" />
-                            <span>الأوراق والمستندات المطلوبة للبرنامج ({prog.requiredDocuments?.length || 0}):</span>
+                            <span>الأوراق والمستندات المطلوبة للبرنامج ({prog.documentsConfig?.length || prog.requiredDocuments?.length || 0}):</span>
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto scrollbar-thin p-1 bg-slate-50/50 rounded-xl border border-slate-100">
-                          {prog.requiredDocuments && prog.requiredDocuments.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto scrollbar-thin p-1.5 bg-slate-50/50 rounded-xl border border-slate-100">
+                          {prog.documentsConfig && prog.documentsConfig.length > 0 ? (
+                            prog.documentsConfig.map((docItem, dIdx) => (
+                              <span 
+                                key={dIdx} 
+                                className={`text-[10px] px-2 py-1 rounded-lg font-bold border shadow-2xs flex items-center gap-1 ${
+                                  docItem.isRequired 
+                                    ? 'bg-rose-50 text-rose-800 border-rose-200' 
+                                    : 'bg-white text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                <span>{docItem.name}</span>
+                                <span className={`text-[9px] px-1 py-0.2 rounded font-extrabold ${docItem.isRequired ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                  {docItem.isRequired ? 'إلزامي *' : 'اختياري'}
+                                </span>
+                              </span>
+                            ))
+                          ) : prog.requiredDocuments && prog.requiredDocuments.length > 0 ? (
                             prog.requiredDocuments.map((doc, dIdx) => (
                               <span 
                                 key={dIdx} 
@@ -805,18 +890,20 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                 </div>
               </div>
 
-              {/* Down Payment & Admin Fees */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Financial Terms: Interest, Admin Fees, Down Payment, Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">نسبة المقدم المطلوب (%)</label>
+                  <label className="block font-bold text-slate-700 mb-1">نسبة الفائدة السنوية (%)</label>
                   <input
                     type="number"
+                    step="0.1"
                     min="0"
-                    max="90"
-                    value={programForm.downPaymentPercent}
-                    onChange={e => setProgramForm({ ...programForm, downPaymentPercent: Number(e.target.value) })}
-                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl"
+                    placeholder="0"
+                    value={programForm.interestRate}
+                    onChange={e => setProgramForm({ ...programForm, interestRate: Number(e.target.value) })}
+                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">فائدة التمويل السنوية</span>
                 </div>
 
                 <div>
@@ -824,10 +911,25 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                   <input
                     type="number"
                     step="0.1"
+                    min="0"
                     value={programForm.adminFeePercent}
                     onChange={e => setProgramForm({ ...programForm, adminFeePercent: Number(e.target.value) })}
-                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl"
+                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">مصاريف فتح الملف والدراسة</span>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المقدم المطلوب (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="90"
+                    value={programForm.downPaymentPercent}
+                    onChange={e => setProgramForm({ ...programForm, downPaymentPercent: Number(e.target.value) })}
+                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">الدفعة المقدمة</span>
                 </div>
 
                 <div>
@@ -835,11 +937,12 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                   <select
                     value={programForm.active ? 'YES' : 'NO'}
                     onChange={e => setProgramForm({ ...programForm, active: e.target.value === 'YES' })}
-                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl"
+                    className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500"
                   >
                     <option value="YES">مفعل ومتاح في نماذج التقديم</option>
                     <option value="NO">معطل مؤقتاً</option>
                   </select>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">حالة تفعيل البرنامج</span>
                 </div>
               </div>
 
@@ -855,74 +958,189 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
               </div>
 
               {/* ======================================================= */}
-              {/* SECTION: REQUIRED DOCUMENTS PICKER (اختيار الأوراق المطلوبة) */}
+              {/* SECTION: REQUIRED DOCUMENTS PICKER (اختيار وتصنيف الأوراق المطلوبة) */}
               {/* ======================================================= */}
               <div className="space-y-3 pt-2 border-t border-slate-200">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                    <Paperclip className="h-4 w-4 text-sky-600" />
-                    <span>الأوراق والمستندات المطلوبة لهذا البرنامج ({programForm.requiredDocuments.length}) *</span>
-                  </label>
-                  <div className="flex items-center gap-2">
+                  <div>
+                    <label className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                      <Paperclip className="h-4 w-4 text-sky-600" />
+                      <span>الأوراق والمستندات المطلوبة للبرنامج ({programForm.documentsConfig.length})</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      حدد الأوراق المطلوبة واختر لكل مستند إذا كان <span className="text-rose-700 font-bold">إلزامي (لا يمكن تقديم الطلب بدونه)</span> أو <span className="text-slate-600 font-bold">اختياري</span>.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setProgramForm(prev => ({ ...prev, requiredDocuments: Array.from(new Set([...prev.requiredDocuments, ...STANDARD_DOCUMENT_PRESETS])) }))}
-                      className="text-[10px] text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded font-bold border border-sky-200"
+                      onClick={() => handleSetAllDocsRequired(true)}
+                      className="text-[10px] text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg font-bold border border-rose-200 transition-colors"
                     >
-                      تحديد جميع الأوراق
+                      جعل الكل إلزامي *
                     </button>
                     <button
                       type="button"
-                      onClick={() => setProgramForm(prev => ({ ...prev, requiredDocuments: [] }))}
-                      className="text-[10px] text-slate-600 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 px-2 py-0.5 rounded font-bold border border-slate-200"
+                      onClick={() => handleSetAllDocsRequired(false)}
+                      className="text-[10px] text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg font-bold border border-slate-200 transition-colors"
                     >
-                      إلغاء التحديد
+                      جعل الكل اختياري
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newConfig = STANDARD_DOCUMENT_PRESETS.map((d, i) => ({
+                          id: `doc_${i}`,
+                          name: d,
+                          isRequired: i === 0 // First is mandatory by default
+                        }));
+                        setProgramForm(prev => ({
+                          ...prev,
+                          documentsConfig: newConfig,
+                          requiredDocuments: newConfig.map(x => x.name)
+                        }));
+                      }}
+                      className="text-[10px] text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-1 rounded-lg font-bold border border-sky-200 transition-colors"
+                    >
+                      تحديد كل النماذج الشائعة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProgramForm(prev => ({ ...prev, documentsConfig: [], requiredDocuments: [] }))}
+                      className="text-[10px] text-slate-500 hover:text-rose-700 bg-slate-50 hover:bg-rose-50 px-2 py-1 rounded-lg font-bold border border-slate-200 transition-colors"
+                    >
+                      تفريغ القائمة
                     </button>
                   </div>
                 </div>
 
-                {/* Preset Checkbox Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-sky-50/50 p-3.5 rounded-2xl border border-sky-100">
-                  {STANDARD_DOCUMENT_PRESETS.map((presetDoc, pIdx) => {
-                    const selected = programForm.requiredDocuments.includes(presetDoc);
-                    return (
-                      <label 
-                        key={pIdx}
-                        className={`flex items-start gap-2.5 p-2 rounded-xl border cursor-pointer select-none transition-all text-xs ${
-                          selected 
-                            ? 'bg-white border-sky-300 text-sky-950 font-bold shadow-2xs' 
-                            : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => handleToggleDoc(presetDoc)}
-                          className="mt-0.5 rounded text-sky-600 focus:ring-sky-500"
-                        />
-                        <span className="leading-tight">{presetDoc}</span>
-                      </label>
-                    );
-                  })}
+                {/* Preset Checkbox Selection */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-600">اختر من النماذج والمستندات الجاهزة:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50/80 p-3 rounded-2xl border border-slate-200">
+                    {STANDARD_DOCUMENT_PRESETS.map((presetDoc, pIdx) => {
+                      const selectedItem = programForm.documentsConfig.find(d => d.name === presetDoc);
+                      const isSelected = !!selectedItem;
+                      return (
+                        <div 
+                          key={pIdx}
+                          className={`flex items-center justify-between gap-2 p-2 rounded-xl border text-xs transition-all ${
+                            isSelected 
+                              ? 'bg-white border-sky-300 text-sky-950 font-bold shadow-2xs' 
+                              : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
+                          }`}
+                        >
+                          <label className="flex items-start gap-2 cursor-pointer select-none flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleDoc(presetDoc)}
+                              className="mt-0.5 rounded text-sky-600 focus:ring-sky-500"
+                            />
+                            <span className="leading-tight text-[11px]">{presetDoc}</span>
+                          </label>
+
+                          {isSelected && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleDocRequired(presetDoc)}
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-bold border transition-colors shrink-0 ${
+                                selectedItem?.isRequired
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              {selectedItem?.isRequired ? '🔴 إلزامي *' : '⚪ اختياري'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Custom Doc Adder */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="إضافة مستند أو ورقة خاصة أخرى (مثال: بوليصة تأمين مواشي، إيصال سداد رسوم)..."
-                    value={customDocInput}
-                    onChange={e => setCustomDocInput(e.target.value)}
-                    className="flex-1 text-xs p-2.5 bg-white border border-slate-300 rounded-xl"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddCustomDoc}
-                    disabled={!customDocInput.trim()}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white rounded-xl text-xs font-bold"
-                  >
-                    إضافة للقائمة
-                  </button>
+                {/* Custom Documents List & Adder */}
+                <div className="space-y-2 pt-1">
+                  {programForm.documentsConfig.length > 0 && (
+                    <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2 shadow-2xs">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                        <span>المستندات المعتمدة لهذا البرنامج ({programForm.documentsConfig.length}):</span>
+                        <span className="text-[10px] text-slate-400">انقر على تصنيف الورقة لتبديلها بين إلزامي واختياري</span>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {programForm.documentsConfig.map((docItem, idx) => (
+                          <div 
+                            key={idx}
+                            className={`flex items-center justify-between gap-2 p-2 rounded-xl border transition-all text-xs ${
+                              docItem.isRequired 
+                                ? 'bg-rose-50/50 border-rose-200 text-slate-900' 
+                                : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">#{idx + 1}</span>
+                              <span className="font-bold truncate text-[11px]">{docItem.name}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDocRequired(docItem.name)}
+                                className={`text-[10px] px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer ${
+                                  docItem.isRequired 
+                                    ? 'bg-rose-600 text-white border-rose-600 shadow-2xs' 
+                                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                                }`}
+                              >
+                                {docItem.isRequired ? '🔴 إلزامي (مطلوب رفعه)' : '⚪ اختياري (غير ملزم)'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDoc(docItem.name)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                                title="إزالة من البرنامج"
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add Custom Document */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      placeholder="أو أضف اسم ورقة / مستند مخصص (مثال: بوليصة تأمين، عقد إيجار موثق)..."
+                      value={customDocInput}
+                      onChange={e => setCustomDocInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomDoc(); } }}
+                      className="flex-1 text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                    />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCustomDocIsRequired(!customDocIsRequired)}
+                        className={`text-xs px-3 py-2 rounded-xl font-bold border transition-colors ${
+                          customDocIsRequired 
+                            ? 'bg-rose-50 text-rose-700 border-rose-300' 
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {customDocIsRequired ? '🔴 سيكون إلزامياً' : '⚪ سيكون اختيارياً'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomDoc}
+                        disabled={!customDocInput.trim()}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors"
+                      >
+                        إضافة للقائمة
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

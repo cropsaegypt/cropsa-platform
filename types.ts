@@ -123,6 +123,13 @@ export interface SystemBranding {
   loginBannerDimming?: number;
 }
 
+export interface ProgramDocumentItem {
+  id: string;
+  name: string;
+  isRequired: boolean; // true = إلزامي (مطلوب رفعه), false = اختياري
+  description?: string;
+}
+
 export interface FinancingProgram {
   id: string;
   name: string;
@@ -136,6 +143,7 @@ export interface FinancingProgram {
   downPaymentPercent?: number;
   adminFeePercent?: number;
   requiredDocuments: string[];
+  documentsConfig?: ProgramDocumentItem[];
   questionIds?: string[];
   description?: string;
   active?: boolean;
@@ -160,6 +168,8 @@ export interface InstallmentCompany {
   creditCeiling: number; // سقف التمويل بالجنيه
   usedCredit: number; // الرصيد المستخدم
   commissionRate: number; // نسبة عمولة كروبسا
+  defaultInterestRate?: number; // نسبة الفائدة السنوية الافتراضية
+  defaultAdminFeePercent?: number; // نسبة المصاريف الإدارية الافتراضية
   allowedGovernorates: string[];
   requiredDocumentsList: string[]; // الأوراق المطلوبة من العملاء
   financingPrograms?: FinancingProgram[]; // برامج التمويل والحدود الائتمانية للشركة
@@ -666,6 +676,9 @@ export interface Application {
   // Selected Financing Program for the company
   selectedProgramId?: string;
   selectedProgramName?: string;
+  programInterestRate?: number;
+  programAdminFeePercent?: number;
+  lastStageDate?: string;
 
   // Branch Transfer Request (requested by Branch Manager to relocate case)
   branchTransferRequest?: {

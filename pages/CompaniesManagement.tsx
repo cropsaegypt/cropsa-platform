@@ -71,6 +71,8 @@ export const CompaniesManagement: React.FC = () => {
     fraLicense: '',
     creditCeiling: 20000000,
     commissionRate: 3.5,
+    defaultInterestRate: 0,
+    defaultAdminFeePercent: 2.5,
     receivingChannel: 'PORTAL' as CompanyReceivingChannel,
     whatsappNumber: '',
     dispatchEmail: '',
@@ -111,6 +113,8 @@ export const CompaniesManagement: React.FC = () => {
       fraLicense: company.fraLicense || '',
       creditCeiling: company.creditCeiling || 20000000,
       commissionRate: company.commissionRate || 3.5,
+      defaultInterestRate: company.defaultInterestRate || 0,
+      defaultAdminFeePercent: company.defaultAdminFeePercent || 2.5,
       receivingChannel: company.receivingChannel || 'PORTAL',
       whatsappNumber: company.whatsappNumber || '',
       dispatchEmail: company.dispatchEmail || '',
@@ -140,6 +144,8 @@ export const CompaniesManagement: React.FC = () => {
         fraLicense: editCompanyForm.fraLicense,
         creditCeiling: Number(editCompanyForm.creditCeiling),
         commissionRate: Number(editCompanyForm.commissionRate),
+        defaultInterestRate: Number(editCompanyForm.defaultInterestRate || 0),
+        defaultAdminFeePercent: Number(editCompanyForm.defaultAdminFeePercent || 0),
         receivingChannel: editCompanyForm.receivingChannel,
         whatsappNumber: editCompanyForm.whatsappNumber,
         dispatchEmail: editCompanyForm.dispatchEmail,
@@ -270,6 +276,8 @@ export const CompaniesManagement: React.FC = () => {
     fraLicense: '',
     creditCeiling: 20000000,
     commissionRate: 3.5,
+    defaultInterestRate: 0,
+    defaultAdminFeePercent: 2.5,
     receivingChannel: 'PORTAL' as CompanyReceivingChannel,
     whatsappNumber: '',
     dispatchEmail: '',
@@ -368,6 +376,8 @@ export const CompaniesManagement: React.FC = () => {
       fraLicense: companyForm.fraLicense,
       creditCeiling: Number(companyForm.creditCeiling),
       commissionRate: Number(companyForm.commissionRate),
+      defaultInterestRate: Number(companyForm.defaultInterestRate || 0),
+      defaultAdminFeePercent: Number(companyForm.defaultAdminFeePercent || 0),
       allowedGovernorates: companyForm.allowedGovernorates,
       requiredDocumentsList: companyForm.requiredDocumentsList,
       status: 'ACTIVE'
@@ -536,6 +546,13 @@ export const CompaniesManagement: React.FC = () => {
                     <span className="font-bold text-sky-700">{company.commissionRate}%</span>
                   </div>
 
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">الفائدة / المصاريف:</span>
+                    <span className="font-bold text-slate-700 font-mono">
+                      {company.defaultInterestRate ? `${company.defaultInterestRate}% فائدة` : 'حسب البرنامج'} | {company.defaultAdminFeePercent ? `${company.defaultAdminFeePercent}% إدارية` : '2.5%'}
+                    </span>
+                  </div>
+
                   {/* Ceiling Utilization Bar */}
                   <div className="pt-2">
                     <div className="flex items-center justify-between text-[11px] mb-1">
@@ -655,105 +672,129 @@ export const CompaniesManagement: React.FC = () => {
 
       {/* MODAL: ADD INSTALLMENT COMPANY */}
       {showAddCompanyModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 lg:p-8 space-y-5 animate-in fade-in zoom-in-95 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[92vh] flex flex-col my-auto overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 sm:p-6 shrink-0 bg-white">
               <div>
                 <h3 className="font-bold text-slate-900 text-lg">{t('addInstallmentCompany')}</h3>
                 <p className="text-xs text-slate-500 mt-0.5">{language === 'ar' ? 'تسجيل شركة تقسيط جديدة وتعيين السقف والورق المطلوب وحساب الإدارة' : 'Register a new installment partner company'}</p>
               </div>
-              <button onClick={() => setShowAddCompanyModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowAddCompanyModal(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100">
                 <XCircle className="h-6 w-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitCompany} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'اسم شركة التقسيط (بالعربي)' : 'Company Name (Ar)'} *</label>
-                  <input
-                    type="text"
-                    required
-                    value={companyForm.name}
-                    onChange={e => setCompanyForm({ ...companyForm, name: e.target.value })}
-                    placeholder="مثال: شركة تمويلي للتقسيط المباشر"
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
+            <form onSubmit={handleSubmitCompany} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'اسم شركة التقسيط (بالعربي)' : 'Company Name (Ar)'} *</label>
+                    <input
+                      type="text"
+                      required
+                      value={companyForm.name}
+                      onChange={e => setCompanyForm({ ...companyForm, name: e.target.value })}
+                      placeholder="مثال: شركة تمويلي للتقسيط المباشر"
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'اسم الشركة (بالإنجليزي)' : 'Company Name (En)'}</label>
+                    <input
+                      type="text"
+                      value={companyForm.nameEn}
+                      onChange={e => setCompanyForm({ ...companyForm, nameEn: e.target.value })}
+                      placeholder="e.g. Tamweely Consumer Finance"
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'اسم الشركة (بالإنجليزي)' : 'Company Name (En)'}</label>
-                  <input
-                    type="text"
-                    value={companyForm.nameEn}
-                    onChange={e => setCompanyForm({ ...companyForm, nameEn: e.target.value })}
-                    placeholder="e.g. Tamweely Consumer Finance"
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'كود الشراكة' : 'Company Code'} *</label>
+                    <input
+                      type="text"
+                      required
+                      value={companyForm.code}
+                      onChange={e => setCompanyForm({ ...companyForm, code: e.target.value })}
+                      placeholder="TAM-04"
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono uppercase"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'كود الشراكة' : 'Company Code'} *</label>
-                  <input
-                    type="text"
-                    required
-                    value={companyForm.code}
-                    onChange={e => setCompanyForm({ ...companyForm, code: e.target.value })}
-                    placeholder="TAM-04"
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono uppercase"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">{t('fraLicense')} *</label>
+                    <input
+                      type="text"
+                      required
+                      value={companyForm.fraLicense}
+                      onChange={e => setCompanyForm({ ...companyForm, fraLicense: e.target.value })}
+                      placeholder="FRA-FIN-2024-099"
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{t('fraLicense')} *</label>
-                  <input
-                    type="text"
-                    required
-                    value={companyForm.fraLicense}
-                    onChange={e => setCompanyForm({ ...companyForm, fraLicense: e.target.value })}
-                    placeholder="FRA-FIN-2024-099"
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{t('commissionRate')} (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={companyForm.commissionRate}
-                    onChange={e => setCompanyForm({ ...companyForm, commissionRate: Number(e.target.value) })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{t('creditCeiling')} ({t('egp')}) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={companyForm.creditCeiling}
-                    onChange={e => setCompanyForm({ ...companyForm, creditCeiling: Number(e.target.value) })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">{t('creditCeiling')} ({t('egp')}) *</label>
+                    <input
+                      type="number"
+                      required
+                      value={companyForm.creditCeiling}
+                      onChange={e => setCompanyForm({ ...companyForm, creditCeiling: Number(e.target.value) })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'نسبة العمولة %' : 'Commission Rate %'} *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    required
-                    value={companyForm.commissionRate}
-                    onChange={e => setCompanyForm({ ...companyForm, commissionRate: Number(e.target.value) })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
+                {/* Financial Rates: Commission, Interest, Admin Fees */}
+                <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200">
+                  <div className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-sky-600"></span>
+                    <span>الإعدادات المالية وهوامش الأرباح والمصاريف</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'عمولة المنصة %' : 'Platform Commission %'} *</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        required
+                        value={companyForm.commissionRate}
+                        onChange={e => setCompanyForm({ ...companyForm, commissionRate: Number(e.target.value) })}
+                        className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">نسبة عمولة كروبسا</span>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'نسبة الفائدة السنوية الافتراضية %' : 'Default Interest %'}</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={companyForm.defaultInterestRate}
+                        onChange={e => setCompanyForm({ ...companyForm, defaultInterestRate: Number(e.target.value) })}
+                        placeholder="0"
+                        className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">فائدة التمويل للشركة</span>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'المصاريف الإدارية %' : 'Admin Fees %'}</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={companyForm.defaultAdminFeePercent}
+                        onChange={e => setCompanyForm({ ...companyForm, defaultAdminFeePercent: Number(e.target.value) })}
+                        placeholder="2.5"
+                        className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">مصاريف فتح الملف والدراسة</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
               {/* Logo Upload & Preview */}
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
@@ -1049,17 +1090,20 @@ export const CompaniesManagement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              </div>
+
+              {/* Sticky Modal Footer */}
+              <div className="flex justify-end gap-2 p-4 sm:p-5 border-t border-slate-100 bg-slate-50 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowAddCompanyModal(false)}
-                  className="px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
                 >
                   {t('cancel')}
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 text-xs font-bold bg-crobsa-700 hover:bg-crobsa-800 text-white rounded-xl shadow"
+                  className="px-6 py-2.5 text-xs font-bold bg-crobsa-700 hover:bg-crobsa-800 text-white rounded-xl shadow-md transition-colors"
                 >
                   {t('save')}
                 </button>
@@ -1088,9 +1132,9 @@ export const CompaniesManagement: React.FC = () => {
 
       {/* MODAL: EDIT COMPANY */}
       {editingCompany && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto" dir="rtl">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-5 animate-in fade-in zoom-in-95 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-hidden" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[92vh] flex flex-col my-auto overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 sm:p-6 shrink-0 bg-white">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-2xl bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-100">
                   <Edit3 className="h-5 w-5" />
@@ -1102,118 +1146,154 @@ export const CompaniesManagement: React.FC = () => {
               </div>
               <button 
                 onClick={() => setEditingCompany(null)} 
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-xl hover:bg-slate-100 transition-colors"
               >
                 <XCircle className="h-6 w-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditCompany} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">اسم شركة التقسيط (بالعربي) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyForm.name}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
+            <form onSubmit={handleSaveEditCompany} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">اسم شركة التقسيط (بالعربي) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyForm.name}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">اسم الشركة (بالإنجليزي)</label>
+                    <input
+                      type="text"
+                      value={editCompanyForm.nameEn}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, nameEn: e.target.value })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">اسم الشركة (بالإنجليزي)</label>
-                  <input
-                    type="text"
-                    value={editCompanyForm.nameEn}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, nameEn: e.target.value })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">كود الشراكة *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyForm.code}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, code: e.target.value })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono uppercase"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">كود الشراكة *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyForm.code}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, code: e.target.value })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono uppercase"
-                  />
-                </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">رخصة الرقابة المالية (FRA) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyForm.fraLicense}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, fraLicense: e.target.value })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">رخصة الرقابة المالية (FRA) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyForm.fraLicense}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, fraLicense: e.target.value })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">حالة الشركة في النظام</label>
-                  <select
-                    value={editCompanyForm.status}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, status: e.target.value as any })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-bold"
-                  >
-                    <option value="ACTIVE">نشطة (Active)</option>
-                    <option value="SUSPENDED">معطلة مؤقتاً (Suspended)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">السجل التجاري</label>
-                  <input
-                    type="text"
-                    value={editCompanyForm.commercialRegister}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, commercialRegister: e.target.value })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">حالة الشركة في النظام</label>
+                    <select
+                      value={editCompanyForm.status}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, status: e.target.value as any })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-bold"
+                    >
+                      <option value="ACTIVE">نشطة (Active)</option>
+                      <option value="SUSPENDED">معطلة مؤقتاً (Suspended)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">البطاقة الضريبية</label>
-                  <input
-                    type="text"
-                    value={editCompanyForm.taxNumber}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, taxNumber: e.target.value })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">السجل التجاري</label>
+                    <input
+                      type="text"
+                      value={editCompanyForm.commercialRegister}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, commercialRegister: e.target.value })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">سقف التمويل الممنوح (ج.م) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={editCompanyForm.creditCeiling}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, creditCeiling: Number(e.target.value) })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">البطاقة الضريبية</label>
+                    <input
+                      type="text"
+                      value={editCompanyForm.taxNumber}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, taxNumber: e.target.value })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">نسبة العمولة % *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    required
-                    value={editCompanyForm.commissionRate}
-                    onChange={e => setEditCompanyForm({ ...editCompanyForm, commissionRate: Number(e.target.value) })}
-                    className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">سقف التمويل الممنوح (ج.م) *</label>
+                    <input
+                      type="number"
+                      required
+                      value={editCompanyForm.creditCeiling}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, creditCeiling: Number(e.target.value) })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">نسبة عمولة المنصة % *</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      required
+                      value={editCompanyForm.commissionRate}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, commissionRate: Number(e.target.value) })}
+                      className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
+                    />
+                  </div>
                 </div>
-              </div>
+
+                {/* Financial Rates: Interest & Admin Fees */}
+                <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200">
+                  <div className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-sky-600"></span>
+                    <span>الإعدادات المالية وهوامش الأرباح والمصاريف للشركة</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">نسبة الفائدة السنوية الافتراضية %</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={editCompanyForm.defaultInterestRate}
+                        onChange={e => setEditCompanyForm({ ...editCompanyForm, defaultInterestRate: Number(e.target.value) })}
+                        placeholder="0"
+                        className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">فائدة التمويل السنوية للشركة</span>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">المصاريف الإدارية الافتراضية %</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={editCompanyForm.defaultAdminFeePercent}
+                        onChange={e => setEditCompanyForm({ ...editCompanyForm, defaultAdminFeePercent: Number(e.target.value) })}
+                        placeholder="2.5"
+                        className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">نسبة مصاريف فتح الملف والدراسة الائتمانية</span>
+                    </div>
+                  </div>
+                </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1469,19 +1549,21 @@ export const CompaniesManagement: React.FC = () => {
                 </p>
               </div>
 
-              {/* Modal Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+              </div>
+
+              {/* Sticky Modal Actions */}
+              <div className="flex items-center justify-between p-4 sm:p-5 border-t border-slate-100 bg-slate-50 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditingCompany(null)}
-                  className="px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl font-bold"
+                  className="px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-200 rounded-xl font-bold transition-colors"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdatingCompany}
-                  className="px-6 py-2.5 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-6 py-2.5 text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-md flex items-center gap-1.5 disabled:opacity-50 transition-colors"
                 >
                   <Save className="h-4 w-4" />
                   <span>{isUpdatingCompany ? 'جاري حفظ التعديلات سحابياً...' : 'حفظ التعديلات في قاعدة البيانات'}</span>

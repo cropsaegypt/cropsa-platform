@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Role, Application, ApplicationDocument } from '../types';
+import { Role, Application, ApplicationDocument, ProgramDocumentItem } from '../types';
 import { useStore } from '../context/Store';
 import { 
   FileUp, 
@@ -108,20 +108,37 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
 
   const selectedProgram = availablePrograms.find(p => p.id === selectedProgramId) || availablePrograms[0];
 
-  // Dynamic Required Documents List based on selected company and financing program
-  const requiredDocsForSelection = useMemo(() => {
-    if (selectedProgram && selectedProgram.requiredDocuments && selectedProgram.requiredDocuments.length > 0) {
-      return selectedProgram.requiredDocuments;
+  // Dynamic Program Document Items for the selected company and financing program
+  const programDocsConfig = useMemo<ProgramDocumentItem[]>(() => {
+    if (selectedProgram) {
+      if (selectedProgram.documentsConfig && selectedProgram.documentsConfig.length > 0) {
+        return selectedProgram.documentsConfig;
+      }
+      if (selectedProgram.requiredDocuments && selectedProgram.requiredDocuments.length > 0) {
+        return selectedProgram.requiredDocuments.map((doc, idx) => ({
+          id: `pdoc_${idx}`,
+          name: doc,
+          isRequired: idx === 0 // first is mandatory by default if unconfigured
+        }));
+      }
     }
-    if (selectedCompany && selectedCompany.requiredDocumentsList && selectedCompany.requiredDocumentsList.length > 0) {
-      return selectedCompany.requiredDocumentsList;
+    if (selectedCompany?.requiredDocumentsList && selectedCompany.requiredDocumentsList.length > 0) {
+      return selectedCompany.requiredDocumentsList.map((doc, idx) => ({
+        id: `cdoc_${idx}`,
+        name: doc,
+        isRequired: idx === 0
+      }));
     }
     return [
-      'أصل وصورة بطاقة الرقم القومي سارية',
-      'إيصال مرافق حديث لمحل السكن (كهرباء / غاز / مياه)',
-      'استعلام I-Score ائتماني غير مدرج في القوائم السلبية'
+      { id: 'def_1', name: 'أصل وصورة بطاقة الرقم القومي سارية للمشتري والضامن', isRequired: true },
+      { id: 'def_2', name: 'إيصال مرافق حديث لمحل السكن (كهرباء / غاز / مياه)', isRequired: false },
+      { id: 'def_3', name: 'استعلام I-Score ائتماني غير مدرج في القوائم السلبية', isRequired: false }
     ];
   }, [selectedProgram, selectedCompany]);
+
+  const requiredDocsForSelection = useMemo(() => {
+    return programDocsConfig.map(d => d.name);
+  }, [programDocsConfig]);
 
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({});
   const [isUrgent, setIsUrgent] = useState(false);
@@ -254,6 +271,27 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
       uploadedAt: doc.uploadedAt || new Date().toISOString()
     }));
 
+    // Validate Mandatory Documents configured for the selected program
+    const missingMandatoryDocs = programDocsConfig.filter(docConfig => 
+      docConfig.isRequired && !attachedDocs.some(att => 
+        att.name === docConfig.name || 
+        att.name.includes(docConfig.name) || 
+        docConfig.name.includes(att.name)
+      )
+    );
+
+    if (missingMandatoryDocs.length > 0) {
+      const confirmProceed = window.confirm(
+        `تنبيه هـام بشأن المستندات الإلزامية:\n` +
+        `هناك مستندات محددة كـ (إلزامية *) في هذا البرنامج ولم يتم رفعها بعد:\n\n` +
+        missingMandatoryDocs.map((d, i) => `${i + 1}. ${d.name}`).join('\n') +
+        `\n\nهل ترغب في المتابعة وإرسال الطلب على أية حال أم استكمال رفع الملفات الإلزامية أولاً؟`
+      );
+      if (!confirmProceed) {
+        return;
+      }
+    }
+
     onSubmit({
       ...formData,
       // @ts-ignore
@@ -269,6 +307,8 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
       assignedCompanyIds: selectedCompanyId ? [selectedCompanyId] : (initialData?.assignedCompanyIds || []),
       selectedProgramId: selectedProgram?.id,
       selectedProgramName: selectedProgram?.name,
+      programInterestRate: selectedProgram?.interestRate,
+      programAdminFeePercent: selectedProgram?.adminFeePercent,
       customAnswers,
       isUrgent,
       documents: formattedDocs
@@ -401,11 +441,16 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
               onChange={e => {
                 const newCompId = e.target.value;
                 setSelectedCompanyId(newCompId);
-                const comp = companies.find(c => c.id === newCompId);
-                if (comp?.financingPrograms && comp.financingPrograms.length > 0) {
-                  setSelectedProgramId(comp.financingPrograms[0].id);
+                const compPrograms = (financingPrograms || []).filter(p => p.companyId === newCompId && p.active !== false);
+                if (compPrograms.length > 0) {
+                  setSelectedProgramId(compPrograms[0].id);
                 } else {
-                  setSelectedProgramId('');
+                  const comp = companies.find(c => c.id === newCompId);
+                  if (comp?.financingPrograms && comp.financingPrograms.length > 0) {
+                    setSelectedProgramId(comp.financingPrograms[0].id);
+                  } else {
+                    setSelectedProgramId('');
+                  }
                 }
               }}
             >
@@ -433,7 +478,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
               >
                 {availablePrograms.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (حد ائتماني حتى {p.maxAmount?.toLocaleString()} ج.م - حتى {p.durationMonths} شهر)
+                    {p.name} (حد ائتماني {p.maxAmount?.toLocaleString()} ج.م - مدة {p.durationMonths} شهر - فائدة {p.interestRate || 0}%)
                   </option>
                 ))}
               </select>
@@ -447,10 +492,16 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
             {selectedProgram && (
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-lg">
-                  الحد الائتماني للبرنامج: {selectedProgram.maxAmount?.toLocaleString()} ج.م
+                  الحد الائتماني: {selectedProgram.maxAmount?.toLocaleString()} ج.م
                 </span>
                 <span className="text-[11px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200">
                   المدة القصوى: {selectedProgram.durationMonths} شهر
+                </span>
+                <span className="text-[11px] font-bold bg-sky-100 text-sky-900 px-2 py-0.5 rounded-lg border border-sky-200">
+                  فائدة البرنامج: {selectedProgram.interestRate ? `${selectedProgram.interestRate}%` : '0%'}
+                </span>
+                <span className="text-[11px] font-bold bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-lg border border-indigo-200">
+                  المصاريف: {selectedProgram.adminFeePercent || 2.5}%
                 </span>
               </div>
             )}
@@ -674,9 +725,12 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
             <Paperclip className="h-5 w-5 text-blue-600" />
             <span>خانات الورق والمستندات المطلوبة (المحددة لبرنامج التقسيط)</span>
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold bg-sky-100 text-sky-900 border border-sky-300 px-3 py-1 rounded-full">
-              {attachedDocs.length} من {requiredDocsForSelection.length} مستندات متوفرة
+              {attachedDocs.length} من {programDocsConfig.length} مستندات متوفرة
+            </span>
+            <span className="text-xs font-bold bg-rose-100 text-rose-900 border border-rose-300 px-3 py-1 rounded-full">
+              {programDocsConfig.filter(d => d.isRequired).length} أوراق إلزامية *
             </span>
           </div>
         </div>
@@ -686,14 +740,15 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
           <p className="text-xs text-slate-600 font-bold">
             بناءً على اختيار شركة <span className="text-sky-700 underline font-black">{selectedCompany?.name}</span>{' '}
             {selectedProgram ? (
-              <>وبرنامج <span className="text-emerald-700 underline font-black">{selectedProgram.name}</span> (حد ائتماني {selectedProgram.maxAmount?.toLocaleString()} ج.م):</>
+              <>وبرنامج <span className="text-emerald-700 underline font-black">{selectedProgram.name}</span> (حد ائتماني {selectedProgram.maxAmount?.toLocaleString()} ج.م - فائدة {selectedProgram.interestRate || 0}%):</>
             ) : (
               <>والحد الائتماني للشركة:</>
             )}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {requiredDocsForSelection.map((docTitle, idx) => {
+            {programDocsConfig.map((docItem, idx) => {
+              const docTitle = docItem.name;
               const attachedItem = attachedDocs.find(d => d.name === docTitle || d.name.includes(docTitle) || docTitle.includes(d.name));
               const isAttached = !!attachedItem;
               const isImage = attachedItem?.fileUrl.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(attachedItem?.fileName || '');
@@ -706,7 +761,9 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
                     isAttached 
                       ? 'bg-emerald-50/60 border-emerald-300 ring-1 ring-emerald-300/40 shadow-xs' 
-                      : 'bg-white hover:bg-slate-50/80 border-slate-200 shadow-xs'
+                      : docItem.isRequired
+                        ? 'bg-rose-50/30 hover:bg-rose-50/60 border-rose-200 shadow-xs'
+                        : 'bg-white hover:bg-slate-50/80 border-slate-200 shadow-xs'
                   }`}
                 >
                   <input
@@ -730,9 +787,16 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
                         <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
                           خانة #{idx + 1}
                         </span>
-                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
-                          مستند مطلوب
-                        </span>
+                        {docItem.isRequired ? (
+                          <span className="text-[10px] font-black text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-300 flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse"></span>
+                            <span>إلزامي * (مطلوب رفعه)</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                            اختياري
+                          </span>
+                        )}
                       </div>
                       <h4 className="text-xs font-black text-slate-900 leading-snug">
                         {docTitle}
@@ -745,10 +809,14 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                           <span>تم الرفع بنجاح</span>
                         </span>
+                      ) : docItem.isRequired ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-800 bg-rose-100 border border-rose-300 px-2.5 py-1 rounded-full shrink-0">
+                          <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+                          <span>بانتظار الرفع الإلزامي</span>
+                        </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-full shrink-0">
-                          <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
-                          <span>بانتظار الرفع</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full shrink-0">
+                          <span>اختياري (غير ملزم)</span>
                         </span>
                       )}
                     </div>

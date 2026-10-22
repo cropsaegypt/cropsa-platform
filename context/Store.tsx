@@ -248,6 +248,10 @@ interface StoreContextType {
   rejectWithdrawal: (id: string) => Promise<void>;
   renewInstallment: (clientId: string, amount: number, companyId?: string, extra?: { companyName?: string; aiAnalysis?: any; notes?: string; durationMonths?: number }) => Promise<void>;
   bulkImportClients: (importedClients: Partial<Client>[], initialApps?: Partial<Application>[]) => Promise<{ importedCount: number; errors: string[] }>;
+  bulkImportApplications: (items: Array<{
+    client: Partial<Client>;
+    application: Partial<Application>;
+  }>) => Promise<{ importedCount: number; errors: string[] }>;
 
   // System & Navigation
   addNotification: (
@@ -5534,6 +5538,178 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return { importedCount: count, errors };
   };
 
+  const bulkImportApplications = async (
+    items: Array<{
+      client: Partial<Client>;
+      application: Partial<Application>;
+    }>
+  ): Promise<{ importedCount: number; errors: string[] }> => {
+    if (!currentUser) return { importedCount: 0, errors: ['غير مسجل الدخول'] };
+    const errors: string[] = [];
+    let count = 0;
+    const nowStr = new Date().toISOString();
+
+    const newClientsToAdd: Client[] = [];
+    const newAppsToAdd: Application[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const { client: cData, application: aData } = items[i];
+      if (!aData.clientName || !aData.clientName.trim()) {
+        errors.push(`صف #${i + 1}: اسم العميل مفقود`);
+        continue;
+      }
+
+      const rawNid = cData.nationalId ? String(cData.nationalId).replace(/\D/g, '') : '';
+      const isMissingNid = !rawNid || rawNid.length !== 14;
+      const finalNationalId = isMissingNid
+        ? (cData.temporaryNationalId || `TEMP-NID-${Date.now().toString().slice(-6)}-${i + 1}`)
+        : rawNid;
+
+      // Duplicate Check for Client
+      let existingIndex = -1;
+      if (!isMissingNid) {
+        existingIndex = clients.findIndex(c => c.nationalId === finalNationalId);
+      } else if (aData.phoneNumber && aData.phoneNumber.trim().length >= 10) {
+        existingIndex = clients.findIndex(c => 
+          c.name.trim().toLowerCase() === aData.clientName!.trim().toLowerCase() && 
+          c.phoneNumber?.replace(/\s+/g, '') === aData.phoneNumber?.replace(/\s+/g, '')
+        );
+      } else {
+        existingIndex = clients.findIndex(c => c.name.trim().toLowerCase() === aData.clientName!.trim().toLowerCase());
+      }
+
+      const existingClient = existingIndex >= 0 ? clients[existingIndex] : null;
+      const clientId = existingClient ? existingClient.id : `c_import_${Date.now()}_${i}`;
+
+      const clientObj: Client = {
+        id: clientId,
+        name: aData.clientName.trim(),
+        nationalId: finalNationalId,
+        hasMissingNationalId: isMissingNid,
+        temporaryNationalId: isMissingNid ? finalNationalId : undefined,
+        phoneNumber: aData.phoneNumber?.trim() || existingClient?.phoneNumber || '',
+        governorate: aData.governorate || existingClient?.governorate || 'القاهرة',
+        profession: (aData.profession as any) || existingClient?.profession || 'MERCHANT',
+        addedBy: currentUser.id,
+        addedAt: aData.submittedAt || existingClient?.addedAt || nowStr,
+        creditRating: existingClient?.creditRating || 'A',
+        totalApprovedAmount: Number(aData.approvedAmount) || existingClient?.totalApprovedAmount || 0,
+        disbursedAmount: aData.status === ApplicationStatus.AMOUNT_TRANSFERRED ? Number(aData.approvedAmount || aData.requestedAmount) : (existingClient?.disbursedAmount || 0),
+        companyName: aData.assignedCompanyIds?.[0] ? (companies.find(c => c.id === aData.assignedCompanyIds![0])?.name || 'شركة تمويل') : (existingClient?.companyName || 'تقسيط'),
+        lastFinanceDate: aData.submittedAt || existingClient?.lastFinanceDate || nowStr.split('T')[0],
+        isHistoricalOnly: false,
+        notes: aData.description || existingClient?.notes || 'طلب تمويل مستورد مجمعاً عبر شيت إكسل'
+      };
+      newClientsToAdd.push(clientObj);
+
+      const appId = `app_imp_${Date.now()}_${i}`;
+      const submittedDate = aData.submittedAt || nowStr;
+      const lastStageDate = aData.lastStageDate || aData.reviewedAt || submittedDate;
+      const appStatus = aData.status || ApplicationStatus.SUBMITTED;
+
+      const newApp: Application = {
+        id: appId,
+        clientId,
+        clientName: aData.clientName.trim(),
+        clientNationalId: finalNationalId,
+        phoneNumber: aData.phoneNumber || '',
+        whatsappNumber: aData.whatsappNumber || aData.phoneNumber || '',
+        governorate: aData.governorate || 'القاهرة',
+        profession: (aData.profession as any) || 'MERCHANT',
+        financeType: aData.financeType || 'INSTALLMENT',
+        durationMonths: Number(aData.durationMonths) || 12,
+        requestedAmount: Number(aData.requestedAmount) || Number(aData.approvedAmount) || 0,
+        approvedAmount: Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0,
+        usedAmount: appStatus === ApplicationStatus.AMOUNT_TRANSFERRED ? (Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0) : 0,
+        status: appStatus,
+        submittedBy: currentUser.id,
+        submittedByName: currentUser.name,
+        submittedAt: submittedDate,
+        reviewedAt: lastStageDate,
+        lastStageDate: lastStageDate,
+        assignedCompanyIds: (aData.assignedCompanyIds && aData.assignedCompanyIds.length > 0) ? aData.assignedCompanyIds : [companies[0]?.id || 'comp_01'],
+        selectedProgramId: aData.selectedProgramId,
+        selectedProgramName: aData.selectedProgramName,
+        programInterestRate: aData.programInterestRate,
+        programAdminFeePercent: aData.programAdminFeePercent,
+        description: aData.description || 'طلب تمويل مستورد مجمعاً عبر شيت إكسيل',
+        hasRecentInstallment: true,
+        hasRecentReceipt: false,
+        history: [
+          {
+            action: 'CREATED',
+            timestamp: submittedDate,
+            performedBy: currentUser.id,
+            details: `تم تقديم الطلب وتسجيله بالمنظومة (${submittedDate.split('T')[0]})`
+          },
+          ...(lastStageDate !== submittedDate ? [{
+            action: 'STATUS_CHANGED',
+            timestamp: lastStageDate,
+            performedBy: currentUser.id,
+            details: `تحديث مرحلة الطلب إلى (${STATUS_ARABIC[appStatus] || appStatus}) بتاريخ ${lastStageDate.split('T')[0]}`
+          }] : [])
+        ]
+      };
+      newAppsToAdd.push(newApp);
+      count++;
+    }
+
+    // Update in-memory state
+    setApplications(prev => [...newAppsToAdd, ...prev]);
+    setClients(prev => {
+      const updated = [...prev];
+      newClientsToAdd.forEach(nc => {
+        const idx = updated.findIndex(c => c.id === nc.id || (nc.nationalId && c.nationalId === nc.nationalId && !c.hasMissingNationalId));
+        if (idx >= 0) {
+          updated[idx] = { ...updated[idx], ...nc };
+        } else {
+          updated.unshift(nc);
+        }
+      });
+      return updated;
+    });
+
+    // Save to Firestore & Supabase in background
+    try {
+      for (const nc of newClientsToAdd) {
+        await setDoc(doc(db, 'clients', nc.id), nc);
+      }
+      for (const na of newAppsToAdd) {
+        await setDoc(doc(db, 'applications', na.id), na);
+      }
+    } catch (e) {
+      console.warn('Firestore bulkImportApplications fallback:', e);
+    }
+
+    if (supabase) {
+      try {
+        const appRows = newAppsToAdd.map(na => ({
+          id: na.id,
+          client_id: na.clientId || na.id,
+          client_name: na.clientName,
+          client_phone: na.phoneNumber || '',
+          client_national_id: na.clientNationalId || '',
+          company_id: na.assignedCompanyIds?.[0] || 'comp_01',
+          total_amount: na.requestedAmount || 0,
+          down_payment: 0,
+          financed_amount: na.approvedAmount || na.requestedAmount || 0,
+          monthly_installment: Math.round((na.approvedAmount || na.requestedAmount || 0) / (na.durationMonths || 12)),
+          duration_months: na.durationMonths || 12,
+          status: na.status || 'SUBMITTED',
+          product_type: na.selectedProgramName || 'تمويل تقسيط',
+          product_description: na.description || ''
+        }));
+        await supabase.from('applications').upsert(appRows);
+      } catch (err) {
+        console.warn('Supabase bulkImportApplications fallback:', err);
+      }
+    }
+
+    addAuditLog('BULK_IMPORT_APPLICATIONS', `استيراد مجمع لعدد ${count} طلب تقسيط عبر شيت إكسل`, currentUser.id);
+
+    return { importedCount: count, errors };
+  };
+
   const markNotificationRead = async (notifId: string) => {
     setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
     try {
@@ -6236,6 +6412,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       rejectWithdrawal,
       renewInstallment,
       bulkImportClients,
+      bulkImportApplications,
       addNotification,
       markNotificationRead,
       addAuditLog,
