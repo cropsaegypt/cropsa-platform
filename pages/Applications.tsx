@@ -35,7 +35,8 @@ import {
   Send,
   Eye,
   Download,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
 import { ClientDetailModal } from '../components/ClientDetailModal';
@@ -85,6 +86,7 @@ export const Applications: React.FC = () => {
     reviewApplication, 
     requestWithdrawal, 
     updateApplication, 
+    deleteApplication,
     expediteApplication,
     pendingNavigation, 
     setNavigation 
@@ -92,6 +94,8 @@ export const Applications: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showClientModal, setShowClientModal] = useState(false);
+  const [appToDelete, setAppToDelete] = useState<Application | null>(null);
+  const [isDeletingApp, setIsDeletingApp] = useState(false);
   
   // Advanced Filter & Search States
   const [searchTerm, setSearchTerm] = useState('');
@@ -789,6 +793,20 @@ export const Applications: React.FC = () => {
                   >
                     عرض التفاصيل
                   </button>
+                  {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAppToDelete(app);
+                      }}
+                      className="p-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border border-rose-200"
+                      title="حذف الطلب نهائياً"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>حذف</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -949,6 +967,19 @@ export const Applications: React.FC = () => {
                     >
                       التفاصيل
                     </button>
+                    {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAppToDelete(app);
+                        }}
+                        className="text-rose-600 bg-rose-50 hover:bg-rose-100 p-2 rounded-lg transition-colors border border-rose-200"
+                        title="حذف الطلب نهائياً (مدير النظام فقط)"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -982,6 +1013,7 @@ export const Applications: React.FC = () => {
                 </div>
                 <div className="flex gap-2">
                     {(currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN) && !isEditing && (
+                      <>
                         <button 
                             onClick={() => setIsEditing(true)} 
                             className="p-2 hover:bg-blue-50 text-blue-600 rounded-full transition-colors"
@@ -989,6 +1021,15 @@ export const Applications: React.FC = () => {
                         >
                             <Edit className="h-5 w-5" />
                         </button>
+                        <button 
+                            type="button"
+                            onClick={() => setAppToDelete(selectedApp)} 
+                            className="p-2 hover:bg-rose-50 text-rose-600 rounded-full transition-colors"
+                            title="حذف الطلب نهائياً"
+                        >
+                            <Trash2 className="h-5 w-5" />
+                        </button>
+                      </>
                     )}
                     <button onClick={() => { setSelectedApp(null); setIsRejecting(false); setIsEditing(false); setSelectedCompanyIds([]); setShowClientModal(false); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-500">
                     <X className="h-6 w-6" />
@@ -1721,6 +1762,84 @@ export const Applications: React.FC = () => {
           isOpen={showBulkImportAppsModal}
           onClose={() => setShowBulkImportAppsModal(false)}
         />
+      )}
+
+      {/* Delete Application Confirmation Modal - Admin Only */}
+      {appToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden text-right" dir="rtl">
+            <div className="p-6 text-center space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-100 shadow-sm">
+                <Trash2 className="w-7 h-7" />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-800">تأكيد حذف طلب التمويل</h3>
+                <p className="text-xs text-slate-500">
+                  هل أنت متأكد من رغبتك في حذف طلب التمويل رقم <span className="font-mono font-bold text-slate-700">#{appToDelete.id}</span>؟
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl text-right text-xs space-y-2 border border-slate-100">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-slate-400">اسم العميل:</span>
+                  <span className="font-bold text-slate-800">{appToDelete.clientName}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-slate-400">المبلغ المطلوب:</span>
+                  <span className="font-bold text-emerald-700 font-mono">
+                    {Number(appToDelete.requestedAmount || 0).toLocaleString()} ج.م
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-slate-400">الشركة / الجهة:</span>
+                  <span className="font-semibold text-slate-700">{appToDelete.companyName || 'غير محدد'}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-slate-400">حالة الطلب:</span>
+                  <span className="font-semibold text-slate-700">{STATUS_ARABIC[appToDelete.status] || appToDelete.status}</span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-rose-700 font-bold bg-rose-50 p-2.5 rounded-xl border border-rose-200 text-center">
+                ⚠️ تنبيه إداري: سيتم حذف هذا الطلب نهائياً من قاعدة البيانات، ولا يمكن التراجع عن هذه العملية بعد التأكيد.
+              </div>
+
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeletingApp}
+                  onClick={() => setAppToDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  إلغاء التراجع
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingApp}
+                  onClick={async () => {
+                    setIsDeletingApp(true);
+                    try {
+                      await deleteApplication(appToDelete.id);
+                      if (selectedApp?.id === appToDelete.id) {
+                        setSelectedApp(null);
+                      }
+                      setAppToDelete(null);
+                    } catch (e) {
+                      console.error(e);
+                    } finally {
+                      setIsDeletingApp(false);
+                    }
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/25 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>{isDeletingApp ? 'جاري الحذف...' : 'تأكيد الحذف نهائياً'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

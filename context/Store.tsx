@@ -231,6 +231,7 @@ interface StoreContextType {
 
   createApplication: (app: Partial<Application>) => Promise<void>;
   updateApplication: (appId: string, updates: Partial<Application>) => Promise<void>;
+  deleteApplication: (appId: string) => Promise<boolean>;
   requestCaseUpdate: (appId: string, reason: string, channel?: 'WHATSAPP' | 'EMAIL' | 'SYSTEM') => Promise<void>;
   resolveCaseUpdate: (appId: string, resolutionNote?: string) => Promise<void>;
   disburseApplicationAmount: (appId: string, amount: number, notes?: string, receiptNumber?: string) => Promise<boolean>;
@@ -3646,6 +3647,39 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const deleteApplication = async (appId: string): Promise<boolean> => {
+    if (!currentUser || (currentUser.role !== Role.SUPER_ADMIN && currentUser.role !== Role.ADMIN)) {
+      console.warn('Unauthorized: Only Super Admin and Admin can delete applications');
+      return false;
+    }
+
+    const appToDelete = applications.find(a => a.id === appId);
+    setApplications(prev => prev.filter(a => a.id !== appId));
+
+    if (supabase) {
+      try {
+        await supabase.from('applications').delete().eq('id', appId);
+        const updatedApps = applications.filter(a => a.id !== appId);
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: updatedApps,
+          updated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Supabase deleteApplication fallback:', err);
+      }
+    }
+
+    try {
+      await deleteDoc(doc(db, 'applications', appId));
+    } catch (err) {
+      console.warn('Firestore deleteApplication fallback:', err);
+    }
+
+    addAuditLog('DELETE_APPLICATION', `Deleted application ${appId} (${appToDelete?.clientName || 'Unknown'}) by ${currentUser.name}`, appId);
+    return true;
+  };
+
   const disburseApplicationAmount = async (
     appId: string, 
     disbursedAmount: number, 
@@ -6398,6 +6432,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       reRouteApplication,
       createApplication,
       updateApplication,
+      deleteApplication,
       requestCaseUpdate,
       resolveCaseUpdate,
       disburseApplicationAmount,
