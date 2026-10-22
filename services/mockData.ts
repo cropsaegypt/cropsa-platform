@@ -219,6 +219,372 @@ export const MOCK_COMPANIES: InstallmentCompany[] = [
       canManageSubUsers: true,
       canManageSharedFiles: true
     }
+  },
+  {
+    id: 'comp_1792346183637',
+    name: 'كاش للتمويل متناهي الصغر',
+    nameEn: 'Kash Microfinance',
+    code: 'KASH-01',
+    logo: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=128&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80',
+    email: 'info@kash-microfinance.eg',
+    phone: '16901',
+    commercialRegister: '394821',
+    taxNumber: '581-902-114',
+    fraLicense: 'FRA-FIN-2022-033',
+    creditCeiling: 20000000,
+    usedCredit: 7500000,
+    commissionRate: 3.5,
+    allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية', 'الشرقية', 'الدقهلية', 'المنيا'],
+    requiredDocumentsList: [
+      'بطاقة الرقم القومي سارية',
+      'إيصال مرافق حديث',
+      'إثبات مزاولة نشاط تجاري أو خدمي'
+    ],
+    financingPrograms: [
+      {
+        id: 'prog_kash_micro',
+        name: 'برنامج كاش للتمويل الأصغر والسيولة النقدية',
+        companyId: 'comp_1792346183637',
+        companyName: 'كاش للتمويل متناهي الصغر',
+        maxAmount: 50000,
+        minAmount: 5000,
+        durationMonths: 12,
+        interestRatePercent: 18,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.5,
+        requiredDocuments: ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث'],
+        description: 'تمويل فوري وسريع للأعمال الحرة والتجار بأقل الإجراءات'
+      },
+      {
+        id: 'prog_kash_growth',
+        name: 'برنامج كاش لتنمية المشروعات الريفية',
+        companyId: 'comp_1792346183637',
+        companyName: 'كاش للتمويل متناهي الصغر',
+        maxAmount: 120000,
+        minAmount: 20000,
+        durationMonths: 24,
+        interestRatePercent: 20,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.5,
+        requiredDocuments: ['بطاقة الرقم القومي', 'إيصال مرافق حديث', 'إثبات نشاط تجاري'],
+        description: 'تسهيلات ائتمانية لدعم المشروعات وتوسيع حجم العمل'
+      }
+    ],
+    status: 'ACTIVE',
+    createdAt: '2025-02-10T10:00:00.000Z',
+    featuresGranted: {
+      canViewCrobsaDb: true,
+      canUseAiAnalysis: true,
+      canExportReports: true,
+      canManageSubUsers: true,
+      canManageSharedFiles: true
+    }
+  },
+  {
+    id: 'comp_1792682249448',
+    name: 'بسيطة للتمويل',
+    nameEn: 'Baseeta Financing',
+    code: 'BASEETA-01',
+    logo: 'https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=128&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200&auto=format&fit=crop&q=80',
+    email: 'contact@baseeta.eg',
+    phone: '19772',
+    commercialRegister: '782190',
+    taxNumber: '619-301-442',
+    fraLicense: 'FRA-FIN-2023-104',
+    creditCeiling: 22000000,
+    usedCredit: 8200000,
+    commissionRate: 3.5,
+    allowedGovernorates: ['القاهرة', 'الجيزة', 'القليوبية', 'الغربية', 'المنوفية'],
+    requiredDocumentsList: [
+      'بطاقة الرقم القومي للمشتري',
+      'إيصال كهرباء حديث',
+      'ضامن من الدرجة الأولى'
+    ],
+    financingPrograms: [
+      {
+        id: 'prog_baseeta_easy',
+        name: 'برنامج بسيطة الميسر بدون تعقيدات',
+        companyId: 'comp_1792682249448',
+        companyName: 'بسيطة للتمويل',
+        maxAmount: 80000,
+        minAmount: 5000,
+        durationMonths: 18,
+        interestRatePercent: 17,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.0,
+        requiredDocuments: ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث'],
+        description: 'تقسيط ميسر وموافقة خلال 24 ساعة بأبسط الأوراق'
+      },
+      {
+        id: 'prog_baseeta_family',
+        name: 'برنامج بسيطة للأسر المنتجة والحرفية',
+        companyId: 'comp_1792682249448',
+        companyName: 'بسيطة للتمويل',
+        maxAmount: 150000,
+        minAmount: 20000,
+        durationMonths: 24,
+        interestRatePercent: 18,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.0,
+        requiredDocuments: ['بطاقة الرقم القومي', 'إيصال مرافق حديث', 'ضامن موظف أو صاحب نشاط'],
+        description: 'دعم وتمويل مشروعات الأسر المنتجة والورش والحرفيين'
+      }
+    ],
+    status: 'ACTIVE',
+    createdAt: '2025-02-15T09:00:00.000Z',
+    featuresGranted: {
+      canViewCrobsaDb: true,
+      canUseAiAnalysis: true,
+      canExportReports: true,
+      canManageSubUsers: true,
+      canManageSharedFiles: true
+    }
+  },
+  {
+    id: 'comp_elgameya',
+    name: 'شركة الجمعية لتقنية المعلومات (الجمعية)',
+    nameEn: 'ElGameya Fintech',
+    code: 'ELGAMEYA',
+    logo: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=128&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80',
+    email: 'support@elgameya.net',
+    phone: '19011',
+    commercialRegister: '551928',
+    taxNumber: '442-819-201',
+    fraLicense: 'FRA-FIN-2022-099',
+    creditCeiling: 30000000,
+    usedCredit: 11200000,
+    commissionRate: 3.5,
+    allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية', 'الشرقية', 'الدقهلية', 'البحيرة', 'الغربية'],
+    requiredDocumentsList: [
+      'بطاقة الرقم القومي سارية',
+      'إيصال مرافق حديث لمحل السكن',
+      'كشف حساب بنكي أو محفظة إلكترونية لآخر 3 أشهر'
+    ],
+    financingPrograms: [
+      {
+        id: 'prog_elgameya_digital',
+        name: 'برنامج الجمعية الرقمي والتسهيلات الائتمانية',
+        companyId: 'comp_elgameya',
+        companyName: 'شركة الجمعية لتقنية المعلومات (الجمعية)',
+        maxAmount: 100000,
+        minAmount: 10000,
+        durationMonths: 12,
+        interestRatePercent: 16,
+        downPaymentPercent: 0,
+        adminFeePercent: 1.5,
+        requiredDocuments: ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث'],
+        description: 'جمعيات وتمويلات مالية ذكية ومباشرة بالتعاون مع المنصة'
+      },
+      {
+        id: 'prog_elgameya_vip',
+        name: 'برنامج كبار التجار والجمعيات المفتوحة',
+        companyId: 'comp_elgameya',
+        companyName: 'شركة الجمعية لتقنية المعلومات (الجمعية)',
+        maxAmount: 250000,
+        minAmount: 50000,
+        durationMonths: 24,
+        interestRatePercent: 18,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.0,
+        requiredDocuments: ['بطاقة الرقم القومي', 'سجل تجاري أو كارت فلاح', 'إيصال مرافق حديث'],
+        description: 'سيولة نقدية فورية وتمويل مشترك للتجار والمزارعين'
+      }
+    ],
+    status: 'ACTIVE',
+    createdAt: '2025-01-20T08:00:00.000Z',
+    featuresGranted: {
+      canViewCrobsaDb: true,
+      canUseAiAnalysis: true,
+      canExportReports: true,
+      canManageSubUsers: true,
+      canManageSharedFiles: true
+    }
+  },
+  {
+    id: 'comp_contact',
+    name: 'شركة كونتكت للتمويل الاستهلاكي',
+    nameEn: 'Contact Financial Holding',
+    code: 'CONTACT-01',
+    logo: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=128&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200&auto=format&fit=crop&q=80',
+    email: 'info@contact.eg',
+    phone: '16177',
+    commercialRegister: '109283',
+    taxNumber: '201-928-374',
+    fraLicense: 'FRA-FIN-2019-001',
+    creditCeiling: 50000000,
+    usedCredit: 24500000,
+    commissionRate: 4.0,
+    allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية', 'الشرقية', 'الدقهلية', 'القليوبية', 'الغربية', 'المنيا', 'أسيوط'],
+    requiredDocumentsList: [
+      'بطاقة الرقم القومي سارية للمشتري والضامن',
+      'إيصال مرافق حديث',
+      'مستند إثبات دخل أو سجل تجاري'
+    ],
+    financingPrograms: [
+      {
+        id: 'prog_contact_consumer',
+        name: 'برنامج كونتكت لتقسيط السلع والخدمات',
+        companyId: 'comp_contact',
+        companyName: 'شركة كونتكت للتمويل الاستهلاكي',
+        maxAmount: 200000,
+        minAmount: 15000,
+        durationMonths: 24,
+        interestRatePercent: 19,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.5,
+        requiredDocuments: ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث'],
+        description: 'تمويل استهلاكي فوري بدون مصاريف استعلام إضافية'
+      },
+      {
+        id: 'prog_contact_auto',
+        name: 'برنامج كونتكت لتمويل سيارات النقل والتوزيع',
+        companyId: 'comp_contact',
+        companyName: 'شركة كونتكت للتمويل الاستهلاكي',
+        maxAmount: 500000,
+        minAmount: 100000,
+        durationMonths: 36,
+        interestRatePercent: 21,
+        downPaymentPercent: 15,
+        adminFeePercent: 2.5,
+        requiredDocuments: ['بطاقة الرقم القومي', 'رخصة القيادة والمهنة', 'إيصال مرافق حديث'],
+        description: 'تمويل وشراء مركبات النقل وتوزيع المحاصيل الزراعية والسلع'
+      }
+    ],
+    status: 'ACTIVE',
+    createdAt: '2025-01-05T09:00:00.000Z',
+    featuresGranted: {
+      canViewCrobsaDb: true,
+      canUseAiAnalysis: true,
+      canExportReports: true,
+      canManageSubUsers: true,
+      canManageSharedFiles: true
+    }
+  },
+  {
+    id: 'comp_1792681682632',
+    name: 'بنك الإسكندرية (تمويل المشروعات)',
+    nameEn: 'Bank of Alexandria SME Finance',
+    code: 'ALEX-SME',
+    logo: 'https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=128&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80',
+    email: 'sme@alexbank.com',
+    phone: '19033',
+    commercialRegister: '129384',
+    taxNumber: '109-283-471',
+    fraLicense: 'CBE-LIC-1867',
+    creditCeiling: 60000000,
+    usedCredit: 21000000,
+    commissionRate: 3.0,
+    allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية', 'البحيرة', 'الدقهلية', 'الشرقية', 'الغربية', 'المنيا'],
+    requiredDocumentsList: [
+      'بطاقة الرقم القومي سارية',
+      'إيصال مرافق لمقر النشاط والسكن',
+      'كشف حساب بنكي لآخر 6 أشهر أو بطاقة حيازة'
+    ],
+    financingPrograms: [
+      {
+        id: 'prog_alex_sme',
+        name: 'برنامج بنك إسكندرية للمشروعات الصغيرة (مشروعي)',
+        companyId: 'comp_1792681682632',
+        companyName: 'بنك الإسكندرية (تمويل المشروعات)',
+        maxAmount: 400000,
+        minAmount: 30000,
+        durationMonths: 36,
+        interestRatePercent: 15,
+        downPaymentPercent: 0,
+        adminFeePercent: 1.5,
+        requiredDocuments: ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث', 'إثبات نشاط تجاري أو زراعي'],
+        description: 'تمويل بنكي رسمي بأسعار عائد تنافسية لتنمية المشروعات'
+      },
+      {
+        id: 'prog_alex_micro',
+        name: 'برنامج التمويل السريع متناهي الصغر',
+        companyId: 'comp_1792681682632',
+        companyName: 'بنك الإسكندرية (تمويل المشروعات)',
+        maxAmount: 100000,
+        minAmount: 10000,
+        durationMonths: 18,
+        interestRatePercent: 17,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.0,
+        requiredDocuments: ['بطاقة الرقم القومي', 'إيصال مرافق حديث'],
+        description: 'حلول تمويلية مرنة وسريعة لأصحاب الأنشطة الصغيرة'
+      }
+    ],
+    status: 'ACTIVE',
+    createdAt: '2025-01-12T11:00:00.000Z',
+    featuresGranted: {
+      canViewCrobsaDb: true,
+      canUseAiAnalysis: true,
+      canExportReports: true,
+      canManageSubUsers: true,
+      canManageSharedFiles: true
+    }
+  },
+  {
+    id: 'comp_souhoola',
+    name: 'شركة سهولة للتمويل الاستهلاكي',
+    nameEn: 'Souhoola Consumer Finance',
+    code: 'SOUHOOLA',
+    logo: 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=128&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200&auto=format&fit=crop&q=80',
+    email: 'info@souhoola.com',
+    phone: '16922',
+    commercialRegister: '918273',
+    taxNumber: '394-819-204',
+    fraLicense: 'FRA-FIN-2021-042',
+    creditCeiling: 25000000,
+    usedCredit: 9800000,
+    commissionRate: 3.5,
+    allowedGovernorates: ['القاهرة', 'الجيزة', 'الإسكندرية', 'القليوبية', 'الشرقية', 'الغربية'],
+    requiredDocumentsList: [
+      'بطاقة الرقم القومي سارية',
+      'إيصال مرافق حديث',
+      'استعلام ائتماني I-Score'
+    ],
+    financingPrograms: [
+      {
+        id: 'prog_souhoola_cash',
+        name: 'برنامج سهولة كاش الفوري',
+        companyId: 'comp_souhoola',
+        companyName: 'شركة سهولة للتمويل الاستهلاكي',
+        maxAmount: 70000,
+        minAmount: 5000,
+        durationMonths: 12,
+        interestRatePercent: 18,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.0,
+        requiredDocuments: ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث'],
+        description: 'تقسيط فوري وموافقة رقمية بأسهل الشروط'
+      },
+      {
+        id: 'prog_souhoola_prime',
+        name: 'برنامج سهولة برايم للتجار والشركاء',
+        companyId: 'comp_souhoola',
+        companyName: 'شركة سهولة للتمويل الاستهلاكي',
+        maxAmount: 180000,
+        minAmount: 25000,
+        durationMonths: 24,
+        interestRatePercent: 19,
+        downPaymentPercent: 0,
+        adminFeePercent: 2.5,
+        requiredDocuments: ['بطاقة الرقم القومي', 'إيصال مرافق حديث', 'سجل تجاري أو عقد إيجار'],
+        description: 'حدود ائتمانية متجددة لشراء البضائع وتسهيل حركة البيع'
+      }
+    ],
+    status: 'ACTIVE',
+    createdAt: '2025-01-25T10:00:00.000Z',
+    featuresGranted: {
+      canViewCrobsaDb: true,
+      canUseAiAnalysis: true,
+      canExportReports: true,
+      canManageSubUsers: true,
+      canManageSharedFiles: true
+    }
   }
 ];
 
