@@ -397,7 +397,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const saved = localStorage.getItem('cropsa_applications');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
       return MOCK_APPLICATIONS;
     } catch {
@@ -428,210 +428,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   });
 
-  // Ground Truth Client & Application Historical Healing
-  // Distributes client records across active partner companies (never dumping everyone into Aman)
-  // and establishes genuine past dates (>150 days ago) so all past clients are fully eligible for credit renewal
-  useEffect(() => {
-    if (!clients || clients.length === 0 || !companies || companies.length === 0) return;
-    const now = Date.now();
-    const activeComps = companies.filter(c => c.status === 'ACTIVE' || !c.status);
-    const comps = activeComps.length > 0 ? activeComps : companies;
-
-    let clientChanges = false;
-    const fixedClients = clients.map((cl, idx) => {
-      let compName = cl.companyName;
-      let lastDate = cl.lastFinanceDate;
-      let authComps = cl.authorizedCompanies;
-      let needsFix = false;
-
-      // 1. Correct company assignment if missing or defaulted to generic
-      if (!compName || compName === 'سجل تقسيط سابق' || compName === 'شركة التقسيط') {
-        const assigned = comps[idx % comps.length];
-        compName = assigned.name;
-        authComps = [assigned.id];
-        needsFix = true;
-      }
-
-      // 2. Correct historical date if missing or mistakenly set to a recent date (<90 days ago)
-      const isDateOldEnough = lastDate && (now - new Date(lastDate).getTime() >= 90 * 24 * 60 * 60 * 1000);
-      if (!isDateOldEnough) {
-        // Spread past loan disbursement dates between 150 and 365 days ago
-        const daysAgo = 150 + ((idx * 19) % 210);
-        lastDate = new Date(now - daysAgo * 24 * 60 * 60 * 1000).toISOString();
-        needsFix = true;
-      }
-
-      if (needsFix || cl.renewalClassification !== 'ELIGIBLE') {
-        clientChanges = true;
-        const days = Math.floor((now - new Date(lastDate!).getTime()) / (1000 * 60 * 60 * 24));
-        const months = Math.floor(days / 30);
-        const amt = cl.totalApprovedAmount || cl.disbursedAmount || 50000;
-        const assignedCompanyObj = comps.find(c => c.name === compName) || comps[idx % comps.length];
-
-        return {
-          ...cl,
-          companyName: compName,
-          authorizedCompanies: authComps && authComps.length > 0 ? authComps : [assignedCompanyObj.id],
-          lastFinanceDate: lastDate,
-          renewalClassification: 'ELIGIBLE' as const,
-          renewalEligibleMonths: months,
-          suggestedRenewalLimit: Math.round(amt * 1.3),
-          renewalNotes: `مؤهل للتجديد الفوري (مضى ${months} أشهر على التمويل السابق من ${compName})`,
-          manualEntry: {
-            installmentCompanyId: authComps?.[0] || assignedCompanyObj.id,
-            companyName: compName,
-            approvedAmount: amt,
-            disbursedAmount: amt,
-            approvalDate: lastDate,
-            lastWithdrawalDate: lastDate,
-            notes: `تمويل تاريخي سابق معتمد ومصروف بالكامل عبر ${compName}`
-          }
-        };
-      }
-      return cl;
-    });
-
-    if (clientChanges) {
-      setClients(fixedClients);
-      try {
-        localStorage.setItem('cropsa_clients', JSON.stringify(fixedClients));
-      } catch {}
-      if (supabase) {
-        supabase.from('system_settings').upsert({
-          id: 'clients_data',
-          data: fixedClients,
-          updated_at: new Date().toISOString()
-        }).catch(console.warn);
-      }
-    }
-  }, [companies]);
-
-  // Ensure every client in the database has their historical completed/disbursed application
-  // properly distributed across partner companies with genuine historical dates
-  useEffect(() => {
-    if (!clients || clients.length === 0 || !companies || companies.length === 0) return;
-    const now = Date.now();
-    const activeComps = companies.filter(c => c.status === 'ACTIVE' || !c.status);
-    const comps = activeComps.length > 0 ? activeComps : companies;
-
-    setApplications(prevApps => {
-      let hasChanges = false;
-      const updated = [...prevApps];
-
-      clients.forEach((client, idx) => {
-        const existingAppIndex = updated.findIndex(a => 
-          (client.id && a.clientId === client.id) || 
-          (client.nationalId && a.clientNationalId === client.nationalId)
-        );
-
-        // Match client company or distribute across partner companies
-        let assignedComp = comps.find(c => 
-          (client.companyName && (c.name.includes(client.companyName) || client.companyName.includes(c.name))) ||
-          (client.authorizedCompanies && client.authorizedCompanies.includes(c.id))
-        );
-        if (!assignedComp) {
-          assignedComp = comps[idx % comps.length];
-        }
-
-        // Establish genuine past date (>150 days ago)
-        let histDate = client.lastFinanceDate;
-        const isOldEnough = histDate && (now - new Date(histDate).getTime() >= 90 * 24 * 60 * 60 * 1000);
-        if (!isOldEnough) {
-          const daysAgo = 150 + ((idx * 19) % 210);
-          histDate = new Date(now - daysAgo * 24 * 60 * 60 * 1000).toISOString();
-        }
-
-        const histAmount = client.approvedAmount || client.usedAmount || client.totalApprovedAmount || client.disbursedAmount || 50000;
-        const compProgram = assignedComp.financingPrograms?.[0]?.name || 'تمويل سابق معتمد ومصروف بالكامل';
-
-        if (existingAppIndex === -1) {
-          hasChanges = true;
-          updated.push({
-            id: `app_hist_${client.id || client.nationalId || Date.now()}`,
-            clientId: client.id,
-            clientName: client.name,
-            clientNationalId: client.nationalId || '',
-            phoneNumber: client.phoneNumber || '',
-            whatsappNumber: client.phoneNumber || '',
-            governorate: client.governorate || 'القاهرة',
-            profession: (client.profession as any) || 'MERCHANT',
-            financeType: 'INSTALLMENT',
-            durationMonths: 12,
-            requestedAmount: histAmount,
-            approvedAmount: histAmount,
-            usedAmount: histAmount,
-            status: ApplicationStatus.APPROVED,
-            submittedBy: client.addedBy || 'admin',
-            submittedAt: histDate,
-            reviewedAt: histDate,
-            companyId: assignedComp.id,
-            companyName: assignedComp.name,
-            assignedCompanyIds: [assignedComp.id],
-            assignedCompanyNames: [assignedComp.name],
-            selectedProgramName: compProgram,
-            hasRecentInstallment: true,
-            hasRecentReceipt: true,
-            documents: [],
-            history: [
-              {
-                action: 'AMOUNT_TRANSFERRED',
-                timestamp: histDate,
-                performedBy: 'system',
-                performedByName: 'إدارة الائتمان',
-                details: `طلب تمويل تاريخي سابق معتمد ومصروف بالكامل عبر ${assignedComp.name}`
-              }
-            ]
-          });
-        } else {
-          // If previous app was corrupted to Aman or recent date, repair it
-          const existingApp = updated[existingAppIndex];
-          if (existingApp.id.startsWith('app_hist_') || existingApp.id.startsWith('app_imp_')) {
-            const isCorruptedAman = (!client.companyName || !client.companyName.includes('أمان')) && 
-                                    (existingApp.companyId === 'aman' || existingApp.companyId === 'comp_01') &&
-                                    (idx % comps.length !== 0);
-            const isCorruptedRecent = existingApp.submittedAt && (now - new Date(existingApp.submittedAt).getTime() < 60 * 24 * 60 * 60 * 1000);
-            if (isCorruptedAman || isCorruptedRecent) {
-              hasChanges = true;
-              updated[existingAppIndex] = {
-                ...existingApp,
-                companyId: assignedComp.id,
-                companyName: assignedComp.name,
-                assignedCompanyIds: [assignedComp.id],
-                assignedCompanyNames: [assignedComp.name],
-                submittedAt: histDate,
-                reviewedAt: histDate,
-                status: ApplicationStatus.APPROVED,
-                selectedProgramName: compProgram
-              };
-            }
-          }
-        }
-      });
-
-      if (hasChanges) {
-        try {
-          localStorage.setItem('cropsa_applications', JSON.stringify(updated));
-        } catch (e) {
-          console.warn('Failed to persist applications:', e);
-        }
-        if (supabase) {
-          supabase.from('system_settings').upsert({
-            id: 'applications_data',
-            data: updated,
-            updated_at: new Date().toISOString()
-          }).catch(console.warn);
-        }
-        return updated;
-      }
-      return prevApps;
-    });
-  }, [clients, companies]);
-
   useEffect(() => {
     try {
-      if (applications.length > 0) {
-        localStorage.setItem('cropsa_applications', JSON.stringify(applications));
-      }
+      localStorage.setItem('cropsa_applications', JSON.stringify(applications));
     } catch (e) {
       console.warn('Failed to persist applications to localStorage:', e);
     }
@@ -659,11 +458,24 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [overdueCases, setOverdueCases] = useState<OverdueCase[]>(() => {
     try {
       if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
+      const saved = localStorage.getItem('cropsa_overdue_cases');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
       return MOCK_OVERDUE_CASES;
     } catch {
       return [];
     }
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cropsa_overdue_cases', JSON.stringify(overdueCases));
+    } catch (e) {
+      console.warn('Failed to persist overdue cases to localStorage:', e);
+    }
+  }, [overdueCases]);
   const [sharedDocuments, setSharedDocuments] = useState<SharedDocument[]>(MOCK_SHARED_DOCUMENTS);
   const [aiAnalyses, setAiAnalyses] = useState<AiCreditAnalysis[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>(() => {
@@ -1414,23 +1226,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 6. Process Applications
         const appMap = new Map<string, Application>();
-        if (!isWiped) {
-          MOCK_APPLICATIONS.forEach(m => appMap.set(m.id, m));
-        }
-        if (appSettingRes?.data?.data && Array.isArray(appSettingRes.data.data) && appSettingRes.data.data.length > 0) {
+        if (appSettingRes?.data && 'data' in appSettingRes.data && Array.isArray(appSettingRes.data.data)) {
           appSettingRes.data.data.forEach((a: Application) => {
             appMap.set(a.id, a);
           });
-        } else {
+        } else if (!isWiped) {
           try {
             const savedLocalApps = localStorage.getItem('cropsa_applications');
             if (savedLocalApps) {
               const parsed = JSON.parse(savedLocalApps);
-              if (Array.isArray(parsed) && parsed.length > 0) {
+              if (Array.isArray(parsed)) {
                 parsed.forEach((a: Application) => appMap.set(a.id, a));
               }
             }
           } catch {}
+          MOCK_APPLICATIONS.forEach(m => {
+            if (!appMap.has(m.id)) appMap.set(m.id, m);
+          });
         }
         if (appRes?.data && appRes.data.length > 0) {
           appRes.data.forEach((a: any) => {
