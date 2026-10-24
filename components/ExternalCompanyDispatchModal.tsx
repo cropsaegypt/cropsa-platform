@@ -285,7 +285,17 @@ export const ExternalCompanyDispatchModal: React.FC<ExternalCompanyDispatchModal
     }
 
     const mailtoUrl = `mailto:${encodeURIComponent(targetContact.trim())}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(messageBody)}`;
-    window.location.href = mailtoUrl;
+    try {
+      const mailtoLink = document.createElement('a');
+      mailtoLink.href = mailtoUrl;
+      mailtoLink.target = '_blank';
+      mailtoLink.rel = 'noopener noreferrer';
+      document.body.appendChild(mailtoLink);
+      mailtoLink.click();
+      document.body.removeChild(mailtoLink);
+    } catch {
+      window.open(mailtoUrl, '_blank');
+    }
 
     // Record dispatch
     await dispatchApplicationToExternalCompany(application.id, {

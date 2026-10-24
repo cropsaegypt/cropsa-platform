@@ -1226,30 +1226,44 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // 6. Process Applications
         const appMap = new Map<string, Application>();
-        if (appSettingRes?.data && 'data' in appSettingRes.data && Array.isArray(appSettingRes.data.data)) {
+
+        // A. Load applications from Supabase system_settings applications_data if present and has items
+        if (appSettingRes?.data && 'data' in appSettingRes.data && Array.isArray(appSettingRes.data.data) && appSettingRes.data.data.length > 0) {
           appSettingRes.data.data.forEach((a: Application) => {
-            appMap.set(a.id, a);
+            if (a && a.id) appMap.set(a.id, a);
           });
-        } else if (!isWiped) {
+        }
+
+        // B. Merge applications from relational table
+        if (appRes?.data && appRes.data.length > 0) {
+          appRes.data.forEach((a: any) => {
+            const existingMock = appMap.get(a.id);
+            appMap.set(a.id, mapApplicationRow(a, existingMock));
+          });
+        }
+
+        // C. If remote was empty and system is not wiped, restore from local cache and sync to Supabase!
+        if (appMap.size === 0 && !isWiped) {
           try {
             const savedLocalApps = localStorage.getItem('cropsa_applications');
             if (savedLocalApps) {
               const parsed = JSON.parse(savedLocalApps);
-              if (Array.isArray(parsed)) {
-                parsed.forEach((a: Application) => appMap.set(a.id, a));
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                parsed.forEach((a: Application) => {
+                  if (a && a.id) appMap.set(a.id, a);
+                });
+                if (supabase) {
+                  supabase.from('system_settings').upsert({
+                    id: 'applications_data',
+                    data: parsed,
+                    updated_at: new Date().toISOString()
+                  }).catch(console.warn);
+                }
               }
             }
-          } catch {}
-          MOCK_APPLICATIONS.forEach(m => {
-            if (!appMap.has(m.id)) appMap.set(m.id, m);
-          });
+          } catch (e) {}
         }
-        if (appRes?.data && appRes.data.length > 0) {
-          appRes.data.forEach((a: any) => {
-            const existingMock = appMap.get(a.id) || MOCK_APPLICATIONS.find(m => m.id === a.id);
-            appMap.set(a.id, mapApplicationRow(a, existingMock));
-          });
-        }
+
         if (isMounted) {
           const finalApps = Array.from(appMap.values());
           setApplications(finalApps);
@@ -5661,20 +5675,26 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteInboxMessage = async (messageId: string): Promise<void> => {
+    let nextMessages: InboxMessage[] = [];
     setInboxMessages(prev => {
-      const updated = prev.filter(m => m.id !== messageId);
+      nextMessages = prev.filter(m => m.id !== messageId);
       try {
-        localStorage.setItem('cropsa_inbox_messages', JSON.stringify(updated));
+        localStorage.setItem('cropsa_inbox_messages', JSON.stringify(nextMessages));
       } catch (e) {}
-      if (supabase) {
-        supabase.from('system_settings').upsert({
-          id: 'inbox_messages',
-          data: updated,
-          updated_at: new Date().toISOString()
-        }).catch((e: any) => console.warn('Supabase inbox delete error:', e));
-      }
-      return updated;
+      return nextMessages;
     });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'inbox_messages',
+          data: nextMessages,
+          updated_at: new Date().toISOString()
+        });
+      } catch (e: any) {
+        console.warn('Supabase inbox delete error:', e);
+      }
+    }
   };
 
   // =========================================================================
@@ -6177,17 +6197,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
 
-    setClients(prev => {
-      const existingMap = new Map<string, Client>();
-      prev.forEach(c => existingMap.set(c.id, c));
-      for (const nc of newClientsToAdd) {
-        existingMap.set(nc.id, nc);
+    let allUpdatedClients = [...clients];
+    newClientsToAdd.forEach(nc => {
+      const idx = allUpdatedClients.findIndex(c => c.id === nc.id || (nc.nationalId && c.nationalId === nc.nationalId && !c.hasMissingNationalId));
+      if (idx >= 0) {
+        allUpdatedClients[idx] = { ...allUpdatedClients[idx], ...nc };
+      } else {
+        allUpdatedClients.unshift(nc);
       }
-      return Array.from(existingMap.values());
     });
+    setClients(allUpdatedClients);
+    try { localStorage.setItem('cropsa_clients', JSON.stringify(allUpdatedClients)); } catch (e) {}
 
+    const allUpdatedApps = newAppsToAdd.length > 0 ? [...newAppsToAdd, ...applications] : applications;
     if (newAppsToAdd.length > 0) {
-      setApplications(prev => [...newAppsToAdd, ...prev]);
+      setApplications(allUpdatedApps);
+      try { localStorage.setItem('cropsa_applications', JSON.stringify(allUpdatedApps)); } catch (e) {}
     }
 
     if (supabase) {
@@ -6226,6 +6251,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             product_description: na.description || ''
           }));
           await supabase.from('applications').upsert(appRows);
+        }
+        await supabase.from('system_settings').upsert({
+          id: 'clients_data',
+          data: allUpdatedClients,
+          updated_at: new Date().toISOString()
+        });
+        if (newAppsToAdd.length > 0) {
+          await supabase.from('system_settings').upsert({
+            id: 'applications_data',
+            data: allUpdatedApps,
+            updated_at: new Date().toISOString()
+          });
         }
       } catch (err) {
         console.warn('Supabase bulkImportClients fallback:', err);
@@ -6373,19 +6410,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     // Update in-memory state
-    setApplications(prev => [...newAppsToAdd, ...prev]);
-    setClients(prev => {
-      const updated = [...prev];
-      newClientsToAdd.forEach(nc => {
-        const idx = updated.findIndex(c => c.id === nc.id || (nc.nationalId && c.nationalId === nc.nationalId && !c.hasMissingNationalId));
-        if (idx >= 0) {
-          updated[idx] = { ...updated[idx], ...nc };
-        } else {
-          updated.unshift(nc);
-        }
-      });
-      return updated;
+    const allUpdatedApps = [...newAppsToAdd, ...applications];
+    setApplications(allUpdatedApps);
+    try {
+      localStorage.setItem('cropsa_applications', JSON.stringify(allUpdatedApps));
+    } catch (e) {}
+
+    let allUpdatedClients = [...clients];
+    newClientsToAdd.forEach(nc => {
+      const idx = allUpdatedClients.findIndex(c => c.id === nc.id || (nc.nationalId && c.nationalId === nc.nationalId && !c.hasMissingNationalId));
+      if (idx >= 0) {
+        allUpdatedClients[idx] = { ...allUpdatedClients[idx], ...nc };
+      } else {
+        allUpdatedClients.unshift(nc);
+      }
     });
+    setClients(allUpdatedClients);
+    try {
+      localStorage.setItem('cropsa_clients', JSON.stringify(allUpdatedClients));
+    } catch (e) {}
 
     // Save to Firestore & Supabase in background
     try {
@@ -6401,13 +6444,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (supabase) {
       try {
+        // 1. Upsert new clients into relational table FIRST (satisfies foreign key constraint)
+        if (newClientsToAdd.length > 0) {
+          const clientRows = newClientsToAdd.map(nc => ({
+            id: nc.id,
+            name: nc.name,
+            national_id: nc.nationalId,
+            phone: nc.phoneNumber,
+            governorate: nc.governorate,
+            address: nc.address || '',
+            job_title: nc.profession || '',
+            monthly_income: Number(nc.monthlyIncome) || 0,
+            iscore_status: nc.iscoreStatus || 'CLEAN',
+            credit_rating: typeof nc.creditRating === 'number' ? nc.creditRating : 80,
+            total_financed: Number(nc.totalApprovedAmount) || 0
+          }));
+          await supabase.from('clients').upsert(clientRows);
+        }
+
+        // 2. Upsert new applications into relational applications table
         const appRows = newAppsToAdd.map(na => ({
           id: na.id,
           client_id: na.clientId || na.id,
           client_name: na.clientName,
           client_phone: na.phoneNumber || '',
           client_national_id: na.clientNationalId || '',
-          company_id: na.assignedCompanyIds?.[0] || 'comp_01',
+          company_id: na.assignedCompanyIds?.[0] || na.companyId || 'comp_01',
           total_amount: na.requestedAmount || 0,
           down_payment: 0,
           financed_amount: na.approvedAmount || na.requestedAmount || 0,
@@ -6418,6 +6480,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           product_description: na.description || ''
         }));
         await supabase.from('applications').upsert(appRows);
+
+        // 3. Upsert system_settings applications_data (PRIMARY CLOUD SOURCE OF TRUTH)
+        await supabase.from('system_settings').upsert({
+          id: 'applications_data',
+          data: allUpdatedApps,
+          updated_at: new Date().toISOString()
+        });
+
+        // 4. Upsert system_settings clients_data
+        await supabase.from('system_settings').upsert({
+          id: 'clients_data',
+          data: allUpdatedClients,
+          updated_at: new Date().toISOString()
+        });
       } catch (err) {
         console.warn('Supabase bulkImportApplications fallback:', err);
       }

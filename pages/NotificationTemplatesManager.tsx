@@ -756,8 +756,12 @@ export const NotificationTemplatesManager: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => handleDeleteExtTemplate(tmpl.id)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteExtTemplate(tmpl.id);
+                        }}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                         title="حذف هذا النموذج"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1032,8 +1036,12 @@ export const NotificationTemplatesManager: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => handleDeleteTemplate(tmpl.id)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteTemplate(tmpl.id);
+                        }}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                         title="حذف القالب"
                       >
                         <Trash2 className="h-4 w-4" />

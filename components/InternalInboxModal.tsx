@@ -100,6 +100,23 @@ export const InternalInboxModal: React.FC<InternalInboxModalProps> = ({ isOpen, 
     }
   };
 
+  const handleDeleteMessage = (e: React.MouseEvent, msgId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm('هل أنت متأكد من رغبتك في حذف هذه الرسالة من البريد الوارد؟')) {
+      return;
+    }
+    deleteInboxMessage(msgId);
+    setSuccessToast('تم حذف الرسالة بنجاح');
+    setTimeout(() => setSuccessToast(null), 2500);
+    const remaining = inboxMessages.filter(m => m.id !== msgId);
+    if (remaining.length > 0) {
+      setSelectedMessageId(remaining[0].id);
+    } else {
+      setSelectedMessageId('');
+    }
+  };
+
   const handleCreateNewReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContent.trim()) {
@@ -339,17 +356,19 @@ export const InternalInboxModal: React.FC<InternalInboxModalProps> = ({ isOpen, 
 
                   <div className="flex items-center gap-2 shrink-0">
                     <button
+                      type="button"
                       onClick={() => handleAnalyze(selectedMessage.id)}
                       disabled={isAnalyzing}
-                      className="py-2 px-3.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-60"
+                      className="py-2 px-3.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-60 cursor-pointer"
                     >
                       <Sparkles className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
                       <span>{isAnalyzing ? 'جاري التحليل...' : 'تحليل الرد بالذكاء الاصطناعي 🧠'}</span>
                     </button>
 
                     <button
-                      onClick={() => deleteInboxMessage(selectedMessage.id)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      type="button"
+                      onClick={(e) => handleDeleteMessage(e, selectedMessage.id)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                       title="حذف الرسالة"
                     >
                       <Trash2 className="w-4 h-4" />
