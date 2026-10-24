@@ -32,7 +32,8 @@ import {
   MapPin,
   TrendingUp,
   Edit,
-  Trash2
+  Trash2,
+  Phone
 } from 'lucide-react';
 import { ClientDetailModal } from '../components/ClientDetailModal';
 import { ClientTimelineModal } from '../components/ClientTimelineModal';
@@ -243,8 +244,20 @@ export const Clients: React.FC = () => {
       const isEligibleForRenewal = (client.renewalClassification === 'ELIGIBLE') || 
         (((daysElapsed >= 90 || monthsElapsed >= 3) && !hasPendingApp && (totalApproved > 0 || !!client.manualEntry || !!client.lastFinanceDate) && !isDelinquent));
 
+      // Fallback contact info from client applications if missing on client
+      const appWithPhone = clientApps.find(a => a.phoneNumber && a.phoneNumber.trim());
+      const appWithGov = clientApps.find(a => a.governorate && a.governorate.trim());
+      const appWithProf = clientApps.find(a => a.profession && a.profession.trim());
+
+      const phoneNumber = client.phoneNumber || appWithPhone?.phoneNumber || '';
+      const governorate = client.governorate || appWithGov?.governorate || 'القاهرة';
+      const profession = client.profession || appWithProf?.profession || 'تاجر';
+
       return {
         ...client,
+        phoneNumber,
+        governorate,
+        profession,
         apps: clientApps,
         approvedTotal: totalApproved,
         disbursedTotal: totalDisbursed,
@@ -745,10 +758,19 @@ export const Clients: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 font-mono">
-                      <span>{c.isMissingNid ? 'رقم مؤقت: ' + c.nationalId : `الرقم القومي: ${c.nationalId}`}</span>
+                    <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 flex-wrap">
+                      <span className="font-mono">{c.isMissingNid ? 'رقم مؤقت: ' + c.nationalId : `الرقم القومي: ${c.nationalId}`}</span>
                       <span>•</span>
-                      <span>{c.governorate || 'القاهرة'}</span>
+                      <span className="bg-sky-50 text-sky-700 font-bold px-1.5 py-0.2 rounded border border-sky-200 inline-flex items-center gap-0.5">
+                        <MapPin className="h-2.5 w-2.5 text-sky-600" />
+                        {c.governorate || 'القاهرة'}
+                      </span>
+                      {c.phoneNumber && (
+                        <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded flex items-center gap-1 font-bold" dir="ltr">
+                          <Phone className="h-2.5 w-2.5 text-cropsa-600" />
+                          {c.phoneNumber}
+                        </span>
+                      )}
                     </div>
                   </div>
                   
@@ -899,8 +921,12 @@ export const Clients: React.FC = () => {
                     className="hover:bg-slate-50/80 transition-colors"
                   >
                     {/* Name & Activity */}
-                    <td className="px-5 py-3.5">
-                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
+                    <td 
+                      className="px-5 py-3.5 cursor-pointer group" 
+                      onClick={() => setSelectedClientId(c.id)}
+                      title="اضغط لعرض تفاصيل العميل بالكامل"
+                    >
+                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap group-hover:text-cropsa-600 transition-colors">
                         <span>{c.name}</span>
                         {c.creditRating && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-mono font-bold">
@@ -919,8 +945,19 @@ export const Clients: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {c.profession || 'نشاط تجاري'} • {c.governorate || 'القاهرة'}
+                      <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                        {c.phoneNumber && (
+                          <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold" dir="ltr">
+                            <Phone className="h-2.5 w-2.5 text-cropsa-600" />
+                            <span>{c.phoneNumber}</span>
+                          </span>
+                        )}
+                        <span className="bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+                          <MapPin className="h-2.5 w-2.5 text-sky-600" />
+                          <span>{c.governorate || 'القاهرة'}</span>
+                        </span>
+                        <span className="text-slate-400">•</span>
+                        <span className="text-slate-600">{c.profession || 'نشاط تجاري'}</span>
                       </div>
                     </td>
 

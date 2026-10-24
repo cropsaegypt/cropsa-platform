@@ -15,7 +15,16 @@ import {
   Trash2,
   Check,
   ArrowRight,
-  Layers
+  Layers,
+  Phone,
+  PhoneCall,
+  MapPin,
+  Briefcase,
+  Copy,
+  ExternalLink,
+  FolderOpen,
+  MessageCircle,
+  CreditCard
 } from 'lucide-react';
 import { Client, ApplicationStatus, STATUS_ARABIC } from '../types';
 import { ClientSolvencyGauge } from './ClientSolvencyGauge';
@@ -59,6 +68,32 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
     const approvedTotal = approvedApps.reduce((acc, curr) => acc + (curr.approvedAmount || 0), 0);
     const usedTotal = approvedApps.reduce((acc, curr) => acc + (curr.usedAmount || 0), 0);
     const available = approvedTotal - usedTotal;
+
+    const [copiedField, setCopiedField] = useState<string | null>(null);
+    const handleCopy = (text: string, fieldName: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedField(fieldName);
+        setTimeout(() => setCopiedField(null), 2000);
+    };
+
+    // Fallbacks from clientApps if client fields are missing
+    const appWithPhone = clientApps.find(a => a.phoneNumber && a.phoneNumber.trim());
+    const appWithGov = clientApps.find(a => a.governorate && a.governorate.trim());
+    const appWithProf = clientApps.find(a => a.profession && a.profession.trim());
+
+    const clientPhone = client?.phoneNumber || appWithPhone?.phoneNumber || '';
+    const cleanPhone = clientPhone.replace(/\D/g, '').replace(/^0+/, '');
+    const clientGov = client?.governorate || appWithGov?.governorate || 'القاهرة';
+    const clientProfession = client?.profession || appWithProf?.profession || 'تاجر';
+    const clientAddress = client?.address || '';
+
+    // Search for Google Drive link in notes or any app description
+    const allNotesText = [
+        client?.notes,
+        ...clientApps.map(a => a.description)
+    ].filter(Boolean).join('\n');
+    const driveMatch = allNotesText.match(/(https?:\/\/drive\.google\.com\/[^\s]+)/i);
+    const driveFolderUrl = driveMatch ? driveMatch[0] : null;
 
     // Companies this client is associated with
     const clientCompanies = useMemo(() => {
@@ -252,6 +287,108 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                     </button>
                 </div>
 
+                {/* Prominent Client Contact & Quick Info Bar */}
+                <div className="bg-slate-900 border-b border-slate-800 p-4 text-white">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-center">
+                        {/* Phone & WhatsApp */}
+                        <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/80 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                                    <Phone className="w-4 h-4" />
+                                </div>
+                                <div className="truncate">
+                                    <span className="text-[10px] text-slate-400 block font-medium">رقم الهاتف</span>
+                                    <span className="text-xs font-bold text-white font-mono" dir="ltr">
+                                        {clientPhone || 'غير مسجل'}
+                                    </span>
+                                </div>
+                            </div>
+                            {clientPhone && (
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <a
+                                        href={`tel:${clientPhone}`}
+                                        className="p-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 rounded-lg transition-colors"
+                                        title="اتصال هاتفي مباشر"
+                                    >
+                                        <PhoneCall className="w-3.5 h-3.5" />
+                                    </a>
+                                    <a
+                                        href={`https://wa.me/20${cleanPhone}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold"
+                                        title="محادثة واتساب مباشرة"
+                                    >
+                                        <MessageCircle className="w-3.5 h-3.5" />
+                                        <span>واتساب</span>
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Governorate & Profession */}
+                        <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/80 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+                                <MapPin className="w-4 h-4" />
+                            </div>
+                            <div className="truncate">
+                                <span className="text-[10px] text-slate-400 block font-medium">المحافظة والمهنة</span>
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-white mt-0.5 truncate">
+                                    <span className="text-sky-300">{clientGov}</span>
+                                    <span className="text-slate-500">•</span>
+                                    <span className="text-slate-300 truncate">{clientProfession}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* National ID with Copy */}
+                        <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/80 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5 truncate">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                                    <CreditCard className="w-4 h-4" />
+                                </div>
+                                <div className="truncate">
+                                    <span className="text-[10px] text-slate-400 block font-medium">الرقم القومي</span>
+                                    <span className="text-xs font-bold font-mono text-white select-all block truncate" dir="ltr">
+                                        {client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID')) 
+                                          ? `مؤقت: ${client.nationalId}` 
+                                          : (client.nationalId || 'بدون رقم')}
+                                    </span>
+                                </div>
+                            </div>
+                            {client.nationalId && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopy(client.nationalId, 'nid')}
+                                    className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors text-[10px] font-bold flex items-center gap-1 shrink-0"
+                                    title="نسخ الرقم القومي"
+                                >
+                                    {copiedField === 'nid' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Google Drive Link Action */}
+                        <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/80 flex items-center justify-center">
+                            {driveFolderUrl ? (
+                                <a
+                                    href={driveFolderUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs py-2 px-3 rounded-lg shadow-xs transition-all"
+                                >
+                                    <FolderOpen className="w-4 h-4 text-amber-300 shrink-0" />
+                                    <span>مجلد المستندات Google Drive ↗</span>
+                                </a>
+                            ) : (
+                                <div className="w-full text-center text-slate-400 text-xs py-1">
+                                    <span>المستندات ترفع محلياً</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
                 {/* Sub-nav tabs */}
                 <div className="flex items-center gap-2 px-6 pt-3 border-b border-slate-100 bg-slate-50/70 text-xs font-bold text-slate-600 overflow-x-auto">
                     <button
@@ -347,29 +484,107 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                     {/* Contact & Personal Info */}
                                     <div className="bg-white border border-slate-200 rounded-2xl p-4">
                                         <h3 className="font-bold text-slate-900 mb-3 flex items-center text-xs">
-                                            <UserIcon className="h-4 w-4 ml-1.5 text-cropsa-600" /> البيانات الشخصية والمهنية
+                                            <UserIcon className="h-4 w-4 ml-1.5 text-cropsa-600" /> البيانات الشخصية والمهنية التفصيلية
                                         </h3>
                                         <div className="grid grid-cols-2 gap-3 text-xs">
                                             <div>
                                                 <p className="text-slate-400">المهنة / النشاط</p>
-                                                <p className="font-bold text-slate-800">{client.profession || 'غير محدد'}</p>
+                                                <p className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
+                                                    <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+                                                    <span>{clientProfession}</span>
+                                                </p>
                                             </div>
                                             <div>
                                                 <p className="text-slate-400">رقم الهاتف</p>
-                                                <p className="font-bold text-slate-800 font-mono" dir="ltr">{client.phoneNumber || '-'}</p>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className="font-bold text-slate-800 font-mono" dir="ltr">{clientPhone || '-'}</span>
+                                                    {clientPhone && (
+                                                        <a
+                                                            href={`https://wa.me/20${cleanPhone}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-emerald-700 hover:text-emerald-800 font-bold text-[10px] flex items-center gap-0.5 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded"
+                                                        >
+                                                            <MessageCircle className="w-3 h-3" /> واتساب
+                                                        </a>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div>
                                                 <p className="text-slate-400">المحافظة</p>
-                                                <p className="font-bold text-slate-800">{client.governorate || 'القاهرة'}</p>
+                                                <p className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
+                                                    <MapPin className="w-3.5 h-3.5 text-sky-600" />
+                                                    <span>{clientGov}</span>
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-slate-400">العنوان التفصيلي</p>
+                                                <p className="font-bold text-slate-800 mt-0.5">{clientAddress || 'غير مسجل'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-slate-400">الرقم القومي</p>
+                                                <p className="font-bold text-slate-800 font-mono select-all mt-0.5" dir="ltr">
+                                                    {client.hasMissingNationalId || (client.nationalId && client.nationalId.startsWith('TEMP-NID')) 
+                                                      ? `معرف مؤقت: ${client.nationalId}` 
+                                                      : (client.nationalId || 'بدون رقم')}
+                                                </p>
                                             </div>
                                             <div>
                                                 <p className="text-slate-400">تاريخ الإضافة بالنظام</p>
-                                                <p className="font-bold text-slate-800" dir="ltr">
-                                                    {new Date(client.addedAt).toLocaleDateString()}
+                                                <p className="font-bold text-slate-800 mt-0.5" dir="ltr">
+                                                    {new Date(client.addedAt || client.createdAt || Date.now()).toLocaleDateString('ar-EG')}
                                                 </p>
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Client Notes & Links Card if present */}
+                                    {allNotesText && (
+                                        <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                                            <h3 className="font-bold text-slate-900 mb-2 flex items-center justify-between text-xs">
+                                                <span className="flex items-center gap-1.5">
+                                                    <FileText className="h-4 w-4 text-cropsa-600" />
+                                                    <span>ملاحظات ومستندات العميل</span>
+                                                </span>
+                                                {driveFolderUrl && (
+                                                    <a
+                                                        href={driveFolderUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-indigo-100 transition-colors"
+                                                    >
+                                                        <FolderOpen className="w-3 h-3 text-amber-500" />
+                                                        <span>مجلد Drive</span>
+                                                    </a>
+                                                )}
+                                            </h3>
+                                            <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                                {allNotesText.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+                                                    if (part.match(/(https?:\/\/[^\s]+)/)) {
+                                                        const isDrive = part.includes('drive.google.com');
+                                                        return (
+                                                            <a
+                                                                key={i}
+                                                                href={part}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className={`font-bold inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded underline text-[11px] ${
+                                                                    isDrive 
+                                                                        ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200' 
+                                                                        : 'text-blue-600 hover:text-blue-800'
+                                                                }`}
+                                                                dir="ltr"
+                                                            >
+                                                                <span>{isDrive ? '📁 رابط المستندات (Google Drive)' : part}</span>
+                                                                <ExternalLink className="w-3 h-3 inline" />
+                                                            </a>
+                                                        );
+                                                    }
+                                                    return part;
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Companies Status Card in Overview */}
                                     <div className="bg-gradient-to-br from-sky-50/80 to-slate-50 border border-sky-200/90 rounded-2xl p-4 space-y-3">
@@ -529,26 +744,64 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({ client: pr
                                             <tr key={app.id} className="hover:bg-slate-50/50">
                                                 <td className="px-4 py-3 font-mono text-xs font-bold text-slate-700">#{app.id}</td>
                                                 <td className="px-4 py-3 text-slate-500" dir="ltr">{new Date(app.submittedAt).toLocaleDateString()}</td>
-                                                <td className="px-4 py-3 font-bold text-slate-900">{app.requestedAmount.toLocaleString()} ج.م</td>
-                                                <td className="px-4 py-3 font-bold text-emerald-600">
-                                                    {app.approvedAmount ? `${app.approvedAmount.toLocaleString()} ج.م` : '-'}
+                                                <td className="px-4 py-3 font-bold text-slate-900">
+                                                    <span>{app.requestedAmount.toLocaleString()} ج.م</span>
+                                                    <span className="block text-[10px] text-slate-400 font-normal">({app.durationMonths || 12} شهر)</span>
+                                                </td>
+                                                <td className="px-4 py-3 font-bold">
+                                                    {(app.status === ApplicationStatus.APPROVED || app.status === ApplicationStatus.CONTRACT_SIGNING || app.status === ApplicationStatus.AMOUNT_TRANSFERRED) ? (
+                                                        <span className="text-emerald-600">{(app.approvedAmount || app.requestedAmount).toLocaleString()} ج.م</span>
+                                                    ) : app.status === ApplicationStatus.REJECTED ? (
+                                                        <span className="text-rose-500 font-normal">تم الرفض</span>
+                                                    ) : (
+                                                        <span className="text-amber-700 font-normal text-[11px]">قيد المراجعة</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                                        app.status === ApplicationStatus.APPROVED 
+                                                        app.status === ApplicationStatus.APPROVED || app.status === ApplicationStatus.AMOUNT_TRANSFERRED || app.status === ApplicationStatus.CONTRACT_SIGNING
                                                             ? 'bg-emerald-100 text-emerald-800'
                                                             : app.status === ApplicationStatus.REJECTED
                                                             ? 'bg-rose-100 text-rose-800'
                                                             : 'bg-amber-100 text-amber-800'
                                                     }`}>
-                                                        {app.status === ApplicationStatus.APPROVED ? 'معتمد' : app.status === ApplicationStatus.REJECTED ? 'مرفوض' : app.status}
+                                                        {STATUS_ARABIC[app.status] || app.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 text-[11px] text-slate-600 max-w-xs truncate">
-                                                    {app.rejectionReason ? `سبب الرفض: ${app.rejectionReason}` : app.reviewNote || '-'}
+                                                <td className="px-4 py-3 text-[11px] text-slate-700 max-w-xs">
+                                                    <div className="space-y-1">
+                                                        {app.rejectionReason && (
+                                                            <span className="text-rose-700 font-bold block">سبب الرفض: {app.rejectionReason}</span>
+                                                        )}
+                                                        {(app.reviewNote || app.description) && (
+                                                            <div className="text-slate-600">
+                                                                {String(app.reviewNote || app.description).split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+                                                                    if (part.match(/(https?:\/\/[^\s]+)/)) {
+                                                                        const isDrive = part.includes('drive.google.com');
+                                                                        return (
+                                                                            <a
+                                                                                key={i}
+                                                                                href={part}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className={`inline-flex items-center gap-1 font-bold underline mx-1 ${
+                                                                                    isDrive ? 'text-indigo-700 bg-indigo-50 px-1 py-0.5 rounded' : 'text-blue-600'
+                                                                                }`}
+                                                                                dir="ltr"
+                                                                            >
+                                                                                <span>{isDrive ? '📁 رابط المستندات Google Drive' : part}</span>
+                                                                                <ExternalLink className="w-3 h-3" />
+                                                                            </a>
+                                                                        );
+                                                                    }
+                                                                    return part;
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-[11px] text-slate-500">
-                                                    {app.companyName || app.assignedCompanyIds.map(cid => users.find(u => u.id === cid)?.name).join(', ') || 'كروبسا'}
+                                                    {app.companyName || app.assignedCompanyIds?.map(cid => users.find(u => u.id === cid)?.name).filter(Boolean).join(', ') || 'كروبسا'}
                                                 </td>
                                             </tr>
                                         ))}

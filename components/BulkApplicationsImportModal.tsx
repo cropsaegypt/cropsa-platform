@@ -267,20 +267,46 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
             normalized['المهنه'] || normalized['الوظيفه'] || normalized['profession'] || 'تاجر'
           ).trim();
 
+          const description = String(
+            normalized['ملاحظات'] || normalized['وصف'] || normalized['notes'] || normalized['description'] || 'طلب تقسيط مستورد مجمعاً'
+          ).trim();
+
           const requestedAmount = parseSmartAmount(
             normalized['المبلغالمطلوب'] || normalized['مبلغالطلب'] || normalized['المطلوب'] || 
             normalized['requestedamount'] || normalized['amount'] || 50000
           );
 
-          const approvedAmount = parseSmartAmount(
-            normalized['المبلغالمعتمد'] || normalized['المعتمد'] || normalized['مبلغالتمويل'] || 
-            normalized['approvedamount'] || requestedAmount
+          // Status matching
+          const statusRaw = String(
+            normalized['الحاله'] || normalized['المرحله'] || normalized['status'] || normalized['stage'] || ''
           );
+          const status = parseSmartStatus(statusRaw);
 
-          const durationMonths = parseInt(String(
+          const isApprovedStatus = status === ApplicationStatus.APPROVED || 
+                                   status === ApplicationStatus.CONTRACT_SIGNING || 
+                                   status === ApplicationStatus.AMOUNT_TRANSFERRED;
+
+          const rawApprovedStr = normalized['المبلغالمعتمد'] || normalized['المعتمد'] || normalized['مبلغالتمويل'] || normalized['approvedamount'];
+          
+          const approvedAmount = rawApprovedStr 
+            ? parseSmartAmount(rawApprovedStr) 
+            : (isApprovedStatus ? requestedAmount : 0);
+
+          let durationMonths = parseInt(String(
             normalized['المده'] || normalized['مدهالتقسيط'] || normalized['الشهور'] || 
-            normalized['duration'] || normalized['months'] || 12
-          )) || 12;
+            normalized['duration'] || normalized['months'] || ''
+          ));
+
+          // If duration not explicitly in a column, check description for expressions like "على 7 شهور", "7 شهور", "لمدة 6 أشهر"
+          if (!durationMonths || isNaN(durationMonths)) {
+            const durationMatch = description.match(/(?:على|خلال|لمدة|مدة)\s*(\d+)\s*(?:شهر|شهور|أشهر|months?)/i) || 
+                                  description.match(/(\d+)\s*(?:شهر|شهور|أشهر)/i);
+            if (durationMatch) {
+              durationMonths = parseInt(durationMatch[1], 10);
+            } else {
+              durationMonths = 12;
+            }
+          }
 
           // Company matching
           const companyRaw = String(
@@ -296,12 +322,6 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
           ).trim();
           const matchedProg = matchProgram(matchedComp.id, programRaw);
 
-          // Status matching
-          const statusRaw = String(
-            normalized['الحاله'] || normalized['المرحله'] || normalized['status'] || normalized['stage'] || ''
-          );
-          const status = parseSmartStatus(statusRaw);
-
           // Submitted date (دخل من امتي)
           const submittedRaw = normalized['تاريخالتقديم'] || normalized['تاريخالدخول'] || normalized['تاريخالطلب'] || normalized['submittedat'] || normalized['date'];
           const submittedAt = parseSmartDateStr(submittedRaw, globalSubmittedAt);
@@ -309,10 +329,6 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
           // Last stage date (واخر مرحلة كانت يوم كام)
           const lastStageRaw = normalized['تاريخاخرمرحله'] || normalized['تاريخالتحديث'] || normalized['تاريخالموافقه'] || normalized['laststagedate'] || normalized['updatedat'];
           const lastStageDate = parseSmartDateStr(lastStageRaw, globalLastStageDate);
-
-          const description = String(
-            normalized['ملاحظات'] || normalized['وصف'] || normalized['notes'] || normalized['description'] || 'طلب تقسيط مستورد مجمعاً'
-          ).trim();
 
           rows.push({
             id: `row_${Date.now()}_${idx}`,

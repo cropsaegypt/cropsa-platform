@@ -39,6 +39,7 @@ import {
   Trash2,
   Calculator,
   Inbox,
+  FolderOpen,
   Sparkles
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
@@ -1427,21 +1428,40 @@ export const Applications: React.FC = () => {
                        </div>
                     </div>
                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 col-span-2 md:col-span-1">
-                       <h4 className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-3">الوضع المالي</h4>
+                       <h4 className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-3">الوضع المالي والائتماني</h4>
                        <div className="flex justify-between items-end">
                           <div>
                             <p className="text-xs text-blue-400">المبلغ المطلوب</p>
                             <p className="text-lg font-bold text-blue-900">{selectedApp.requestedAmount.toLocaleString()} ج.م</p>
                             <p className="text-xs text-blue-400 mt-1">{selectedApp.financeType === 'INSTALLMENT' ? 'تقسيط' : 'آجل'} - {selectedApp.durationMonths} شهر</p>
                           </div>
-                          {selectedApp.approvedAmount && (
+                          {(selectedApp.status === ApplicationStatus.APPROVED || 
+                            selectedApp.status === ApplicationStatus.CONTRACT_SIGNING || 
+                            selectedApp.status === ApplicationStatus.AMOUNT_TRANSFERRED) ? (
                             <div className="text-left">
-                               <p className="text-xs text-emerald-600 font-bold bg-emerald-100 px-2 py-0.5 rounded mb-1">موافق عليه</p>
-                               <p className="text-lg font-bold text-emerald-700">{selectedApp.approvedAmount.toLocaleString()} ج.م</p>
+                               <p className="text-xs text-emerald-600 font-bold bg-emerald-100 px-2 py-0.5 rounded mb-1">موافق عليه ومصرح</p>
+                               <p className="text-lg font-bold text-emerald-700">{(selectedApp.approvedAmount || selectedApp.requestedAmount).toLocaleString()} ج.م</p>
                                <div className="mt-2 border-t border-blue-200 pt-1">
                                   <p className="text-xs text-blue-500">الرصيد المتاح:</p>
-                                  <p className="text-xl font-bold text-blue-800">{((selectedApp.approvedAmount || 0) - selectedApp.usedAmount).toLocaleString()} ج.م</p>
+                                  <p className="text-xl font-bold text-blue-800">{((selectedApp.approvedAmount || selectedApp.requestedAmount) - selectedApp.usedAmount).toLocaleString()} ج.م</p>
                                </div>
+                            </div>
+                          ) : selectedApp.status === ApplicationStatus.REJECTED ? (
+                            <div className="text-left">
+                               <p className="text-xs text-rose-600 font-bold bg-rose-100 px-2 py-0.5 rounded mb-1">تم رفض الطلب</p>
+                               <p className="text-xs text-rose-500 max-w-[130px] truncate">{selectedApp.rejectionReason || 'عدم استيفاء الشروط'}</p>
+                            </div>
+                          ) : (
+                            <div className="text-left">
+                               <span className="inline-block text-xs text-amber-800 font-bold bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-lg mb-1">
+                                 {STATUS_ARABIC[selectedApp.status] || selectedApp.status}
+                               </span>
+                               <p className="text-[11px] text-slate-600 font-bold mt-1">
+                                 حالة الاعتماد: قيد الدراسة
+                               </p>
+                               <p className="text-[10px] text-slate-500">
+                                 لم يصدر قرار ائتماني بعد
+                               </p>
                             </div>
                           )}
                        </div>
@@ -1480,11 +1500,71 @@ export const Applications: React.FC = () => {
                    </div>
                  )}
 
-                 {/* Description */}
+                 {/* Description & Interactive Links */}
                  {selectedApp.description && (
                    <div className="bg-white border border-gray-200 rounded-xl p-4">
-                      <h4 className="text-sm font-bold text-gray-900 mb-2">ملاحظات الطلب</h4>
-                      <p className="text-gray-600 text-sm leading-relaxed">{selectedApp.description}</p>
+                      <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center justify-between">
+                        <span>ملاحظات الطلب والمستندات</span>
+                        {selectedApp.description.includes('drive.google.com') && (
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <FolderOpen className="h-3 w-3 text-amber-500" />
+                            يحتوي على رابط Google Drive
+                          </span>
+                        )}
+                      </h4>
+                      <div className="text-gray-700 text-sm leading-relaxed">
+                        {(() => {
+                          const text = selectedApp.description;
+                          const urlRegex = /(https?:\/\/[^\s]+)/g;
+                          const parts = text.split(urlRegex);
+                          const driveMatch = text.match(/(https?:\/\/drive\.google\.com\/[^\s]+)/i);
+                          const driveUrl = driveMatch ? driveMatch[0] : null;
+
+                          return (
+                            <div>
+                              <p className="whitespace-pre-wrap leading-relaxed">
+                                {parts.map((part, idx) => {
+                                  if (part.match(urlRegex)) {
+                                    const isDrive = part.includes('drive.google.com');
+                                    return (
+                                      <a
+                                        key={idx}
+                                        href={part}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`font-semibold inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded transition-all underline ${
+                                          isDrive 
+                                            ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-900 border border-indigo-200 font-bold' 
+                                            : 'text-blue-600 hover:text-blue-800'
+                                        }`}
+                                        dir="ltr"
+                                      >
+                                        <span>{isDrive ? '📁 مجلد المستندات (Google Drive)' : part}</span>
+                                        <ExternalLink className="h-3 w-3 inline" />
+                                      </a>
+                                    );
+                                  }
+                                  return part;
+                                })}
+                              </p>
+
+                              {driveUrl && (
+                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                  <a
+                                    href={driveUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-xs transition-all w-full sm:w-auto justify-center"
+                                  >
+                                    <FolderOpen className="h-4 w-4 text-amber-300" />
+                                    <span>فتح مجلد ومستندات العميل على Google Drive ↗</span>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
                    </div>
                  )}
 
@@ -1941,8 +2021,8 @@ export const Applications: React.FC = () => {
       {/* Customer Detail Modal Overlay */}
       {showClientModal && selectedApp && (
           <ClientDetailModal 
-            client={clients.find(c => c.nationalId === selectedApp.clientNationalId) || {
-              id: `client_${selectedApp.id}`,
+            client={clients.find(c => (selectedApp.clientId && c.id === selectedApp.clientId) || (selectedApp.clientNationalId && c.nationalId === selectedApp.clientNationalId)) || {
+              id: selectedApp.clientId || `client_${selectedApp.id}`,
               name: selectedApp.clientName,
               nationalId: selectedApp.clientNationalId || '',
               phoneNumber: selectedApp.phoneNumber,
