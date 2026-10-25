@@ -305,7 +305,9 @@ export const CropsaSettings: React.FC = () => {
     }
   };
 
-  const handleTestSmtpConnection = () => {
+  const [testingSmtp, setTestingSmtp] = useState(false);
+
+  const handleTestSmtpConnection = async () => {
     setSmtpTestResult(null);
     if (!localSmtp.host || !localSmtp.user) {
       setSmtpTestResult({
@@ -314,12 +316,29 @@ export const CropsaSettings: React.FC = () => {
       });
       return;
     }
-    setTimeout(() => {
-      setSmtpTestResult({
-        success: true,
-        message: `تم التحقق بنجاح من إعدادات الخادم (${localSmtp.host}:${localSmtp.port}) والتشفير (${localSmtp.secure ? 'SSL/TLS' : 'STARTTLS'}). جاهز للإرسال المباشر 🟢`
+    setTestingSmtp(true);
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testConnection: true,
+          smtpConfig: localSmtp
+        })
       });
-    }, 600);
+      const data = await res.json().catch(() => ({ success: false, message: 'استجابة غير صالحة من السيرفر' }));
+      setSmtpTestResult({
+        success: !!data.success,
+        message: data.message || (data.success ? 'تم الاتصال بالخادم بنجاح 🟢' : 'فشل الاتصال بالخادم')
+      });
+    } catch (err: any) {
+      setSmtpTestResult({
+        success: false,
+        message: `تعذر الاتصال بخادم البريد: ${err?.message || 'خطأ في الشبكة'}`
+      });
+    } finally {
+      setTestingSmtp(false);
+    }
   };
 
   // Preview background computation
@@ -1097,6 +1116,57 @@ export const CropsaSettings: React.FC = () => {
               </label>
             </div>
 
+            {/* Quick SMTP Presets */}
+            <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2.5">
+              <span className="text-[11px] font-black text-indigo-950 block">
+                ⚡ إعدادات وتعبئة سريعة لمزودي البريد الشائعين:
+              </span>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setLocalSmtp(prev => ({
+                    ...prev,
+                    enabled: true,
+                    host: 'smtp.gmail.com',
+                    port: 465,
+                    secure: true
+                  }))}
+                  className="px-3 py-1.5 bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-300 rounded-xl font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Gmail (App Password - 465 SSL)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalSmtp(prev => ({
+                    ...prev,
+                    enabled: true,
+                    host: 'smtp.office365.com',
+                    port: 587,
+                    secure: false
+                  }))}
+                  className="px-3 py-1.5 bg-white hover:bg-sky-100 text-sky-700 border border-sky-300 rounded-xl font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Microsoft Outlook / Office 365 (587 TLS)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalSmtp(prev => ({
+                    ...prev,
+                    enabled: true,
+                    host: 'mail.yourdomain.com',
+                    port: 465,
+                    secure: true
+                  }))}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Webmail / cPanel المؤسسي (465 SSL)</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-indigo-900 leading-relaxed font-medium">
+                💡 <strong>تنبيه لحسابات Gmail:</strong> تتطلب جوجل تفعيل التحقق بخطوتين وإنشاء <strong>كلمة مرور تطبيقات (App Password)</strong> مكونة من 16 حرفاً من إعدادات أمان حساب جوجل واستخدامها بدلاً من كلمة مرور الإيميل المعتادة.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1221,10 +1291,11 @@ export const CropsaSettings: React.FC = () => {
               <button
                 type="button"
                 onClick={handleTestSmtpConnection}
-                className="px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold flex items-center gap-2 transition"
+                disabled={testingSmtp}
+                className="px-4 py-2.5 rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
               >
                 <Server className="w-4 h-4" />
-                <span>اختبار الاتصال بالخادم الآن</span>
+                <span>{testingSmtp ? 'جاري فحص الاتصال الحقيقي بالسيرفر...' : 'اختبار الاتصال بالخادم الآن'}</span>
               </button>
 
               <button

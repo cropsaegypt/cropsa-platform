@@ -619,6 +619,7 @@ export interface Application {
   branchId?: string;
   supplierId?: string;
   salesmanId?: string;
+  salesmanName?: string;
   totalAmount?: number;
   downPayment?: number;
   financedAmount?: number;

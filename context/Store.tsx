@@ -322,6 +322,12 @@ interface StoreContextType {
   analyzeInboxMessageWithAi: (messageId: string) => Promise<InboxMessageAiAnalysis | undefined>;
   applyInboxMessageToPlatform: (messageId: string) => Promise<boolean>;
   deleteInboxMessage: (messageId: string) => Promise<void>;
+  clearAllInboxMessages: () => Promise<void>;
+
+  // Sales Representatives (موظفي ومندوبي المبيعات بما فيهم غير المسجلين)
+  salesRepresentatives: string[];
+  addSalesRepresentative: (name: string) => Promise<void>;
+  deleteSalesRepresentative: (name: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -418,13 +424,49 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   });
 
+  // Track permanently deleted inbox message IDs so they NEVER get restored by defaults or cache
+  const [deletedInboxMessageIds, setDeletedInboxMessageIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_deleted_inbox_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>(() => {
     try {
+      const savedDeleted = localStorage.getItem('cropsa_deleted_inbox_ids');
+      const delIds: string[] = savedDeleted ? JSON.parse(savedDeleted) : [];
       const saved = localStorage.getItem('cropsa_inbox_messages');
-      if (saved) return JSON.parse(saved);
-      return DEFAULT_INBOX_MESSAGES;
+      if (saved) {
+        const parsed: InboxMessage[] = JSON.parse(saved);
+        return parsed.filter(m => !delIds.includes(m.id));
+      }
+      return DEFAULT_INBOX_MESSAGES.filter(m => !delIds.includes(m.id));
     } catch {
-      return DEFAULT_INBOX_MESSAGES;
+      return [];
+    }
+  });
+
+  // Sales representatives list (including non-registered offline staff)
+  const [salesRepresentatives, setSalesRepresentatives] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_sales_representatives');
+      if (saved) return JSON.parse(saved);
+      return [
+        'أحمد محمود (مبيعات القاهرة)',
+        'محمد عبد الله (مبيعات الصعيد)',
+        'محمود حسن (مبيعات الدلتا)',
+        'سارة إبراهيم (مبيعات الإسكندرية)'
+      ];
+    } catch {
+      return [
+        'أحمد محمود (مبيعات القاهرة)',
+        'محمد عبد الله (مبيعات الصعيد)',
+        'محمود حسن (مبيعات الدلتا)',
+        'سارة إبراهيم (مبيعات الإسكندرية)'
+      ];
     }
   });
 
@@ -841,7 +883,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           usersDataRes,
           financingProgramsRes,
           clientsDataRes,
-          deletedCompanyIdsRes
+          deletedCompanyIdsRes,
+          inboxMessagesRes,
+          deletedInboxIdsRes,
+          salesRepsRes
         ] = await Promise.all([
           supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
           supabase!.from('companies').select('*'),
@@ -858,7 +903,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supabase!.from('system_settings').select('data').eq('id', 'users_data').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'financing_programs').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'clients_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'deleted_company_ids').maybeSingle()
+          supabase!.from('system_settings').select('data').eq('id', 'deleted_company_ids').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'inbox_messages').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'deleted_inbox_ids').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'sales_representatives').maybeSingle()
         ]);
 
         const isRemoteWiped = demoWipedRes?.data?.data?.wiped === true;
@@ -937,6 +985,41 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           try {
             localStorage.setItem('cropsa_external_dispatch_templates', JSON.stringify(extTmplRes.data.data));
           } catch (e) {}
+        }
+
+        // Process Permanently Deleted Inbox Message IDs (to prevent re-caching)
+        let remoteDeletedInboxIds: string[] = [];
+        if (deletedInboxIdsRes?.data?.data && Array.isArray(deletedInboxIdsRes.data.data)) {
+          remoteDeletedInboxIds = deletedInboxIdsRes.data.data;
+          setDeletedInboxMessageIds(prev => {
+            const merged = Array.from(new Set([...prev, ...remoteDeletedInboxIds]));
+            try {
+              localStorage.setItem('cropsa_deleted_inbox_ids', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+
+        // Process Inbox Messages
+        if (inboxMessagesRes?.data?.data && Array.isArray(inboxMessagesRes.data.data) && isMounted) {
+          const remoteInbox = inboxMessagesRes.data.data as InboxMessage[];
+          const cleaned = remoteInbox.filter(m => !remoteDeletedInboxIds.includes(m.id));
+          setInboxMessages(cleaned);
+          try {
+            localStorage.setItem('cropsa_inbox_messages', JSON.stringify(cleaned));
+          } catch (e) {}
+        }
+
+        // Process Sales Representatives (المندوبين وموظفي المبيعات)
+        if (salesRepsRes?.data?.data && Array.isArray(salesRepsRes.data.data) && isMounted) {
+          const remoteReps = salesRepsRes.data.data as string[];
+          setSalesRepresentatives(prev => {
+            const merged = Array.from(new Set([...prev, ...remoteReps]));
+            try {
+              localStorage.setItem('cropsa_sales_representatives', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
         }
 
         // 2. Process Companies
@@ -5676,6 +5759,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const deleteInboxMessage = async (messageId: string): Promise<void> => {
     let nextMessages: InboxMessage[] = [];
+    let nextDeletedIds: string[] = [];
+
+    setDeletedInboxMessageIds(prev => {
+      nextDeletedIds = Array.from(new Set([...prev, messageId]));
+      try {
+        localStorage.setItem('cropsa_deleted_inbox_ids', JSON.stringify(nextDeletedIds));
+      } catch (e) {}
+      return nextDeletedIds;
+    });
+
     setInboxMessages(prev => {
       nextMessages = prev.filter(m => m.id !== messageId);
       try {
@@ -5686,13 +5779,111 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     if (supabase) {
       try {
-        await supabase.from('system_settings').upsert({
-          id: 'inbox_messages',
-          data: nextMessages,
-          updated_at: new Date().toISOString()
-        });
+        await Promise.all([
+          supabase.from('system_settings').upsert({
+            id: 'inbox_messages',
+            data: nextMessages,
+            updated_at: new Date().toISOString()
+          }),
+          supabase.from('system_settings').upsert({
+            id: 'deleted_inbox_ids',
+            data: nextDeletedIds,
+            updated_at: new Date().toISOString()
+          })
+        ]);
       } catch (e: any) {
         console.warn('Supabase inbox delete error:', e);
+      }
+    }
+  };
+
+  const clearAllInboxMessages = async (): Promise<void> => {
+    let allIdsToMark: string[] = [];
+    setInboxMessages(prev => {
+      allIdsToMark = prev.map(m => m.id);
+      try {
+        localStorage.setItem('cropsa_inbox_messages', JSON.stringify([]));
+      } catch (e) {}
+      return [];
+    });
+
+    let nextDeletedIds: string[] = [];
+    setDeletedInboxMessageIds(prev => {
+      nextDeletedIds = Array.from(new Set([...prev, ...allIdsToMark]));
+      try {
+        localStorage.setItem('cropsa_deleted_inbox_ids', JSON.stringify(nextDeletedIds));
+      } catch (e) {}
+      return nextDeletedIds;
+    });
+
+    if (supabase) {
+      try {
+        await Promise.all([
+          supabase.from('system_settings').upsert({
+            id: 'inbox_messages',
+            data: [],
+            updated_at: new Date().toISOString()
+          }),
+          supabase.from('system_settings').upsert({
+            id: 'deleted_inbox_ids',
+            data: nextDeletedIds,
+            updated_at: new Date().toISOString()
+          })
+        ]);
+      } catch (e: any) {
+        console.warn('Supabase clearAllInboxMessages error:', e);
+      }
+    }
+  };
+
+  // =========================================================================
+  // SALES REPRESENTATIVES (إدارة مناديب وموظفي المبيعات - المسجلين وغير المسجلين)
+  // =========================================================================
+  const addSalesRepresentative = async (name: string): Promise<void> => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    let nextReps: string[] = [];
+    setSalesRepresentatives(prev => {
+      if (prev.includes(trimmed)) return prev;
+      nextReps = [...prev, trimmed];
+      try {
+        localStorage.setItem('cropsa_sales_representatives', JSON.stringify(nextReps));
+      } catch (e) {}
+      return nextReps;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'sales_representatives',
+          data: nextReps.length > 0 ? nextReps : [trimmed],
+          updated_at: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('Supabase addSalesRepresentative error:', e);
+      }
+    }
+  };
+
+  const deleteSalesRepresentative = async (name: string): Promise<void> => {
+    let nextReps: string[] = [];
+    setSalesRepresentatives(prev => {
+      nextReps = prev.filter(n => n !== name);
+      try {
+        localStorage.setItem('cropsa_sales_representatives', JSON.stringify(nextReps));
+      } catch (e) {}
+      return nextReps;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'sales_representatives',
+          data: nextReps,
+          updated_at: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('Supabase deleteSalesRepresentative error:', e);
       }
     }
   };
@@ -7227,7 +7418,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       addInboxMessage,
       analyzeInboxMessageWithAi,
       applyInboxMessageToPlatform,
-      deleteInboxMessage
+      deleteInboxMessage,
+      clearAllInboxMessages,
+
+      salesRepresentatives,
+      addSalesRepresentative,
+      deleteSalesRepresentative
     }}>
       {children}
     </StoreContext.Provider>

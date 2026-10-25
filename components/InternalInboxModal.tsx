@@ -35,6 +35,7 @@ export const InternalInboxModal: React.FC<InternalInboxModalProps> = ({ isOpen, 
     applyInboxMessageToPlatform, 
     addInboxMessage,
     deleteInboxMessage,
+    clearAllInboxMessages,
     companies 
   } = useStore();
 
@@ -117,6 +118,16 @@ export const InternalInboxModal: React.FC<InternalInboxModalProps> = ({ isOpen, 
     }
   };
 
+  const handleClearAllMessages = async () => {
+    if (!window.confirm('هل أنت متأكد من رغبتك في تفريغ صندوق الوارد بالكامل وحذف جميع الرسائل والكاش نهائياً؟')) {
+      return;
+    }
+    await clearAllInboxMessages();
+    setSelectedMessageId('');
+    setSuccessToast('تم تفريغ صندوق الوارد وحذف جميع الرسائل والكاش بنجاح 🗑️');
+    setTimeout(() => setSuccessToast(null), 3000);
+  };
+
   const handleCreateNewReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContent.trim()) {
@@ -174,6 +185,17 @@ export const InternalInboxModal: React.FC<InternalInboxModalProps> = ({ isOpen, 
           </div>
 
           <div className="flex items-center gap-2">
+            {inboxMessages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllMessages}
+                className="py-1.5 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold flex items-center gap-1.5 transition-all border border-rose-400/30 cursor-pointer"
+                title="تفريغ جميع رسائل البريد والردود وحذفها من الكاش نهائياً"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-300" />
+                <span>مسح الكل (تفريغ الكاش)</span>
+              </button>
+            )}
             <button
               onClick={() => setShowNewReplyModal(true)}
               className="py-1.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all border border-white/10"

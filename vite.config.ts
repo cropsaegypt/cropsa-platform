@@ -12,8 +12,15 @@ function emailApiPlugin() {
           req.on('data', (chunk: any) => { bodyStr += chunk; });
           req.on('end', async () => {
             try {
-              req.body = JSON.parse(bodyStr);
-              const handler = (await import('./api/send-email.js')).default || (await import('./api/send-email.ts')).default;
+              req.body = bodyStr ? JSON.parse(bodyStr) : {};
+              let handler: any;
+              try {
+                const mod = await server.ssrLoadModule('./api/send-email.ts');
+                handler = mod.default || mod;
+              } catch (ssrErr) {
+                const mod = await import('./api/send-email.ts');
+                handler = mod.default || mod;
+              }
               await handler(req, res);
             } catch (err: any) {
               res.statusCode = 500;

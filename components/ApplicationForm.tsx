@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Role, Application, ApplicationDocument, ProgramDocumentItem } from '../types';
+import { Role, Application, ApplicationDocument, ProgramDocumentItem, ApplicationStatus, STATUS_ARABIC } from '../types';
 import { useStore } from '../context/Store';
 import { 
   FileUp, 
@@ -25,7 +25,10 @@ import {
   RefreshCw,
   FileText,
   Image as ImageIcon,
-  AlertCircle
+  AlertCircle,
+  UserCheck,
+  DollarSign,
+  Clock
 } from 'lucide-react';
 import { InternalDocViewerModal } from './InternalDocViewerModal';
 
@@ -67,7 +70,13 @@ interface ApplicationFormProps {
 }
 
 export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, onSubmit, users, currentUserRole, submitLabel = 'إرسال الطلب' }) => {
-  const { applicationQuestions, companies, financingPrograms } = useStore();
+  const { 
+    applicationQuestions, 
+    companies, 
+    financingPrograms, 
+    salesRepresentatives, 
+    addSalesRepresentative 
+  } = useStore();
 
   const [formData, setFormData] = useState({
     clientName: '',
@@ -85,8 +94,35 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
     requestedAmount: '',
     documentLink: '',
     description: '',
-    assignedToCompanyId: ''
+    assignedToCompanyId: '',
+    salesmanName: initialData?.salesmanName || '',
+    status: initialData?.status || ApplicationStatus.PENDING_ADMIN,
+    approvedAmount: initialData?.approvedAmount !== undefined ? String(initialData.approvedAmount) : '',
+    rejectionReason: initialData?.rejectionReason || '',
+    submittedAt: initialData?.submittedAt ? initialData.submittedAt.split('T')[0] : new Date().toISOString().split('T')[0],
+    lastStageDate: initialData?.lastStageDate ? initialData.lastStageDate.split('T')[0] : new Date().toISOString().split('T')[0]
   });
+
+  const [isAddingSalesman, setIsAddingSalesman] = useState(false);
+  const [newSalesmanInput, setNewSalesmanInput] = useState('');
+
+  const handleQuickAddSalesman = async () => {
+    const trimmed = newSalesmanInput.trim();
+    if (!trimmed) return;
+    await addSalesRepresentative(trimmed);
+    setFormData(prev => ({ ...prev, salesmanName: trimmed }));
+    setNewSalesmanInput('');
+    setIsAddingSalesman(false);
+  };
+
+  const allSalesmen = useMemo(() => {
+    const names = new Set<string>();
+    users.filter(u => u.role === Role.SALESMAN).forEach(u => names.add(u.name));
+    (salesRepresentatives || []).forEach(r => names.add(r));
+    if (formData.salesmanName) names.add(formData.salesmanName);
+    if (initialData?.salesmanName) names.add(initialData.salesmanName);
+    return Array.from(names);
+  }, [users, salesRepresentatives, formData.salesmanName, initialData?.salesmanName]);
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
     initialData?.companyId || initialData?.assignedCompanyIds?.[0] || companies[0]?.id || ''
@@ -264,7 +300,13 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
               requestedAmount: initialData.requestedAmount?.toString() || '',
               documentLink: initialData.documentLink || '',
               description: initialData.description || '',
-              assignedToCompanyId: initialData.assignedCompanyIds?.[0] || '' 
+              assignedToCompanyId: initialData.assignedCompanyIds?.[0] || '',
+              salesmanName: initialData.salesmanName || '',
+              status: initialData.status || ApplicationStatus.PENDING_ADMIN,
+              approvedAmount: initialData.approvedAmount !== undefined ? String(initialData.approvedAmount) : '',
+              rejectionReason: initialData.rejectionReason || '',
+              submittedAt: initialData.submittedAt ? initialData.submittedAt.split('T')[0] : new Date().toISOString().split('T')[0],
+              lastStageDate: initialData.lastStageDate ? initialData.lastStageDate.split('T')[0] : new Date().toISOString().split('T')[0]
           });
           if (initialData.assignedCompanyIds && initialData.assignedCompanyIds.length > 0) {
             setSelectedCompanyIds(initialData.assignedCompanyIds);
@@ -360,7 +402,15 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
       programAdminFeePercent: selectedProgram?.adminFeePercent,
       customAnswers,
       isUrgent,
-      documents: formattedDocs
+      documents: formattedDocs,
+      salesmanName: formData.salesmanName || undefined,
+      ...(currentUserRole === Role.ADMIN || currentUserRole === Role.SUPER_ADMIN ? {
+        status: formData.status as ApplicationStatus,
+        approvedAmount: formData.approvedAmount ? Number(formData.approvedAmount) : 0,
+        rejectionReason: formData.rejectionReason || undefined,
+        submittedAt: formData.submittedAt ? `${formData.submittedAt}T10:00:00.000Z` : undefined,
+        lastStageDate: formData.lastStageDate ? `${formData.lastStageDate}T12:00:00.000Z` : undefined
+      } : {})
     });
   };
 
@@ -461,6 +511,94 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
                         {PROFESSIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                 </div>
+            </div>
+
+            {/* Field for Sales Representative / Salesman */}
+            <div className="md:col-span-2 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                        <UserCheck className="h-4 w-4 text-blue-600" />
+                        <span>موظف / مندوب المبيعات المسؤول عن الطلب</span>
+                        <span className="text-xs text-gray-500 font-normal">(اختر من المسجلين أو أضف موظفاً جديداً)</span>
+                    </label>
+                    {!isAddingSalesman && (
+                        <button
+                            type="button"
+                            onClick={() => setIsAddingSalesman(true)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                            <span>+ إضافة موظف/مندوب جديد</span>
+                        </button>
+                    )}
+                </div>
+
+                {isAddingSalesman ? (
+                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-blue-300 shadow-sm">
+                        <input
+                            type="text"
+                            placeholder="اكتب اسم موظف أو مندوب المبيعات الجديد..."
+                            className="flex-1 text-sm border-0 focus:ring-0 px-2 py-1 outline-none font-medium"
+                            value={newSalesmanInput}
+                            onChange={e => setNewSalesmanInput(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickAddSalesman();
+                                }
+                            }}
+                            autoFocus
+                        />
+                        <button
+                            type="button"
+                            onClick={handleQuickAddSalesman}
+                            disabled={!newSalesmanInput.trim()}
+                            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer"
+                        >
+                            حفظ واختيار
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsAddingSalesman(false);
+                                setNewSalesmanInput('');
+                            }}
+                            className="text-gray-500 hover:text-gray-700 text-xs px-2 py-1.5 font-medium cursor-pointer"
+                        >
+                            إلغاء
+                        </button>
+                    </div>
+                ) : (
+                    <div className="relative">
+                        <select
+                            className="w-full border-gray-300 border rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all bg-white font-medium text-gray-800"
+                            value={formData.salesmanName}
+                            onChange={e => {
+                                if (e.target.value === '__NEW__') {
+                                    setIsAddingSalesman(true);
+                                } else {
+                                    setFormData({ ...formData, salesmanName: e.target.value });
+                                }
+                            }}
+                        >
+                            <option value="">-- اختر موظف / مندوب المبيعات --</option>
+                            {allSalesmen.map(name => (
+                                <option key={name} value={name}>
+                                    {name}
+                                </option>
+                            ))}
+                            <option value="__NEW__" className="text-blue-600 font-bold bg-blue-50">
+                                ➕ إضافة موظف/مندوب مبيعات جديد غير مسجل...
+                            </option>
+                        </select>
+                    </div>
+                )}
+                {formData.salesmanName && (
+                    <div className="mt-2 text-xs text-blue-700 flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span>الموظف المختار: <strong>{formData.salesmanName}</strong></span>
+                    </div>
+                )}
             </div>
          </div>
       </div>
@@ -1211,6 +1349,105 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
             />
         </div>
       </div>
+
+      {/* Admin Full Control Card (لوحة تحكم وتعديل مدير النظام الشاملة) */}
+      {(currentUserRole === Role.ADMIN || currentUserRole === Role.SUPER_ADMIN) && (
+        <div className="p-5 bg-gradient-to-br from-indigo-50/90 via-purple-50/70 to-blue-50/60 rounded-2xl border-2 border-indigo-200/80 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-indigo-200/70 gap-2">
+            <div className="flex items-center gap-2">
+              <span className="p-2 bg-indigo-600 text-white rounded-xl shadow-sm">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+              <div>
+                <h4 className="font-black text-gray-900 text-base flex items-center gap-2">
+                  <span>لوحة تحكم وتعديل مدير النظام الشاملة</span>
+                  <span className="text-[11px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold">صلاحية أدمن</span>
+                </h4>
+                <p className="text-xs text-gray-600">يمكنك تعديل أي مرحلة في مسار الطلب، السقف والمبلغ المعتمد، وتواريخ الحالات وسبب الرفض مباشرة.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* 1. Status / Stage Selector */}
+            <div className="md:col-span-2 lg:col-span-1">
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <Layers className="h-4 w-4 text-indigo-600" />
+                <span>المرحلة / حالة الطلب الحالية</span>
+              </label>
+              <select
+                className="w-full border-indigo-300 border rounded-xl px-3 py-2.5 bg-white text-sm font-bold text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                value={formData.status}
+                onChange={e => setFormData({ ...formData, status: e.target.value as ApplicationStatus })}
+              >
+                {Object.values(ApplicationStatus).map(st => (
+                  <option key={st} value={st}>
+                    {STATUS_ARABIC[st] || st}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Approved Amount */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <DollarSign className="h-4 w-4 text-emerald-600" />
+                <span>المبلغ المعتمد (ج.م)</span>
+              </label>
+              <input
+                type="number"
+                placeholder="0"
+                className="w-full border-gray-300 border rounded-xl px-3 py-2.5 bg-white text-sm font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                value={formData.approvedAmount}
+                onChange={e => setFormData({ ...formData, approvedAmount: e.target.value })}
+              />
+            </div>
+
+            {/* 3. Rejection Reason */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4 text-rose-600" />
+                <span>سبب الرفض / ملاحظة المرحلة</span>
+              </label>
+              <input
+                type="text"
+                placeholder="اكتب سبب الرفض أو ملاحظة المرحلة..."
+                className="w-full border-gray-300 border rounded-xl px-3 py-2.5 bg-white text-sm font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                value={formData.rejectionReason}
+                onChange={e => setFormData({ ...formData, rejectionReason: e.target.value })}
+              />
+            </div>
+
+            {/* 4. Submission Date */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-gray-500" />
+                <span>تاريخ تقديم الطلب</span>
+              </label>
+              <input
+                type="date"
+                className="w-full border-gray-300 border rounded-xl px-3 py-2 bg-white text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                value={formData.submittedAt}
+                onChange={e => setFormData({ ...formData, submittedAt: e.target.value })}
+              />
+            </div>
+
+            {/* 5. Last Stage Update Date */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-gray-500" />
+                <span>تاريخ تحديث المرحلة</span>
+              </label>
+              <input
+                type="date"
+                className="w-full border-gray-300 border rounded-xl px-3 py-2 bg-white text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                value={formData.lastStageDate}
+                onChange={e => setFormData({ ...formData, lastStageDate: e.target.value })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="pt-6 flex justify-end">
         <button

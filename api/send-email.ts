@@ -40,8 +40,53 @@ export default async function handler(req: any, res: any) {
     clientName, 
     applicationId, 
     driveLink,
-    smtpConfig 
+    smtpConfig,
+    testConnection
   } = body || {};
+
+  // 0. Instant SMTP Connection Test
+  if (testConnection) {
+    if (!smtpConfig || !smtpConfig.host || !smtpConfig.user) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, message: 'يرجى إدخال عنوان الخادم (Host) واسم المستخدم (User) قبل إجراء الفحص' }));
+      return;
+    }
+    try {
+      const port = Number(smtpConfig.port) || (smtpConfig.secure ? 465 : 587);
+      const transporter = nodemailer.createTransport({
+        host: smtpConfig.host,
+        port,
+        secure: smtpConfig.secure ?? (port === 465),
+        auth: (smtpConfig.user && smtpConfig.pass) ? {
+          user: smtpConfig.user,
+          pass: smtpConfig.pass
+        } : undefined,
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
+      });
+      await transporter.verify();
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: `تم التحقق بنجاح من إعدادات الخادم (${smtpConfig.host}:${port}) والاتصال بحساب (${smtpConfig.user}) يعمل بنجاح 🟢` 
+      }));
+      return;
+    } catch (testErr: any) {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ 
+        success: false, 
+        message: `فشل التحقق من خادم البريد: ${testErr?.message || 'خطأ في الاتصال بالخادم أو بيانات الاعتماد'}` 
+      }));
+      return;
+    }
+  }
 
   if (!to) {
     res.statusCode = 400;
