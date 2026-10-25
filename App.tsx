@@ -23,6 +23,7 @@ import { FinancingProgramsManager } from './pages/FinancingProgramsManager';
 import { CompanyExcelImport } from './pages/CompanyExcelImport';
 import { NotificationTemplatesManager } from './pages/NotificationTemplatesManager';
 import { SmartCreditCalculator } from './components/SmartCreditCalculator';
+import { SalesTargets } from './pages/SalesTargets';
 import { Role } from './types';
 
 const AppContent: React.FC = () => {
@@ -239,6 +240,9 @@ const AppContent: React.FC = () => {
         return (currentUser.role === Role.SUPPLIER || currentUser.role === Role.SALESMAN) ? <UserWallet /> : <Dashboard />;
       case 'admin-finance': 
         return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <AdminFinance /> : <Dashboard />;
+      case 'sales-targets':
+      case 'targets':
+        return (currentUser.role === Role.SUPER_ADMIN || currentUser.role === Role.ADMIN) ? <SalesTargets /> : <Dashboard />;
       default: 
         return <Dashboard />;
     }

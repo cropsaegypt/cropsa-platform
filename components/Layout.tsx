@@ -44,7 +44,8 @@ import {
   BellRing,
   Calculator,
   Compass,
-  Store
+  Store,
+  Target
 } from 'lucide-react';
 import { RoleSwitcherModal } from './RoleSwitcherModal';
 import { ClientFollowUpModal } from './ClientFollowUpModal';
@@ -347,6 +348,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, portalTab
       });
 
       const sysChildren: NavSubItem[] = [];
+      sysChildren.push({
+        id: 'sales-targets',
+        label: isAr ? 'التارجت' : 'Sales Targets',
+        icon: Target
+      });
       if (currentUser.role === Role.SUPER_ADMIN) {
         sysChildren.push({
           id: 'users',

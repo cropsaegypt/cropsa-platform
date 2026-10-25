@@ -47,7 +47,8 @@ import {
   ExternalDispatchRecord,
   SmtpConfig,
   InboxMessage,
-  InboxMessageAiAnalysis
+  InboxMessageAiAnalysis,
+  SalesmanTarget
 } from '../types';
 import { generateBranchCredentials } from '../utils/branchCredentials';
 import { 
@@ -328,6 +329,11 @@ interface StoreContextType {
   salesRepresentatives: string[];
   addSalesRepresentative: (name: string) => Promise<void>;
   deleteSalesRepresentative: (name: string) => Promise<void>;
+
+  // Sales Targets (مستهدفات وأهداف موظفي البيع والمندوبين)
+  salesTargets: Record<string, SalesmanTarget>;
+  saveSalesTarget: (target: SalesmanTarget) => Promise<void>;
+  deleteSalesTarget: (salesmanName: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -467,6 +473,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         'محمود حسن (مبيعات الدلتا)',
         'سارة إبراهيم (مبيعات الإسكندرية)'
       ];
+    }
+  });
+
+  // Sales Targets configuration per salesman
+  const [salesTargets, setSalesTargets] = useState<Record<string, SalesmanTarget>>(() => {
+    try {
+      const saved = localStorage.getItem('cropsa_sales_targets');
+      if (saved) return JSON.parse(saved);
+      return {};
+    } catch {
+      return {};
     }
   });
 
@@ -886,7 +903,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           deletedCompanyIdsRes,
           inboxMessagesRes,
           deletedInboxIdsRes,
-          salesRepsRes
+          salesRepsRes,
+          salesTargetsRes
         ] = await Promise.all([
           supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
           supabase!.from('companies').select('*'),
@@ -906,7 +924,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           supabase!.from('system_settings').select('data').eq('id', 'deleted_company_ids').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'inbox_messages').maybeSingle(),
           supabase!.from('system_settings').select('data').eq('id', 'deleted_inbox_ids').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'sales_representatives').maybeSingle()
+          supabase!.from('system_settings').select('data').eq('id', 'sales_representatives').maybeSingle(),
+          supabase!.from('system_settings').select('data').eq('id', 'sales_targets').maybeSingle()
         ]);
 
         const isRemoteWiped = demoWipedRes?.data?.data?.wiped === true;
@@ -1017,6 +1036,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const merged = Array.from(new Set([...prev, ...remoteReps]));
             try {
               localStorage.setItem('cropsa_sales_representatives', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+
+        // Process Sales Targets (مستهدفات المبيعات)
+        if (salesTargetsRes?.data?.data && typeof salesTargetsRes.data.data === 'object' && isMounted) {
+          const remoteTargets = salesTargetsRes.data.data as Record<string, SalesmanTarget>;
+          setSalesTargets(prev => {
+            const merged = { ...prev, ...remoteTargets };
+            try {
+              localStorage.setItem('cropsa_sales_targets', JSON.stringify(merged));
             } catch (e) {}
             return merged;
           });
@@ -5889,6 +5920,63 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // =========================================================================
+  // SALES TARGETS (إدارة مستهدفات المبيعات والأداء)
+  // =========================================================================
+  const saveSalesTarget = async (target: SalesmanTarget): Promise<void> => {
+    let nextTargets: Record<string, SalesmanTarget> = {};
+    const updatedTarget: SalesmanTarget = {
+      ...target,
+      updatedAt: new Date().toISOString()
+    };
+    setSalesTargets(prev => {
+      nextTargets = {
+        ...prev,
+        [target.salesmanName]: updatedTarget
+      };
+      try {
+        localStorage.setItem('cropsa_sales_targets', JSON.stringify(nextTargets));
+      } catch (e) {}
+      return nextTargets;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'sales_targets',
+          data: Object.keys(nextTargets).length > 0 ? nextTargets : { [target.salesmanName]: updatedTarget },
+          updated_at: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('Supabase saveSalesTarget error:', e);
+      }
+    }
+  };
+
+  const deleteSalesTarget = async (salesmanName: string): Promise<void> => {
+    let nextTargets: Record<string, SalesmanTarget> = {};
+    setSalesTargets(prev => {
+      nextTargets = { ...prev };
+      delete nextTargets[salesmanName];
+      try {
+        localStorage.setItem('cropsa_sales_targets', JSON.stringify(nextTargets));
+      } catch (e) {}
+      return nextTargets;
+    });
+
+    if (supabase) {
+      try {
+        await supabase.from('system_settings').upsert({
+          id: 'sales_targets',
+          data: nextTargets,
+          updated_at: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('Supabase deleteSalesTarget error:', e);
+      }
+    }
+  };
+
+  // =========================================================================
   // ARCHIVING & DATABASE OPTIMIZATION (الأرشفة التلقائية وتنظيف قاعدة البيانات)
   // =========================================================================
   const archiveApplication = async (appId: string, reason?: string) => {
@@ -7423,7 +7511,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       salesRepresentatives,
       addSalesRepresentative,
-      deleteSalesRepresentative
+      deleteSalesRepresentative,
+
+      salesTargets,
+      saveSalesTarget,
+      deleteSalesTarget
     }}>
       {children}
     </StoreContext.Provider>

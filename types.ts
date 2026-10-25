@@ -1219,3 +1219,14 @@ export const EGYPT_GOVERNORATES = [
   'الوادي الجديد',
   'مطروح'
 ];
+
+export interface SalesmanTarget {
+  id?: string;
+  salesmanName: string;
+  targetAmount: number; // المستهدف المالي بالجنيه المصري
+  targetApplicationsCount: number; // عدد الطلبات المستهدفة
+  period?: 'monthly' | 'quarterly' | 'yearly' | 'all';
+  month?: string; // e.g. '2026-10'
+  notes?: string;
+  updatedAt?: string;
+}
