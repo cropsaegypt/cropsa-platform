@@ -132,24 +132,24 @@ export const CompaniesManagement: React.FC = () => {
     setIsUpdatingCompany(true);
     try {
       await updateCompany(editingCompany.id, {
-        name: editCompanyForm.name,
-        nameEn: editCompanyForm.nameEn,
-        code: editCompanyForm.code.toUpperCase(),
+        name: editCompanyForm.name.trim(),
+        nameEn: editCompanyForm.nameEn.trim(),
+        code: editCompanyForm.code.toUpperCase().trim(),
         logo: editCompanyForm.logo,
         coverImage: editCompanyForm.coverImage,
-        email: editCompanyForm.email,
-        phone: editCompanyForm.phone,
-        commercialRegister: editCompanyForm.commercialRegister,
-        taxNumber: editCompanyForm.taxNumber,
-        fraLicense: editCompanyForm.fraLicense,
-        creditCeiling: Number(editCompanyForm.creditCeiling),
-        commissionRate: Number(editCompanyForm.commissionRate),
+        email: editCompanyForm.email.trim(),
+        phone: editCompanyForm.phone.trim(),
+        commercialRegister: editCompanyForm.commercialRegister.trim(),
+        taxNumber: editCompanyForm.taxNumber.trim(),
+        fraLicense: editCompanyForm.fraLicense.trim(),
+        creditCeiling: Number(editCompanyForm.creditCeiling) || 0,
+        commissionRate: Number(editCompanyForm.commissionRate) || 0,
         defaultInterestRate: Number(editCompanyForm.defaultInterestRate || 0),
         defaultAdminFeePercent: Number(editCompanyForm.defaultAdminFeePercent || 0),
         receivingChannel: editCompanyForm.receivingChannel,
-        whatsappNumber: editCompanyForm.whatsappNumber,
-        dispatchEmail: editCompanyForm.dispatchEmail,
-        contactPersonName: editCompanyForm.contactPersonName,
+        whatsappNumber: editCompanyForm.whatsappNumber.trim(),
+        dispatchEmail: editCompanyForm.dispatchEmail.trim(),
+        contactPersonName: editCompanyForm.contactPersonName.trim(),
         allowedGovernorates: editCompanyForm.allowedGovernorates,
         status: editCompanyForm.status,
         adminUsername: editCompanyForm.adminUsername.trim() || undefined,
@@ -502,7 +502,6 @@ export const CompaniesManagement: React.FC = () => {
         {filteredCompanies.map(company => {
           const compBranches = branches.filter(b => b.companyId === company.id);
           const compStaff = users.filter(u => u.companyId === company.id);
-          const percentUsed = company.creditCeiling > 0 ? Math.min(100, Math.round((company.usedCredit / company.creditCeiling) * 100)) : 0;
 
           return (
             <div 
@@ -588,19 +587,16 @@ export const CompaniesManagement: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Ceiling Utilization Bar */}
+                  {/* Max Limit per Client (الحد الأقصى لتمويل العميل الواحد) */}
                   <div className="pt-2">
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-slate-500 font-medium">{t('creditCeiling')}</span>
-                      <span className="font-bold text-slate-800">{company.usedCredit.toLocaleString()} / {company.creditCeiling.toLocaleString()} {t('egp')}</span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full ${
-                          percentUsed > 80 ? 'bg-rose-500' : percentUsed > 50 ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${percentUsed}%` }}
-                      />
+                    <div className="flex items-center justify-between text-xs bg-sky-50/70 border border-sky-100 p-2.5 rounded-xl">
+                      <span className="text-slate-700 font-semibold flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5 text-sky-600" />
+                        <span>أقصى تمويل للعميل:</span>
+                      </span>
+                      <span className="font-mono font-bold text-sky-900 text-xs sm:text-sm">
+                        {company.creditCeiling.toLocaleString()} {t('egp')}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -772,7 +768,7 @@ export const CompaniesManagement: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">{t('creditCeiling')} ({t('egp')}) *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">الحد الأقصى لتمويل العميل الواحد ({t('egp')}) *</label>
                     <input
                       type="number"
                       required
@@ -780,6 +776,7 @@ export const CompaniesManagement: React.FC = () => {
                       onChange={e => setCompanyForm({ ...companyForm, creditCeiling: Number(e.target.value) })}
                       className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
                     />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">أقصى مبلغ تمويل يمكن منحه للعميل الواحد من هذه الشركة</span>
                   </div>
                 </div>
 
@@ -1298,7 +1295,7 @@ export const CompaniesManagement: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">سقف التمويل الممنوح (ج.م) *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">الحد الأقصى لتمويل العميل الواحد (ج.م) *</label>
                     <input
                       type="number"
                       required
@@ -1306,6 +1303,7 @@ export const CompaniesManagement: React.FC = () => {
                       onChange={e => setEditCompanyForm({ ...editCompanyForm, creditCeiling: Number(e.target.value) })}
                       className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
                     />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">أقصى مبلغ تمويل يمكن منحه للعميل الواحد من هذه الشركة</span>
                   </div>
 
                   <div>

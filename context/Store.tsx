@@ -2667,16 +2667,17 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateCompany = async (companyId: string, updates: Partial<InstallmentCompany>) => {
-    // 1. Synchronously obtain the existing list from state or localStorage
-    let currentList = companies;
+    // 1. ALWAYS read the latest list from localStorage first (to prevent any stale closure overwriting sequential updates)
+    let currentList: InstallmentCompany[] = [];
+    try {
+      const s = localStorage.getItem('cropsa_companies');
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) && parsed.length > 0) currentList = parsed;
+      }
+    } catch {}
     if (!currentList || currentList.length === 0) {
-      try {
-        const s = localStorage.getItem('cropsa_companies');
-        if (s) currentList = JSON.parse(s);
-      } catch {}
-    }
-    if (!currentList || currentList.length === 0) {
-      currentList = MOCK_COMPANIES;
+      currentList = companies.length > 0 ? companies : MOCK_COMPANIES;
     }
 
     const nextComps = currentList.map(c => c.id === companyId ? { ...c, ...updates } : c);
@@ -2755,13 +2756,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const cleanPassword = creds.password?.trim();
     const cleanEmail = creds.email?.trim() || (cleanUsername && cleanUsername.includes('@') ? cleanUsername : undefined);
 
-    const targetComp = companies.find(c => c.id === companyId);
+    let currentComps: InstallmentCompany[] = [];
+    try {
+      const s = localStorage.getItem('cropsa_companies');
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) && parsed.length > 0) currentComps = parsed;
+      }
+    } catch {}
+    if (!currentComps || currentComps.length === 0) currentComps = companies;
 
-    // 1. Immediately persist admin credentials directly on the InstallmentCompany entity in system_settings
+    const targetComp = currentComps.find(c => c.id === companyId);
+
+    // 1. Immediately persist admin credentials directly on the InstallmentCompany entity if changed
     const compUpdates: Partial<InstallmentCompany> = {};
-    if (cleanUsername) compUpdates.adminUsername = cleanUsername;
-    if (cleanEmail) compUpdates.adminEmail = cleanEmail;
-    if (cleanPassword) compUpdates.adminPassword = cleanPassword;
+    if (cleanUsername && cleanUsername !== targetComp?.adminUsername) compUpdates.adminUsername = cleanUsername;
+    if (cleanEmail && cleanEmail !== targetComp?.adminEmail) compUpdates.adminEmail = cleanEmail;
+    if (cleanPassword && cleanPassword !== targetComp?.adminPassword) compUpdates.adminPassword = cleanPassword;
     if (Object.keys(compUpdates).length > 0) {
       await updateCompany(companyId, compUpdates);
     }
