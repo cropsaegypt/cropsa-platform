@@ -70,7 +70,7 @@ export const CompaniesManagement: React.FC = () => {
     taxNumber: '',
     fraLicense: '',
     creditCeiling: 20000000,
-    commissionRate: 3.5,
+    commissionRate: 0,
     defaultInterestRate: 0,
     defaultAdminFeePercent: 2.5,
     receivingChannel: 'PORTAL' as CompanyReceivingChannel,
@@ -111,8 +111,8 @@ export const CompaniesManagement: React.FC = () => {
       commercialRegister: company.commercialRegister || '',
       taxNumber: company.taxNumber || '',
       fraLicense: company.fraLicense || '',
-      creditCeiling: company.creditCeiling || 20000000,
-      commissionRate: company.commissionRate || 3.5,
+      creditCeiling: company.creditCeiling !== undefined && company.creditCeiling !== null ? company.creditCeiling : 20000000,
+      commissionRate: company.commissionRate !== undefined && company.commissionRate !== null ? company.commissionRate : 0,
       defaultInterestRate: company.defaultInterestRate || 0,
       defaultAdminFeePercent: company.defaultAdminFeePercent || 2.5,
       receivingChannel: company.receivingChannel || 'PORTAL',
@@ -143,7 +143,7 @@ export const CompaniesManagement: React.FC = () => {
         taxNumber: editCompanyForm.taxNumber.trim(),
         fraLicense: editCompanyForm.fraLicense.trim(),
         creditCeiling: Number(editCompanyForm.creditCeiling) || 0,
-        commissionRate: Number(editCompanyForm.commissionRate) || 0,
+        commissionRate: editCompanyForm.commissionRate !== undefined && editCompanyForm.commissionRate !== '' ? Number(editCompanyForm.commissionRate) : 0,
         defaultInterestRate: Number(editCompanyForm.defaultInterestRate || 0),
         defaultAdminFeePercent: Number(editCompanyForm.defaultAdminFeePercent || 0),
         receivingChannel: editCompanyForm.receivingChannel,
@@ -309,7 +309,7 @@ export const CompaniesManagement: React.FC = () => {
     taxNumber: '',
     fraLicense: '',
     creditCeiling: 20000000,
-    commissionRate: 3.5,
+    commissionRate: 0,
     defaultInterestRate: 0,
     defaultAdminFeePercent: 2.5,
     receivingChannel: 'PORTAL' as CompanyReceivingChannel,
@@ -409,7 +409,7 @@ export const CompaniesManagement: React.FC = () => {
       taxNumber: companyForm.taxNumber,
       fraLicense: companyForm.fraLicense,
       creditCeiling: Number(companyForm.creditCeiling),
-      commissionRate: Number(companyForm.commissionRate),
+      commissionRate: companyForm.commissionRate !== undefined && companyForm.commissionRate !== '' ? Number(companyForm.commissionRate) : 0,
       defaultInterestRate: Number(companyForm.defaultInterestRate || 0),
       defaultAdminFeePercent: Number(companyForm.defaultAdminFeePercent || 0),
       allowedGovernorates: companyForm.allowedGovernorates,
@@ -431,7 +431,7 @@ export const CompaniesManagement: React.FC = () => {
       taxNumber: '',
       fraLicense: '',
       creditCeiling: 20000000,
-      commissionRate: 3.5,
+      commissionRate: 0,
       receivingChannel: 'PORTAL' as CompanyReceivingChannel,
       whatsappNumber: '',
       dispatchEmail: '',
@@ -577,7 +577,9 @@ export const CompaniesManagement: React.FC = () => {
 
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">{t('commissionRate')}:</span>
-                    <span className="font-bold text-sky-700">{company.commissionRate}%</span>
+                    <span className="font-bold text-sky-700">
+                      {company.commissionRate !== undefined && company.commissionRate > 0 ? `${company.commissionRate}%` : '0% (بدون عمولة)'}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -788,16 +790,17 @@ export const CompaniesManagement: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'عمولة المنصة %' : 'Platform Commission %'} *</label>
+                      <label className="block font-semibold text-slate-700 mb-1">{language === 'ar' ? 'عمولة المنصة %' : 'Platform Commission %'}</label>
                       <input
                         type="number"
                         step="0.1"
-                        required
+                        min="0"
                         value={companyForm.commissionRate}
-                        onChange={e => setCompanyForm({ ...companyForm, commissionRate: Number(e.target.value) })}
+                        onChange={e => setCompanyForm({ ...companyForm, commissionRate: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
+                        placeholder="0"
                         className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono bg-white"
                       />
-                      <span className="text-[10px] text-slate-400 mt-0.5 block">نسبة عمولة كروبسا</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">اتركها 0 أو فارغة إذا كانت الشركة بدون عمولة للمنصة</span>
                     </div>
 
                     <div>
@@ -1307,15 +1310,17 @@ export const CompaniesManagement: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">نسبة عمولة المنصة % *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">نسبة عمولة المنصة %</label>
                     <input
                       type="number"
                       step="0.1"
-                      required
+                      min="0"
                       value={editCompanyForm.commissionRate}
-                      onChange={e => setEditCompanyForm({ ...editCompanyForm, commissionRate: Number(e.target.value) })}
+                      onChange={e => setEditCompanyForm({ ...editCompanyForm, commissionRate: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
+                      placeholder="0"
                       className="w-full text-sm border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none font-mono"
                     />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">اتركها 0 أو فارغة إذا كانت الشركة بدون عمولة للمنصة</span>
                   </div>
                 </div>
 

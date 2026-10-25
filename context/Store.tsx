@@ -1097,7 +1097,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 taxNumber: c.tax_number || existing.taxNumber || '',
                 creditCeiling: c.credit_ceiling !== undefined && c.credit_ceiling !== null ? Number(c.credit_ceiling) : existing.creditCeiling,
                 usedCredit: c.used_credit !== undefined && c.used_credit !== null ? Number(c.used_credit) : existing.usedCredit,
-                commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : existing.commissionRate,
+                commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : (existing.commissionRate !== undefined ? existing.commissionRate : 0),
                 allowedGovernorates: (c.allowed_governorates && c.allowed_governorates.length > 0) ? c.allowed_governorates : existing.allowedGovernorates,
                 createdAt: existing.createdAt || c.created_at || new Date().toISOString()
               });
@@ -1115,7 +1115,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 fraLicense: 'FRA-FIN-2021',
                 creditCeiling: Number(c.credit_ceiling) || 25000000,
                 usedCredit: Number(c.used_credit) || 0,
-                commissionRate: Number(c.commission_rate) || 3.5,
+                commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : 0,
                 allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
                 requiredDocumentsList: ['بطاقة الرقم القومي سارية للمشتري والضامن', 'إيصال مرافق حديث'],
                 rejectionReasons: [],
@@ -1566,7 +1566,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                       taxNumber: c.tax_number || existing.taxNumber || '',
                       creditCeiling: c.credit_ceiling !== undefined && c.credit_ceiling !== null ? Number(c.credit_ceiling) : existing.creditCeiling,
                       usedCredit: c.used_credit !== undefined && c.used_credit !== null ? Number(c.used_credit) : existing.usedCredit,
-                      commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : existing.commissionRate,
+                      commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : (existing.commissionRate !== undefined ? existing.commissionRate : 0),
                       allowedGovernorates: (c.allowed_governorates && c.allowed_governorates.length > 0) ? c.allowed_governorates : existing.allowedGovernorates,
                       createdAt: existing.createdAt || c.created_at || new Date().toISOString()
                     });
@@ -1584,7 +1584,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                       fraLicense: 'FRA-FIN-2021',
                       creditCeiling: Number(c.credit_ceiling) || 25000000,
                       usedCredit: Number(c.used_credit) || 0,
-                      commissionRate: Number(c.commission_rate) || 3.5,
+                      commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : 0,
                       allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
                       requiredDocumentsList: ['بطاقة الرقم القومي'],
                       rejectionReasons: [],
@@ -2522,7 +2522,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       fraLicense: companyData.fraLicense || 'FRA-FIN-PENDING',
       creditCeiling: Number(companyData.creditCeiling) || 10000000,
       usedCredit: 0,
-      commissionRate: Number(companyData.commissionRate) || 3.5,
+      commissionRate: companyData.commissionRate !== undefined && companyData.commissionRate !== null && companyData.commissionRate !== '' ? Number(companyData.commissionRate) : 0,
       allowedGovernorates: companyData.allowedGovernorates || ['القاهرة', 'الجيزة'],
       requiredDocumentsList: companyData.requiredDocumentsList || [
         'بطاقة الرقم القومي سارية للمشتري والضامن',

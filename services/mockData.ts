@@ -196,9 +196,9 @@ export const MOCK_COMPANIES: InstallmentCompany[] = [
     commercialRegister: '782190',
     taxNumber: '619-301-442',
     fraLicense: 'FRA-FIN-2023-104',
-    creditCeiling: 22000000,
-    usedCredit: 8200000,
-    commissionRate: 3.5,
+    creditCeiling: 2920000,
+    usedCredit: 0,
+    commissionRate: 0,
     allowedGovernorates: ['القاهرة', 'الجيزة', 'القليوبية', 'الغربية', 'المنوفية'],
     requiredDocumentsList: [
       'بطاقة الرقم القومي للمشتري',
