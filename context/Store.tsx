@@ -969,6 +969,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             );
           }
         }
+        // Initial in-memory placement for remote programs; final canonical consolidation occurs after companyMap processing
         if (remotePrograms.length > 0 && isMounted) {
           setFinancingPrograms(remotePrograms);
           try {
@@ -1119,22 +1120,55 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             });
           });
         }
-        // Link all loaded programs to their respective companies
+        // Robust bi-directional consolidation between remotePrograms and companyMap
+        const canonicalProgramsMap = new Map<string, FinancingProgram>();
+
+        // 1. Ingest remotePrograms (excluding programs whose company was permanently deleted)
         remotePrograms.forEach(prog => {
-          if (prog.companyId && companyMap.has(prog.companyId)) {
-            const comp = companyMap.get(prog.companyId)!;
-            const existing = comp.financingPrograms || [];
-            if (!existing.some(p => p.id === prog.id)) {
-              comp.financingPrograms = [prog, ...existing];
-            }
+          if (!deletedCompanyIds.has(prog.companyId)) {
+            canonicalProgramsMap.set(prog.id, prog);
           }
         });
+
+        // 2. Ingest programs embedded in companies (e.g., created/edited in CompaniesManagement)
+        companyMap.forEach(comp => {
+          if (Array.isArray(comp.financingPrograms) && comp.financingPrograms.length > 0) {
+            comp.financingPrograms.forEach(prog => {
+              const existingProg = canonicalProgramsMap.get(prog.id);
+              canonicalProgramsMap.set(prog.id, {
+                ...existingProg,
+                ...prog,
+                companyId: comp.id,
+                companyName: comp.name
+              });
+            });
+          }
+        });
+
+        const finalPrograms = Array.from(canonicalProgramsMap.values());
+
+        // 3. Guarantee that each company's financingPrograms contains its exact list of programs
+        companyMap.forEach(comp => {
+          comp.financingPrograms = finalPrograms.filter(p => p.companyId === comp.id);
+        });
+
         if (isMounted) {
           const finalComps = Array.from(companyMap.values());
+          setFinancingPrograms(finalPrograms);
           setCompanies(finalComps);
           try {
+            localStorage.setItem('cropsa_financing_programs', JSON.stringify(finalPrograms));
             localStorage.setItem('cropsa_companies', JSON.stringify(finalComps));
           } catch (e) {}
+
+          // In the background, ensure Supabase system_settings has the canonical programs
+          if (supabase && finalPrograms.length > 0) {
+            supabase.from('system_settings').upsert({
+              id: 'financing_programs',
+              data: finalPrograms,
+              updated_at: new Date().toISOString()
+            }).catch(() => {});
+          }
         }
 
         // 3. Process Company Branches
@@ -1490,38 +1524,50 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           async () => {
             const { data } = await supabase!.from('companies').select('*');
             if (data && data.length > 0 && isMounted) {
+              let deletedIds: string[] = [];
+              try {
+                const s = localStorage.getItem('cropsa_deleted_company_ids');
+                if (s) deletedIds = JSON.parse(s);
+              } catch {}
+              const delSet = new Set(deletedIds);
+
               setCompanies(prev => {
                 const compMap = new Map<string, InstallmentCompany>();
-                prev.forEach(c => compMap.set(c.id, c));
+                prev.forEach(c => {
+                  if (!delSet.has(c.id)) compMap.set(c.id, c);
+                });
                 data.forEach((c: any) => {
+                  if (delSet.has(c.id)) return; // Never restore permanently deleted companies
                   const existingMock = prev.find(m => m.id === c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
+                  const existing = compMap.get(c.id) || existingMock;
                   compMap.set(c.id, {
+                    ...existing,
                     id: c.id,
-                    name: c.name,
-                    nameEn: c.name_en || c.name,
-                    code: c.code || existingMock?.code || '',
-                    logo: c.logo || existingMock?.logo || '',
-                    coverImage: existingMock?.coverImage,
-                    email: c.email || existingMock?.email || '',
-                    phone: c.phone || existingMock?.phone || '',
-                    receivingChannel: c.receiving_channel || c.receivingChannel || existingMock?.receivingChannel || 'PORTAL',
-                    whatsappNumber: c.whatsapp_number || c.whatsappNumber || existingMock?.whatsappNumber || '',
-                    dispatchEmail: c.dispatch_email || c.dispatchEmail || existingMock?.dispatchEmail || '',
-                    contactPersonName: c.contact_person_name || c.contactPersonName || existingMock?.contactPersonName || '',
-                    commercialRegister: c.commercial_register || existingMock?.commercialRegister || '',
-                    taxNumber: c.tax_number || existingMock?.taxNumber || '',
-                    fraLicense: 'FRA-FIN-2021',
-                    creditCeiling: Number(c.credit_ceiling) || existingMock?.creditCeiling || 25000000,
-                    usedCredit: Number(c.used_credit) || existingMock?.usedCredit || 0,
-                    commissionRate: Number(c.commission_rate) || existingMock?.commissionRate || 3.5,
-                    allowedGovernorates: c.allowed_governorates || existingMock?.allowedGovernorates || ['القاهرة', 'الجيزة'],
-                    requiredDocumentsList: existingMock?.requiredDocumentsList || ['بطاقة الرقم القومي'],
-                    rejectionReasons: existingMock?.rejectionReasons || [],
-                    workflowConfig: existingMock?.workflowConfig,
-                    financingPrograms: existingMock?.financingPrograms || [],
-                    status: 'ACTIVE',
-                    createdAt: c.created_at || new Date().toISOString(),
-                    featuresGranted: {
+                    name: c.name || existing?.name,
+                    nameEn: c.name_en || existing?.nameEn || c.name,
+                    code: c.code || existing?.code || '',
+                    logo: c.logo || existing?.logo || '',
+                    coverImage: existing?.coverImage || c.cover_image,
+                    email: c.email || existing?.email || '',
+                    phone: c.phone || existing?.phone || '',
+                    receivingChannel: c.receiving_channel || c.receivingChannel || existing?.receivingChannel || 'PORTAL',
+                    whatsappNumber: c.whatsapp_number || c.whatsappNumber || existing?.whatsappNumber || '',
+                    dispatchEmail: c.dispatch_email || c.dispatchEmail || existing?.dispatchEmail || '',
+                    contactPersonName: c.contact_person_name || c.contactPersonName || existing?.contactPersonName || '',
+                    commercialRegister: c.commercial_register || existing?.commercialRegister || '',
+                    taxNumber: c.tax_number || existing?.taxNumber || '',
+                    fraLicense: existing?.fraLicense || 'FRA-FIN-2021',
+                    creditCeiling: Number(c.credit_ceiling) || existing?.creditCeiling || 25000000,
+                    usedCredit: Number(c.used_credit) || existing?.usedCredit || 0,
+                    commissionRate: Number(c.commission_rate) || existing?.commissionRate || 3.5,
+                    allowedGovernorates: c.allowed_governorates || existing?.allowedGovernorates || ['القاهرة', 'الجيزة'],
+                    requiredDocumentsList: existing?.requiredDocumentsList || ['بطاقة الرقم القومي'],
+                    rejectionReasons: existing?.rejectionReasons || [],
+                    workflowConfig: existing?.workflowConfig,
+                    financingPrograms: existing?.financingPrograms || [],
+                    status: (c.status as any) || existing?.status || 'ACTIVE',
+                    createdAt: c.created_at || existing?.createdAt || new Date().toISOString(),
+                    featuresGranted: existing?.featuresGranted || {
                       canViewCrobsaDb: true,
                       canUseAiAnalysis: true,
                       canExportReports: true,
@@ -1530,7 +1576,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     }
                   });
                 });
-                return Array.from(compMap.values());
+                const finalComps = Array.from(compMap.values());
+                try { localStorage.setItem('cropsa_companies', JSON.stringify(finalComps)); } catch (e) {}
+                return finalComps;
               });
             }
           }
@@ -1607,8 +1655,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             } else if (updatedRow.id === 'applications_data' && Array.isArray(updatedRow.data)) {
               setApplications(updatedRow.data);
             } else if (updatedRow.id === 'companies_data' && Array.isArray(updatedRow.data)) {
-              setCompanies(updatedRow.data);
-              try { localStorage.setItem('cropsa_companies', JSON.stringify(updatedRow.data)); } catch (e) {}
+              let deletedIds: string[] = [];
+              try {
+                const s = localStorage.getItem('cropsa_deleted_company_ids');
+                if (s) deletedIds = JSON.parse(s);
+              } catch {}
+              const delSet = new Set(deletedIds);
+              const filteredComps = updatedRow.data.filter((c: InstallmentCompany) => !delSet.has(c.id));
+              setCompanies(filteredComps);
+              try { localStorage.setItem('cropsa_companies', JSON.stringify(filteredComps)); } catch (e) {}
+            } else if (updatedRow.id === 'financing_programs' && Array.isArray(updatedRow.data)) {
+              setFinancingPrograms(updatedRow.data);
+              try { localStorage.setItem('cropsa_financing_programs', JSON.stringify(updatedRow.data)); } catch (e) {}
             } else if (updatedRow.id === 'users_data' && Array.isArray(updatedRow.data)) {
               setUsers(updatedRow.data);
               try { localStorage.setItem('cropsa_staff_users', JSON.stringify(updatedRow.data)); } catch (e) {}
@@ -2474,18 +2532,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
 
-    const updatedComps = [...companies, newComp];
-    const updatedUsers = [...users, initialAdmin];
-
+    let updatedComps: InstallmentCompany[] = [];
     setCompanies(prev => {
-      const next = [...prev, newComp];
-      try { localStorage.setItem('cropsa_companies', JSON.stringify(next)); } catch (e) {}
-      return next;
+      updatedComps = [...prev.filter(c => c.id !== compId), newComp];
+      try { localStorage.setItem('cropsa_companies', JSON.stringify(updatedComps)); } catch (e) {}
+      return updatedComps;
     });
+
+    let updatedUsers: User[] = [];
     setUsers(prev => {
-      const next = [...prev, initialAdmin];
-      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(next)); } catch (e) {}
-      return next;
+      updatedUsers = [...prev.filter(u => u.id !== initialAdmin.id), initialAdmin];
+      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(updatedUsers)); } catch (e) {}
+      return updatedUsers;
     });
 
     // Clean up deleted_company_ids if resurrected
@@ -2583,11 +2641,33 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateCompany = async (companyId: string, updates: Partial<InstallmentCompany>) => {
-    const nextComps = companies.map(c => c.id === companyId ? { ...c, ...updates } : c);
-    setCompanies(nextComps);
-    try {
-      localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
-    } catch (e) {}
+    let nextComps: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextComps = prev.map(c => c.id === companyId ? { ...c, ...updates } : c);
+      try {
+        localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
+      } catch (e) {}
+      return nextComps;
+    });
+
+    // If financing programs were updated for this company, sync them to global financingPrograms and system_settings
+    if (updates.financingPrograms && Array.isArray(updates.financingPrograms)) {
+      setFinancingPrograms(prev => {
+        const withoutThisComp = prev.filter(p => p.companyId !== companyId);
+        const combined = [...updates.financingPrograms!, ...withoutThisComp];
+        try {
+          localStorage.setItem('cropsa_financing_programs', JSON.stringify(combined));
+        } catch (e) {}
+        if (supabase) {
+          supabase.from('system_settings').upsert({
+            id: 'financing_programs',
+            data: combined,
+            updated_at: new Date().toISOString()
+          }).catch(console.warn);
+        }
+        return combined;
+      });
+    }
 
     if (supabase) {
       // 1. ALWAYS persist full JSON with all rich fields in system_settings FIRST
@@ -2616,6 +2696,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (updates.usedCredit !== undefined) payload.used_credit = updates.usedCredit;
         if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
         if (updates.allowedGovernorates) payload.allowed_governorates = updates.allowedGovernorates;
+        if (updates.status !== undefined) payload.status = updates.status;
 
         if (Object.keys(payload).length > 0) {
           await supabase.from('companies').update(payload).eq('id', companyId);
@@ -2625,7 +2706,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     }
     try {
-      await updateDoc(doc(db, 'companies', companyId), updates);
+      updateDoc(doc(db, 'companies', companyId), updates).catch(() => {});
     } catch (err) {
       console.warn('Firestore updateCompany fallback:', err);
     }
@@ -2746,25 +2827,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch {}
 
     // 2. Synchronously filter companies
-    const nextComps = companies.filter(c => c.id !== companyId);
-    setCompanies(nextComps);
-    try {
-      localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
-    } catch (e) {}
+    let nextComps: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextComps = prev.filter(c => c.id !== companyId);
+      try { localStorage.setItem('cropsa_companies', JSON.stringify(nextComps)); } catch (e) {}
+      return nextComps;
+    });
 
     // 3. Synchronously filter branches
-    const nextBranches = branches.filter(b => b.companyId !== companyId);
-    setBranches(nextBranches);
-    try {
-      localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches));
-    } catch (e) {}
+    let nextBranches: CompanyBranch[] = [];
+    setBranches(prev => {
+      nextBranches = prev.filter(b => b.companyId !== companyId);
+      try { localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches)); } catch (e) {}
+      return nextBranches;
+    });
 
     // 4. Synchronously filter financing programs for that company
-    const nextPrograms = financingPrograms.filter(p => p.companyId !== companyId);
-    setFinancingPrograms(nextPrograms);
-    try {
-      localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
-    } catch (e) {}
+    let nextPrograms: FinancingProgram[] = [];
+    setFinancingPrograms(prev => {
+      nextPrograms = prev.filter(p => p.companyId !== companyId);
+      try { localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms)); } catch (e) {}
+      return nextPrograms;
+    });
 
     // 5. Persist to Supabase
     if (supabase) {
@@ -5435,28 +5519,34 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
 
-    // 1. Synchronously compute next programs array
-    const nextPrograms = [newProg, ...financingPrograms.filter(p => p.id !== newProgId)];
-    setFinancingPrograms(nextPrograms);
-    try {
-      localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
-    } catch (e) {}
+    // 1. Synchronously compute next programs array using functional updater
+    let nextPrograms: FinancingProgram[] = [];
+    setFinancingPrograms(prev => {
+      nextPrograms = [newProg, ...prev.filter(p => p.id !== newProgId)];
+      try {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
+      } catch (e) {}
+      return nextPrograms;
+    });
 
     // 2. Synchronously update company entity with this new program
-    const nextCompanies = companies.map(c => {
-      if (c.id === newProg.companyId) {
-        const existing = c.financingPrograms || [];
-        return {
-          ...c,
-          financingPrograms: [newProg, ...existing.filter(p => p.id !== newProgId)]
-        };
-      }
-      return c;
+    let nextCompanies: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextCompanies = prev.map(c => {
+        if (c.id === newProg.companyId) {
+          const existing = c.financingPrograms || [];
+          return {
+            ...c,
+            financingPrograms: [newProg, ...existing.filter(p => p.id !== newProgId)]
+          };
+        }
+        return c;
+      });
+      try {
+        localStorage.setItem('cropsa_companies', JSON.stringify(nextCompanies));
+      } catch (e) {}
+      return nextCompanies;
     });
-    setCompanies(nextCompanies);
-    try {
-      localStorage.setItem('cropsa_companies', JSON.stringify(nextCompanies));
-    } catch (e) {}
 
     // 3. Persist to Supabase system_settings immediately
     if (supabase) {
@@ -5477,11 +5567,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     try {
-      await setDoc(doc(db, 'financing_programs', newProg.id), newProg);
+      setDoc(doc(db, 'financing_programs', newProg.id), newProg).catch(() => {});
       if (comp) {
-        await updateDoc(doc(db, 'companies', comp.id), {
+        updateDoc(doc(db, 'companies', comp.id), {
           financingPrograms: [newProg, ...(comp.financingPrograms || []).filter(p => p.id !== newProg.id)]
-        });
+        }).catch(() => {});
       }
     } catch (err) {
       console.warn('Firestore addFinancingProgram fallback:', err);
@@ -5491,44 +5581,50 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateFinancingProgram = async (id: string, updates: Partial<FinancingProgram>) => {
-    // 1. Synchronously update programs list
-    const nextPrograms = financingPrograms.map(p => {
-      if (p.id === id) {
-        const comp = companies.find(c => c.id === (updates.companyId || p.companyId));
-        return {
-          ...p,
-          ...updates,
-          companyName: comp ? comp.name : p.companyName
-        };
-      }
-      return p;
+    // 1. Synchronously update programs list using functional updater
+    let nextPrograms: FinancingProgram[] = [];
+    setFinancingPrograms(prev => {
+      nextPrograms = prev.map(p => {
+        if (p.id === id) {
+          const comp = companies.find(c => c.id === (updates.companyId || p.companyId));
+          return {
+            ...p,
+            ...updates,
+            companyName: comp ? comp.name : p.companyName
+          };
+        }
+        return p;
+      });
+      try {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
+      } catch (e) {}
+      return nextPrograms;
     });
-    setFinancingPrograms(nextPrograms);
-    try {
-      localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
-    } catch (e) {}
 
     // 2. Synchronously update company entity
     const updatedProg = nextPrograms.find(p => p.id === id);
-    const nextCompanies = companies.map(c => {
-      if (c.financingPrograms && c.financingPrograms.some(p => p.id === id)) {
-        return {
-          ...c,
-          financingPrograms: c.financingPrograms.map(p => p.id === id ? { ...p, ...updates } : p)
-        };
-      } else if (updatedProg && c.id === updatedProg.companyId) {
-        const existing = c.financingPrograms || [];
-        return {
-          ...c,
-          financingPrograms: [updatedProg, ...existing.filter(p => p.id !== id)]
-        };
-      }
-      return c;
+    let nextCompanies: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextCompanies = prev.map(c => {
+        if (c.financingPrograms && c.financingPrograms.some(p => p.id === id)) {
+          return {
+            ...c,
+            financingPrograms: c.financingPrograms.map(p => p.id === id ? { ...p, ...updates } : p)
+          };
+        } else if (updatedProg && c.id === updatedProg.companyId) {
+          const existing = c.financingPrograms || [];
+          return {
+            ...c,
+            financingPrograms: [updatedProg, ...existing.filter(p => p.id !== id)]
+          };
+        }
+        return c;
+      });
+      try {
+        localStorage.setItem('cropsa_companies', JSON.stringify(nextCompanies));
+      } catch (e) {}
+      return nextCompanies;
     });
-    setCompanies(nextCompanies);
-    try {
-      localStorage.setItem('cropsa_companies', JSON.stringify(nextCompanies));
-    } catch (e) {}
 
     // 3. Persist to Supabase system_settings immediately
     if (supabase) {
@@ -5549,7 +5645,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     try {
-      await updateDoc(doc(db, 'financing_programs', id), updates);
+      updateDoc(doc(db, 'financing_programs', id), updates).catch(() => {});
     } catch (err) {
       console.warn('Firestore updateFinancingProgram fallback:', err);
     }
@@ -5558,27 +5654,33 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const deleteFinancingProgram = async (id: string) => {
-    // 1. Synchronously filter programs
-    const nextPrograms = financingPrograms.filter(p => p.id !== id);
-    setFinancingPrograms(nextPrograms);
-    try {
-      localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
-    } catch (e) {}
+    // 1. Synchronously filter programs using functional updater
+    let nextPrograms: FinancingProgram[] = [];
+    setFinancingPrograms(prev => {
+      nextPrograms = prev.filter(p => p.id !== id);
+      try {
+        localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms));
+      } catch (e) {}
+      return nextPrograms;
+    });
 
     // 2. Synchronously filter from company entities
-    const nextCompanies = companies.map(c => {
-      if (c.financingPrograms && c.financingPrograms.some(p => p.id === id)) {
-        return {
-          ...c,
-          financingPrograms: c.financingPrograms.filter(p => p.id !== id)
-        };
-      }
-      return c;
+    let nextCompanies: InstallmentCompany[] = [];
+    setCompanies(prev => {
+      nextCompanies = prev.map(c => {
+        if (c.financingPrograms && c.financingPrograms.some(p => p.id === id)) {
+          return {
+            ...c,
+            financingPrograms: c.financingPrograms.filter(p => p.id !== id)
+          };
+        }
+        return c;
+      });
+      try {
+        localStorage.setItem('cropsa_companies', JSON.stringify(nextCompanies));
+      } catch (e) {}
+      return nextCompanies;
     });
-    setCompanies(nextCompanies);
-    try {
-      localStorage.setItem('cropsa_companies', JSON.stringify(nextCompanies));
-    } catch (e) {}
 
     // 3. Persist to Supabase immediately
     if (supabase) {
@@ -5599,7 +5701,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     try {
-      await deleteDoc(doc(db, 'financing_programs', id));
+      deleteDoc(doc(db, 'financing_programs', id)).catch(() => {});
     } catch (err) {
       console.warn('Firestore deleteFinancingProgram fallback:', err);
     }

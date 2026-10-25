@@ -151,7 +151,9 @@ export const CompaniesManagement: React.FC = () => {
         dispatchEmail: editCompanyForm.dispatchEmail,
         contactPersonName: editCompanyForm.contactPersonName,
         allowedGovernorates: editCompanyForm.allowedGovernorates,
-        status: editCompanyForm.status
+        status: editCompanyForm.status,
+        adminUsername: editCompanyForm.adminUsername.trim() || undefined,
+        adminPassword: editCompanyForm.adminPassword.trim() || undefined
       });
 
       if (editCompanyForm.adminUsername.trim() || editCompanyForm.adminPassword.trim()) {
@@ -213,13 +215,27 @@ export const CompaniesManagement: React.FC = () => {
 
   const handleAddProgram = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProgramName.trim()) return;
+    if (!newProgramName.trim() || !selectedCompanyForPrograms) return;
     const newProg: FinancingProgram = {
-      id: `prog_${Date.now()}`,
+      id: `prog_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: newProgramName.trim(),
-      maxAmount: Number(newProgramMaxAmount),
-      durationMonths: Number(newProgramDuration),
-      requiredDocuments: [...newProgramDocs]
+      code: `PRG-${Date.now().toString().slice(-4)}`,
+      companyId: selectedCompanyForPrograms.id,
+      companyName: selectedCompanyForPrograms.name,
+      maxAmount: Number(newProgramMaxAmount) || 100000,
+      minAmount: 5000,
+      durationMonths: Number(newProgramDuration) || 12,
+      interestRate: Number(selectedCompanyForPrograms.defaultInterestRate) || 18,
+      interestRatePercent: Number(selectedCompanyForPrograms.defaultInterestRate) || 18,
+      adminFeePercent: Number(selectedCompanyForPrograms.defaultAdminFeePercent) || 2.5,
+      requiredDocuments: [...newProgramDocs],
+      documentsConfig: newProgramDocs.map((docName, idx) => ({
+        id: `doc_${Date.now()}_${idx}`,
+        name: docName,
+        isRequired: true
+      })),
+      active: true,
+      createdAt: new Date().toISOString()
     };
     setEditingProgramsList(prev => [...prev, newProg]);
     setNewProgramName('');
@@ -255,10 +271,28 @@ export const CompaniesManagement: React.FC = () => {
 
   const handleSaveCompanyProgramsAndDocs = async () => {
     if (!selectedCompanyForPrograms) return;
-    await updateCompany(selectedCompanyForPrograms.id, {
+    const companyId = selectedCompanyForPrograms.id;
+    const finalizedPrograms = editingProgramsList.map(p => ({
+      ...p,
+      companyId,
+      companyName: selectedCompanyForPrograms.name,
+      requiredDocuments: p.documentsConfig && p.documentsConfig.length > 0 
+        ? p.documentsConfig.map(d => d.name)
+        : (p.requiredDocuments || ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث']),
+      documentsConfig: p.documentsConfig && p.documentsConfig.length > 0
+        ? p.documentsConfig
+        : (p.requiredDocuments || ['بطاقة الرقم القومي سارية', 'إيصال مرافق حديث']).map((docName, idx) => ({
+            id: `doc_${Date.now()}_${idx}`,
+            name: docName,
+            isRequired: true
+          }))
+    }));
+
+    await updateCompany(companyId, {
       requiredDocumentsList: editingDocsList,
-      financingPrograms: editingProgramsList
+      financingPrograms: finalizedPrograms
     });
+    showToast(language === 'ar' ? 'تم حفظ برامج التمويل والمستندات بنجاح' : 'Programs and documents saved successfully');
     setSelectedCompanyForPrograms(null);
   };
 
@@ -383,6 +417,7 @@ export const CompaniesManagement: React.FC = () => {
       status: 'ACTIVE'
     }, companyForm.initialAdminPassword, companyForm.initialAdminUsername);
 
+    showToast(language === 'ar' ? `تم تسجيل وحفظ شركة "${companyForm.name}" بنجاح` : 'Company created successfully');
     setShowAddCompanyModal(false);
     setCompanyForm({
       name: '',

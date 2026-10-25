@@ -78,6 +78,12 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
     name: string;
   } | null>(null);
 
+  const [toastMessage, setToastMessage] = useState('');
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 4000);
+  };
+
   const [programForm, setProgramForm] = useState<{
     name: string;
     code: string;
@@ -314,8 +320,10 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
 
     if (editingProgram) {
       await updateFinancingProgram(editingProgram.id, payload);
+      showToast(language === 'ar' ? `تم تحديث وحفظ البرنامج التمويلي "${payload.name}" بنجاح` : 'Program updated successfully');
     } else {
       await addFinancingProgram(payload);
+      showToast(language === 'ar' ? `تم إضافة وحفظ البرنامج التمويلي "${payload.name}" بنجاح` : 'Program created successfully');
     }
     setShowProgramModal(false);
   };
@@ -371,14 +379,29 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
 
     if (editingQuestion) {
       await updateApplicationQuestion(editingQuestion.id, payload);
+      showToast(language === 'ar' ? 'تم تحديث السؤال وحفظه بنجاح' : 'Question updated successfully');
     } else {
       await addApplicationQuestion(payload);
+      showToast(language === 'ar' ? 'تم إضافة السؤال وحفظه بنجاح' : 'Question added successfully');
     }
     setShowQuestionModal(false);
   };
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>{toastMessage}</span>
+          </div>
+          <button onClick={() => setToastMessage('')} className="p-1 hover:bg-emerald-700 rounded-lg">
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -1372,8 +1395,10 @@ export const FinancingProgramsManager: React.FC<FinancingProgramsManagerProps> =
                 onClick={async () => {
                   if (itemToDelete.type === 'PROGRAM') {
                     await deleteFinancingProgram(itemToDelete.id);
+                    showToast(language === 'ar' ? `تم حذف البرنامج التمويلي "${itemToDelete.name}" بنجاح` : 'Program deleted successfully');
                   } else {
                     await deleteApplicationQuestion(itemToDelete.id);
+                    showToast(language === 'ar' ? `تم حذف السؤال "${itemToDelete.name}" بنجاح` : 'Question deleted successfully');
                   }
                   setItemToDelete(null);
                 }}
