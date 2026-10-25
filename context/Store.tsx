@@ -1082,42 +1082,55 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           companiesRes.data.forEach((c: any) => {
             if (deletedCompanyIds.has(c.id)) return; // Never restore permanently deleted companies
             const existing = companyMap.get(c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
-            companyMap.set(c.id, {
-              ...existing,
-              id: c.id,
-              name: c.name || existing?.name,
-              nameEn: c.name_en || existing?.nameEn || c.name,
-              code: c.code || existing?.code || '',
-              logo: c.logo || existing?.logo || '',
-              coverImage: existing?.coverImage || c.cover_image,
-              coverPosition: existing?.coverPosition || c.cover_position || '50% 50%',
-              email: c.email || existing?.email || '',
-              phone: c.phone || existing?.phone || '',
-              receivingChannel: existing?.receivingChannel || c.receiving_channel || 'PORTAL',
-              whatsappNumber: existing?.whatsappNumber || c.whatsapp_number || '',
-              dispatchEmail: existing?.dispatchEmail || c.dispatch_email || '',
-              contactPersonName: existing?.contactPersonName || c.contact_person_name || '',
-              commercialRegister: c.commercial_register || existing?.commercialRegister || '',
-              taxNumber: c.tax_number || existing?.taxNumber || '',
-              fraLicense: c.fra_license || existing?.fraLicense || 'FRA-FIN-2021',
-              creditCeiling: Number(c.credit_ceiling) || existing?.creditCeiling || 25000000,
-              usedCredit: Number(c.used_credit) || existing?.usedCredit || 0,
-              commissionRate: Number(c.commission_rate) || existing?.commissionRate || 3.5,
-              allowedGovernorates: c.allowed_governorates || existing?.allowedGovernorates || ['القاهرة', 'الجيزة'],
-              requiredDocumentsList: existing?.requiredDocumentsList || ['بطاقة الرقم القومي سارية للمشتري والضامن', 'إيصال مرافق حديث'],
-              rejectionReasons: existing?.rejectionReasons || [],
-              workflowConfig: existing?.workflowConfig,
-              financingPrograms: existing?.financingPrograms || [],
-              status: (c.status as any) || existing?.status || 'ACTIVE',
-              createdAt: c.created_at || existing?.createdAt || new Date().toISOString(),
-              featuresGranted: existing?.featuresGranted || {
-                canViewCrobsaDb: true,
-                canUseAiAnalysis: true,
-                canExportReports: true,
-                canManageSubUsers: true,
-                canManageSharedFiles: true
-              }
-            });
+            if (existing) {
+              // Existing company with full rich settings (fraLicense, default interest/admin fee, status, documents):
+              // preserve existing rich fields and update relational columns if provided
+              companyMap.set(c.id, {
+                ...existing,
+                name: c.name || existing.name,
+                nameEn: c.name_en || existing.nameEn || existing.name,
+                code: c.code || existing.code || '',
+                logo: c.logo || existing.logo || '',
+                email: c.email || existing.email || '',
+                phone: c.phone || existing.phone || '',
+                commercialRegister: c.commercial_register || existing.commercialRegister || '',
+                taxNumber: c.tax_number || existing.taxNumber || '',
+                creditCeiling: c.credit_ceiling !== undefined && c.credit_ceiling !== null ? Number(c.credit_ceiling) : existing.creditCeiling,
+                usedCredit: c.used_credit !== undefined && c.used_credit !== null ? Number(c.used_credit) : existing.usedCredit,
+                commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : existing.commissionRate,
+                allowedGovernorates: (c.allowed_governorates && c.allowed_governorates.length > 0) ? c.allowed_governorates : existing.allowedGovernorates,
+                createdAt: existing.createdAt || c.created_at || new Date().toISOString()
+              });
+            } else {
+              companyMap.set(c.id, {
+                id: c.id,
+                name: c.name,
+                nameEn: c.name_en || c.name,
+                code: c.code || '',
+                logo: c.logo || '',
+                email: c.email || '',
+                phone: c.phone || '',
+                commercialRegister: c.commercial_register || '',
+                taxNumber: c.tax_number || '',
+                fraLicense: 'FRA-FIN-2021',
+                creditCeiling: Number(c.credit_ceiling) || 25000000,
+                usedCredit: Number(c.used_credit) || 0,
+                commissionRate: Number(c.commission_rate) || 3.5,
+                allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
+                requiredDocumentsList: ['بطاقة الرقم القومي سارية للمشتري والضامن', 'إيصال مرافق حديث'],
+                rejectionReasons: [],
+                financingPrograms: [],
+                status: 'ACTIVE',
+                createdAt: c.created_at || new Date().toISOString(),
+                featuresGranted: {
+                  canViewCrobsaDb: true,
+                  canUseAiAnalysis: true,
+                  canExportReports: true,
+                  canManageSubUsers: true,
+                  canManageSharedFiles: true
+                }
+              });
+            }
           });
         }
         // Robust bi-directional consolidation between remotePrograms and companyMap
@@ -1540,41 +1553,54 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                   if (delSet.has(c.id)) return; // Never restore permanently deleted companies
                   const existingMock = prev.find(m => m.id === c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
                   const existing = compMap.get(c.id) || existingMock;
-                  compMap.set(c.id, {
-                    ...existing,
-                    id: c.id,
-                    name: c.name || existing?.name,
-                    nameEn: c.name_en || existing?.nameEn || c.name,
-                    code: c.code || existing?.code || '',
-                    logo: c.logo || existing?.logo || '',
-                    coverImage: existing?.coverImage || c.cover_image,
-                    email: c.email || existing?.email || '',
-                    phone: c.phone || existing?.phone || '',
-                    receivingChannel: c.receiving_channel || c.receivingChannel || existing?.receivingChannel || 'PORTAL',
-                    whatsappNumber: c.whatsapp_number || c.whatsappNumber || existing?.whatsappNumber || '',
-                    dispatchEmail: c.dispatch_email || c.dispatchEmail || existing?.dispatchEmail || '',
-                    contactPersonName: c.contact_person_name || c.contactPersonName || existing?.contactPersonName || '',
-                    commercialRegister: c.commercial_register || existing?.commercialRegister || '',
-                    taxNumber: c.tax_number || existing?.taxNumber || '',
-                    fraLicense: existing?.fraLicense || 'FRA-FIN-2021',
-                    creditCeiling: Number(c.credit_ceiling) || existing?.creditCeiling || 25000000,
-                    usedCredit: Number(c.used_credit) || existing?.usedCredit || 0,
-                    commissionRate: Number(c.commission_rate) || existing?.commissionRate || 3.5,
-                    allowedGovernorates: c.allowed_governorates || existing?.allowedGovernorates || ['القاهرة', 'الجيزة'],
-                    requiredDocumentsList: existing?.requiredDocumentsList || ['بطاقة الرقم القومي'],
-                    rejectionReasons: existing?.rejectionReasons || [],
-                    workflowConfig: existing?.workflowConfig,
-                    financingPrograms: existing?.financingPrograms || [],
-                    status: (c.status as any) || existing?.status || 'ACTIVE',
-                    createdAt: c.created_at || existing?.createdAt || new Date().toISOString(),
-                    featuresGranted: existing?.featuresGranted || {
-                      canViewCrobsaDb: true,
-                      canUseAiAnalysis: true,
-                      canExportReports: true,
-                      canManageSubUsers: true,
-                      canManageSharedFiles: true
-                    }
-                  });
+                  if (existing) {
+                    compMap.set(c.id, {
+                      ...existing,
+                      name: c.name || existing.name,
+                      nameEn: c.name_en || existing.nameEn || existing.name,
+                      code: c.code || existing.code || '',
+                      logo: c.logo || existing.logo || '',
+                      email: c.email || existing.email || '',
+                      phone: c.phone || existing.phone || '',
+                      commercialRegister: c.commercial_register || existing.commercialRegister || '',
+                      taxNumber: c.tax_number || existing.taxNumber || '',
+                      creditCeiling: c.credit_ceiling !== undefined && c.credit_ceiling !== null ? Number(c.credit_ceiling) : existing.creditCeiling,
+                      usedCredit: c.used_credit !== undefined && c.used_credit !== null ? Number(c.used_credit) : existing.usedCredit,
+                      commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : existing.commissionRate,
+                      allowedGovernorates: (c.allowed_governorates && c.allowed_governorates.length > 0) ? c.allowed_governorates : existing.allowedGovernorates,
+                      createdAt: existing.createdAt || c.created_at || new Date().toISOString()
+                    });
+                  } else {
+                    compMap.set(c.id, {
+                      id: c.id,
+                      name: c.name,
+                      nameEn: c.name_en || c.name,
+                      code: c.code || '',
+                      logo: c.logo || '',
+                      email: c.email || '',
+                      phone: c.phone || '',
+                      commercialRegister: c.commercial_register || '',
+                      taxNumber: c.tax_number || '',
+                      fraLicense: 'FRA-FIN-2021',
+                      creditCeiling: Number(c.credit_ceiling) || 25000000,
+                      usedCredit: Number(c.used_credit) || 0,
+                      commissionRate: Number(c.commission_rate) || 3.5,
+                      allowedGovernorates: c.allowed_governorates || ['القاهرة', 'الجيزة'],
+                      requiredDocumentsList: ['بطاقة الرقم القومي'],
+                      rejectionReasons: [],
+                      workflowConfig: undefined,
+                      financingPrograms: [],
+                      status: 'ACTIVE',
+                      createdAt: c.created_at || new Date().toISOString(),
+                      featuresGranted: {
+                        canViewCrobsaDb: true,
+                        canUseAiAnalysis: true,
+                        canExportReports: true,
+                        canManageSubUsers: true,
+                        canManageSharedFiles: true
+                      }
+                    });
+                  }
                 });
                 const finalComps = Array.from(compMap.values());
                 try { localStorage.setItem('cropsa_companies', JSON.stringify(finalComps)); } catch (e) {}
@@ -2641,16 +2667,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateCompany = async (companyId: string, updates: Partial<InstallmentCompany>) => {
-    let nextComps: InstallmentCompany[] = [];
-    setCompanies(prev => {
-      nextComps = prev.map(c => c.id === companyId ? { ...c, ...updates } : c);
+    // 1. Synchronously obtain the existing list from state or localStorage
+    let currentList = companies;
+    if (!currentList || currentList.length === 0) {
       try {
-        localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
-      } catch (e) {}
-      return nextComps;
-    });
+        const s = localStorage.getItem('cropsa_companies');
+        if (s) currentList = JSON.parse(s);
+      } catch {}
+    }
+    if (!currentList || currentList.length === 0) {
+      currentList = MOCK_COMPANIES;
+    }
 
-    // If financing programs were updated for this company, sync them to global financingPrograms and system_settings
+    const nextComps = currentList.map(c => c.id === companyId ? { ...c, ...updates } : c);
+
+    // 2. Synchronously set state and localStorage
+    setCompanies(nextComps);
+    try {
+      localStorage.setItem('cropsa_companies', JSON.stringify(nextComps));
+    } catch (e) {}
+
+    // 3. If financing programs were updated for this company, sync them to global financingPrograms and system_settings
     if (updates.financingPrograms && Array.isArray(updates.financingPrograms)) {
       setFinancingPrograms(prev => {
         const withoutThisComp = prev.filter(p => p.companyId !== companyId);
@@ -2670,7 +2707,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     if (supabase) {
-      // 1. ALWAYS persist full JSON with all rich fields in system_settings FIRST
+      // 4. ALWAYS persist full JSON with all rich fields in system_settings FIRST
       try {
         await supabase.from('system_settings').upsert({
           id: 'companies_data',
@@ -2681,12 +2718,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.warn('Supabase system_settings updateCompany fallback:', err);
       }
 
-      // 2. Safely sync relational table with valid schema columns only
+      // 5. Safely sync relational table with valid schema columns only (excluding non-existent columns like status, fra_license)
       try {
         const payload: Record<string, any> = {};
-        if (updates.name) payload.name = updates.name;
-        if (updates.nameEn) payload.name_en = updates.nameEn;
-        if (updates.code) payload.code = updates.code;
+        if (updates.name !== undefined) payload.name = updates.name;
+        if (updates.nameEn !== undefined) payload.name_en = updates.nameEn;
+        if (updates.code !== undefined) payload.code = updates.code;
         if (updates.logo !== undefined) payload.logo = updates.logo;
         if (updates.email !== undefined) payload.email = updates.email;
         if (updates.phone !== undefined) payload.phone = updates.phone;
@@ -2695,11 +2732,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         if (updates.creditCeiling !== undefined) payload.credit_ceiling = updates.creditCeiling;
         if (updates.usedCredit !== undefined) payload.used_credit = updates.usedCredit;
         if (updates.commissionRate !== undefined) payload.commission_rate = updates.commissionRate;
-        if (updates.allowedGovernorates) payload.allowed_governorates = updates.allowedGovernorates;
-        if (updates.status !== undefined) payload.status = updates.status;
+        if (updates.allowedGovernorates !== undefined) payload.allowed_governorates = updates.allowedGovernorates;
 
         if (Object.keys(payload).length > 0) {
-          await supabase.from('companies').update(payload).eq('id', companyId);
+          const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
+          if (error) console.warn('Supabase relational companies updateCompany warning:', error);
         }
       } catch (err) {
         console.warn('Supabase relational companies updateCompany fallback:', err);

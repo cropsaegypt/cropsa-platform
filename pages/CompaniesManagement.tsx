@@ -1067,8 +1067,34 @@ export const CompaniesManagement: React.FC = () => {
 
               {/* Allowed Governorates */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">{t('allowedGovernorates')}</label>
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <label className="font-semibold text-slate-700 text-xs sm:text-sm">
+                    {t('allowedGovernorates')}
+                    <span className="text-[11px] text-slate-400 font-normal mr-2">
+                      ({companyForm.allowedGovernorates.length} من {EGYPT_GOVERNORATES.length} محددة)
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCompanyForm(prev => ({ ...prev, allowedGovernorates: [...EGYPT_GOVERNORATES] }))}
+                      className="text-[11px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>اختيار الكل (27 محافظة)</span>
+                    </button>
+                    {companyForm.allowedGovernorates.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setCompanyForm(prev => ({ ...prev, allowedGovernorates: [] }))}
+                        className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        إلغاء التحديد
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
                   {EGYPT_GOVERNORATES.map(gov => {
                     const selected = companyForm.allowedGovernorates.includes(gov);
                     return (
@@ -1078,11 +1104,11 @@ export const CompaniesManagement: React.FC = () => {
                         onClick={() => handleToggleGov(gov)}
                         className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
                           selected 
-                            ? 'bg-crobsa-700 text-white border-crobsa-700 font-bold' 
+                            ? 'bg-crobsa-700 text-white border-crobsa-700 font-bold shadow-xs' 
                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
-                        {gov}
+                        {selected ? '✓ ' : '+ '} {gov}
                       </button>
                     );
                   })}
@@ -1435,8 +1461,34 @@ export const CompaniesManagement: React.FC = () => {
 
               {/* Allowed Governorates */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">المحافظات المصرح للشركة التمويل فيها:</label>
-                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <label className="font-semibold text-slate-700 text-xs sm:text-sm">
+                    المحافظات المصرح للشركة التمويل فيها:
+                    <span className="text-[11px] text-slate-400 font-normal mr-2">
+                      ({editCompanyForm.allowedGovernorates.length} من {EGYPT_GOVERNORATES.length} محددة)
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditCompanyForm(prev => ({ ...prev, allowedGovernorates: [...EGYPT_GOVERNORATES] }))}
+                      className="text-[11px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>اختيار الكل (27 محافظة)</span>
+                    </button>
+                    {editCompanyForm.allowedGovernorates.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setEditCompanyForm(prev => ({ ...prev, allowedGovernorates: [] }))}
+                        className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        إلغاء التحديد
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
                   {EGYPT_GOVERNORATES.map(gov => {
                     const isSelected = editCompanyForm.allowedGovernorates.includes(gov);
                     return (
@@ -1453,7 +1505,7 @@ export const CompaniesManagement: React.FC = () => {
                         }}
                         className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${
                           isSelected
-                            ? 'bg-sky-600 text-white border-sky-600 font-bold'
+                            ? 'bg-sky-600 text-white border-sky-600 font-bold shadow-xs'
                             : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
                         }`}
                       >
