@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { CompanyBranchesManagerModal } from '../components/CompanyBranchesManagerModal';
 import { CompanyProfileSettingsModal } from '../components/CompanyProfileSettingsModal';
+import { compressImage } from '../utils/imageCompression';
 
 export const CompaniesManagement: React.FC = () => {
   const { 
@@ -131,6 +132,12 @@ export const CompaniesManagement: React.FC = () => {
     if (!editingCompany) return;
     setIsUpdatingCompany(true);
     try {
+      const cleanUser = editCompanyForm.adminUsername.trim();
+      const cleanPass = editCompanyForm.adminPassword.trim();
+      const commissionVal = editCompanyForm.commissionRate !== undefined && editCompanyForm.commissionRate !== '' && !isNaN(Number(editCompanyForm.commissionRate))
+        ? Number(editCompanyForm.commissionRate)
+        : 0;
+
       await updateCompany(editingCompany.id, {
         name: editCompanyForm.name.trim(),
         nameEn: editCompanyForm.nameEn.trim(),
@@ -143,7 +150,7 @@ export const CompaniesManagement: React.FC = () => {
         taxNumber: editCompanyForm.taxNumber.trim(),
         fraLicense: editCompanyForm.fraLicense.trim(),
         creditCeiling: Number(editCompanyForm.creditCeiling) || 0,
-        commissionRate: editCompanyForm.commissionRate !== undefined && editCompanyForm.commissionRate !== '' ? Number(editCompanyForm.commissionRate) : 0,
+        commissionRate: commissionVal,
         defaultInterestRate: Number(editCompanyForm.defaultInterestRate || 0),
         defaultAdminFeePercent: Number(editCompanyForm.defaultAdminFeePercent || 0),
         receivingChannel: editCompanyForm.receivingChannel,
@@ -152,17 +159,20 @@ export const CompaniesManagement: React.FC = () => {
         contactPersonName: editCompanyForm.contactPersonName.trim(),
         allowedGovernorates: editCompanyForm.allowedGovernorates,
         status: editCompanyForm.status,
-        adminUsername: editCompanyForm.adminUsername.trim() || undefined,
-        adminPassword: editCompanyForm.adminPassword.trim() || undefined
+        adminUsername: cleanUser || undefined,
+        adminPassword: cleanPass || undefined
       });
 
-      if (editCompanyForm.adminUsername.trim() || editCompanyForm.adminPassword.trim()) {
-        const cleanUser = editCompanyForm.adminUsername.trim();
-        await updateCompanyAdminCredentials(editingCompany.id, {
-          username: cleanUser,
-          email: cleanUser.includes('@') ? cleanUser : undefined,
-          password: editCompanyForm.adminPassword.trim() || undefined
-        });
+      if (cleanUser || cleanPass) {
+        try {
+          await updateCompanyAdminCredentials(editingCompany.id, {
+            username: cleanUser || undefined,
+            email: cleanUser && cleanUser.includes('@') ? cleanUser : undefined,
+            password: cleanPass || undefined
+          });
+        } catch (credErr) {
+          console.warn('Non-fatal credentials sync warning:', credErr);
+        }
       }
 
       showToast(language === 'ar' ? 'تم تحديث بيانات الشركة وبيانات حساب المدير بنجاح' : 'Company and admin credentials updated successfully');
@@ -332,28 +342,54 @@ export const CompaniesManagement: React.FC = () => {
   const editLogoInputRef = useRef<HTMLInputElement>(null);
   const editCoverInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'coverImage') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'coverImage') => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setCompanyForm(prev => ({ ...prev, [field]: reader.result as string }));
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, {
+          maxWidth: field === 'logo' ? 400 : 1200,
+          maxHeight: field === 'logo' ? 400 : 600,
+          quality: 0.8
+        });
+        setCompanyForm(prev => ({ ...prev, [field]: compressed }));
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setCompanyForm(prev => ({ ...prev, [field]: reader.result as string }));
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Image compression fallback:', err);
+    }
   };
 
-  const handleEditFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'coverImage') => {
+  const handleEditFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'coverImage') => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setEditCompanyForm(prev => ({ ...prev, [field]: reader.result as string }));
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, {
+          maxWidth: field === 'logo' ? 400 : 1200,
+          maxHeight: field === 'logo' ? 400 : 600,
+          quality: 0.8
+        });
+        setEditCompanyForm(prev => ({ ...prev, [field]: compressed }));
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setEditCompanyForm(prev => ({ ...prev, [field]: reader.result as string }));
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Image compression fallback:', err);
+    }
   };
 
   const filteredCompanies = companies.filter(c => 

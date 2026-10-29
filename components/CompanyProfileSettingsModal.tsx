@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/Store';
 import { InstallmentCompany, User, Role, InstallmentCompanyStaffRole, EGYPT_GOVERNORATES, CompanyReceivingChannel } from '../types';
+import { compressImage } from '../utils/imageCompression';
 import { 
   X, 
   Building2, 
@@ -183,18 +184,32 @@ export const CompanyProfileSettingsModal: React.FC<CompanyProfileSettingsModalPr
   };
 
   // File upload for branding
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'cover') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'cover') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        if (type === 'logo') setLogo(reader.result);
-        else setCoverImage(reader.result);
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, {
+          maxWidth: type === 'logo' ? 400 : 1200,
+          maxHeight: type === 'logo' ? 400 : 600,
+          quality: 0.8
+        });
+        if (type === 'logo') setLogo(compressed);
+        else setCoverImage(compressed);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            if (type === 'logo') setLogo(reader.result);
+            else setCoverImage(reader.result);
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Image upload compression warning:', err);
+    }
   };
 
   // Change Director username and/or password

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { InstallmentCompany } from '../types';
+import { compressImage } from '../utils/imageCompression';
 import { 
   X, 
   Upload, 
@@ -60,21 +61,38 @@ export const CompanyBrandingModal: React.FC<CompanyBrandingModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'cover') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'cover') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, {
+          maxWidth: type === 'logo' ? 400 : 1200,
+          maxHeight: type === 'logo' ? 400 : 600,
+          quality: 0.8
+        });
         if (type === 'logo') {
-          setLogo(reader.result);
+          setLogo(compressed);
         } else {
-          setCoverImage(reader.result);
+          setCoverImage(compressed);
         }
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            if (type === 'logo') {
+              setLogo(reader.result);
+            } else {
+              setCoverImage(reader.result);
+            }
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Image upload compression warning:', err);
+    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {

@@ -31,6 +31,7 @@ import {
   Clock
 } from 'lucide-react';
 import { InternalDocViewerModal } from './InternalDocViewerModal';
+import { compressImage } from '../utils/imageCompression';
 
 export interface FormAttachedDoc {
   id: string;
@@ -224,16 +225,27 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
   const [newDocType, setNewDocType] = useState('OTHER');
   const [newDocFile, setNewDocFile] = useState<File | null>(null);
 
-  const handleFileSelected = (file: File, docTitle: string, docType: string = 'OTHER') => {
+  const handleFileSelected = async (file: File, docTitle: string, docType: string = 'OTHER') => {
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      alert('حجم الملف كبير جداً. الحد الأقصى المسموح به هو 15 ميجابايت.');
+    if (file.size > 20 * 1024 * 1024) {
+      alert('حجم الملف كبير جداً. الحد الأقصى المسموح به هو 20 ميجابايت.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const sizeStr = formatFileSize(file.size);
+    try {
+      let dataUrl: string;
+      let finalSize = file.size;
+      if (file.type.startsWith('image/')) {
+        dataUrl = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.75 });
+        finalSize = Math.round(dataUrl.length * 0.75);
+      } else {
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
+      }
+      const sizeStr = formatFileSize(finalSize);
       setAttachedDocs(prev => {
         const filtered = prev.filter(d => d.name !== docTitle);
         return [
@@ -249,11 +261,10 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ initialData, o
           }
         ];
       });
-    };
-    reader.onerror = () => {
+    } catch (err) {
+      console.error(err);
       alert('حدث خطأ أثناء قراءة الملف، يرجى المحاولة مرة أخرى.');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleRemoveDoc = (docTitle: string) => {

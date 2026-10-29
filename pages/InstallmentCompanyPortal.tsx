@@ -101,6 +101,7 @@ import { ComprehensiveAnalyticsSection } from '../components/ComprehensiveAnalyt
 import { CompanyCoverCropperModal } from '../components/CompanyCoverCropperModal';
 import { SmartCreditCalculator } from '../components/SmartCreditCalculator';
 import { runClientCreditAiAnalysis } from '../services/gemini';
+import { compressImage } from '../utils/imageCompression';
 
 const COLORS = ['#0284c7', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
@@ -369,28 +370,46 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const coverFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setCompEditLogo(reader.result);
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, { maxWidth: 400, maxHeight: 400, quality: 0.8 });
+        setCompEditLogo(compressed);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setCompEditLogo(reader.result);
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Logo compression error:', err);
+    }
   };
 
-  const handleCoverFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setCompEditCover(reader.result);
+    try {
+      if (file.type.startsWith('image/')) {
+        const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 600, quality: 0.8 });
+        setCompEditCover(compressed);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            setCompEditCover(reader.result);
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Cover compression error:', err);
+    }
   };
 
   React.useEffect(() => {
@@ -426,9 +445,12 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
 
   // Applications belonging to this company with role-based visibility scoping
   const companyApps = useMemo(() => {
+    const activeCompId = currentUser?.companyId || companyId;
     const baseApps = applications.filter(a => 
+      (a.assignedCompanyIds || []).includes(activeCompId) || 
       (a.assignedCompanyIds || []).includes(companyId) || 
-      (a.assignedCompanyIds || []).includes(currentUser?.id || '') ||
+      (currentUser?.id && (a.assignedCompanyIds || []).includes(currentUser.id)) ||
+      a.companyId === activeCompId ||
       a.companyId === companyId
     );
 
@@ -1396,26 +1418,27 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
 
   const exportApplicationsCSV = handleExportCsv;
 
-  const handleBannerCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (typeof reader.result === 'string') {
-        const base64 = reader.result;
-        setCompEditCover(base64);
-        try {
-          await updateCompany(activeCompany.id, { 
-            coverImage: base64, 
-            coverPosition: '50% 50%' 
+    try {
+      const base64 = file.type.startsWith('image/')
+        ? await compressImage(file, { maxWidth: 1200, maxHeight: 600, quality: 0.8 })
+        : await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
           });
-          setShowCoverCropperModal(true);
-        } catch (err) {
-          console.error('Error updating company cover:', err);
-        }
-      }
-    };
-    reader.readAsDataURL(file);
+      setCompEditCover(base64);
+      await updateCompany(activeCompany.id, { 
+        coverImage: base64, 
+        coverPosition: '50% 50%' 
+      });
+      setShowCoverCropperModal(true);
+    } catch (err) {
+      console.error('Error updating company cover:', err);
+    }
   };
 
   return (

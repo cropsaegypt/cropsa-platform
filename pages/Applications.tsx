@@ -265,26 +265,42 @@ export const Applications: React.FC = () => {
 
   const filteredApps = applications.filter(app => {
     // Role based scoping - Strict data isolation
-    if (currentUser.role === Role.SUPPLIER || currentUser.role === Role.SALESMAN) {
-      if (app.submittedBy !== currentUser.id) return false;
+    if (currentUser.role === Role.SALESMAN) {
+      const isMySubmission = app.submittedBy === currentUser.id || 
+                             app.salesmanId === currentUser.id ||
+                             (currentUser.name && app.salesmanName && app.salesmanName.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+      if (!isMySubmission) return false;
+    }
+    if (currentUser.role === Role.SUPPLIER) {
+      const isMySubmission = app.submittedBy === currentUser.id || 
+                             app.supplierId === currentUser.id ||
+                             (currentUser.companyId && app.supplierId === currentUser.companyId);
+      if (!isMySubmission) return false;
     }
     if (currentUser.role === Role.INSTALLMENT_COMPANY) {
       const compId = currentUser.companyId || currentUser.id;
-      const isAssigned = app.assignedCompanyIds?.includes(currentUser.id) || 
-                         (currentUser.companyId && app.assignedCompanyIds?.includes(currentUser.companyId)) ||
-                         app.assignedCompanyIds?.includes(compId);
+      const isAssigned = (app.assignedCompanyIds || []).includes(currentUser.id) || 
+                         (currentUser.companyId && (app.assignedCompanyIds || []).includes(currentUser.companyId)) ||
+                         (app.assignedCompanyIds || []).includes(compId) ||
+                         app.companyId === compId ||
+                         app.companyId === currentUser.id;
       if (!isAssigned) return false;
     }
     if (currentUser.role === Role.BRANCH_MANAGER) {
+      const compId = currentUser.companyId || currentUser.id;
+      const isCompanyMatch = !app.companyId || app.companyId === compId || (app.assignedCompanyIds || []).includes(compId);
       const isMyBranch = (currentUser.branchId && app.assignedBranchId === currentUser.branchId) ||
                          (currentUser.branchName && app.assignedBranchName === currentUser.branchName) ||
-                         (app.assignedOfficerId === currentUser.id);
-      if (!isMyBranch) return false;
+                         (app.assignedOfficerId === currentUser.id) ||
+                         (!app.assignedBranchId && !app.assignedBranchName);
+      if (!isCompanyMatch || !isMyBranch) return false;
     }
     if (currentUser.role === Role.COMPANY_EMPLOYEE) {
+      const compId = currentUser.companyId || currentUser.id;
+      const isCompanyMatch = !app.companyId || app.companyId === compId || (app.assignedCompanyIds || []).includes(compId);
       const isMyOfficer = app.assignedOfficerId === currentUser.id || (app.assignedOfficerName && app.assignedOfficerName.includes(currentUser.name));
       const isMyBranch = currentUser.branchId && (app.assignedBranchId === currentUser.branchId || app.assignedBranchName === currentUser.branchName);
-      if (!isMyOfficer && !isMyBranch) return false;
+      if (!isCompanyMatch || (!isMyOfficer && !isMyBranch)) return false;
     }
 
     // Status Filter

@@ -2815,23 +2815,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     // 3. Ensure user exists in in-memory state, localStorage, and system_settings users_data
-    let nextUsersList: User[] = [];
-    setUsers(prev => {
-      const exists = prev.some(u => u.id === finalUserId || (u.companyId === companyId && (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)));
-      if (exists) {
-        nextUsersList = prev.map(u => 
+    let currentUsers: User[] = users;
+    try {
+      const cached = localStorage.getItem('cropsa_staff_users');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) currentUsers = parsed;
+      }
+    } catch (e) {}
+
+    const exists = currentUsers.some(u => u.id === finalUserId || (u.companyId === companyId && (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)));
+    const nextUsersList: User[] = exists
+      ? currentUsers.map(u => 
           (u.id === finalUserId || (u.companyId === companyId && (u.role === Role.INSTALLMENT_COMPANY || u.staffRole === InstallmentCompanyStaffRole.COMPANY_ADMIN)))
             ? { ...u, ...updatedAdmin }
             : u
-        );
-      } else {
-        nextUsersList = [...prev, updatedAdmin];
-      }
-      try {
-        localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsersList));
-      } catch (e) {}
-      return nextUsersList;
-    });
+        )
+      : [...currentUsers, updatedAdmin];
+
+    setUsers(nextUsersList);
+    try {
+      localStorage.setItem('cropsa_staff_users', JSON.stringify(nextUsersList));
+    } catch (e) {}
 
     if (currentUser && (currentUser.id === finalUserId || currentUser.companyId === companyId)) {
       setCurrentUser(prev => prev ? { ...prev, ...updatedAdmin } : null);
