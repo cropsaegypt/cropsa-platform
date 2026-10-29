@@ -8,8 +8,8 @@ export const NewApplication: React.FC<{ onSuccess: () => void }> = ({ onSuccess 
   const { createApplication, currentUser, users } = useStore();
   const [showBulkModal, setShowBulkModal] = useState(false);
 
-  const handleSubmit = (data: any) => {
-    createApplication({
+  const handleSubmit = async (data: any) => {
+    await createApplication({
         ...data,
         assignedToCompanyId: data.assignedCompanyIds?.[0]
     });

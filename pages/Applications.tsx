@@ -430,14 +430,14 @@ export const Applications: React.FC = () => {
       }
   };
 
-  const handleFinalReview = (status: ApplicationStatus) => {
+  const handleFinalReview = async (status: ApplicationStatus) => {
     if (selectedApp) {
       let finalNote = reviewNote;
       if (status === ApplicationStatus.REJECTED) {
         finalNote = `السبب: ${rejectionReason}\nملاحظات: ${reviewNote}`;
       }
       
-      reviewApplication(selectedApp.id, status, finalNote, approvedAmount || selectedApp.requestedAmount);
+      await reviewApplication(selectedApp.id, status, finalNote, approvedAmount || selectedApp.requestedAmount);
       setSelectedApp(null);
       setReviewNote('');
       setApprovedAmount(0);
@@ -447,16 +447,16 @@ export const Applications: React.FC = () => {
     }
   };
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (selectedApp && selectedCompanyIds.length > 0) {
-      assignApplication(selectedApp.id, selectedCompanyIds);
+      await assignApplication(selectedApp.id, selectedCompanyIds);
       setSelectedApp(null);
       setSelectedCompanyIds([]);
     }
   };
 
-  const handleReceive = (app: Application) => {
-    acknowledgeApplication(app.id);
+  const handleReceive = async (app: Application) => {
+    await acknowledgeApplication(app.id);
     if (selectedApp && selectedApp.id === app.id) {
        setSelectedApp(null); 
     }
@@ -472,9 +472,9 @@ export const Applications: React.FC = () => {
     );
   };
 
-  const handleUpdate = (data: Partial<Application>) => {
+  const handleUpdate = async (data: Partial<Application>) => {
       if (selectedApp) {
-          updateApplication(selectedApp.id, {
+          await updateApplication(selectedApp.id, {
             ...data,
             needsUpdate: false
           });
