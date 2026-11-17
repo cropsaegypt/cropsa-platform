@@ -102,6 +102,7 @@ import { CompanyCoverCropperModal } from '../components/CompanyCoverCropperModal
 import { SmartCreditCalculator } from '../components/SmartCreditCalculator';
 import { runClientCreditAiAnalysis } from '../services/gemini';
 import { compressImage } from '../utils/imageCompression';
+import { exportApplicationsToExcel } from '../utils/applicationExcel';
 
 const COLORS = ['#0284c7', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
@@ -1363,57 +1364,9 @@ export const InstallmentCompanyPortal: React.FC<InstallmentCompanyPortalProps> =
     });
   }, [companyApps, reportGovFilter, reportBranchFilter]);
 
-  // Export report to CSV / Excel
+  // Export report to Excel (.xlsx)
   const handleExportCsv = () => {
-    const headers = [
-      'رقم الطلب',
-      'اسم العميل',
-      'الرقم القومي',
-      'المحافظة',
-      'الفرع المسند',
-      'المهنة / النشاط',
-      'المبلغ المطلوب (جنيه)',
-      'المبلغ المعتمد (جنيه)',
-      'حالة الطلب',
-      'سبب الرفض (إن وجد)',
-      'ملاحظات المراجعة والائتمان',
-      'تاريخ التقديم'
-    ];
-
-    const statusMapAr: Record<string, string> = {
-      APPROVED: 'معتمد نهائياً',
-      AMOUNT_TRANSFERRED: 'تم صرف التمويل',
-      REJECTED: 'مرفوض',
-      PAPER_REVIEW: 'مراجعة المستندات',
-      ISCORE_CHECK: 'فحص الاستعلام الائتماني',
-      FIELD_INVESTIGATION: 'الاستعلام الميداني',
-      CONTRACT_SIGNING: 'توقيع العقود',
-      RECEIVED: 'مستلم جديد'
-    };
-
-    const rows = filteredReportApps.map(a => [
-      `"${a.id}"`,
-      `"${a.clientName || ''}"`,
-      `"${a.clientNationalId || ''}"`,
-      `"${a.governorate || ''}"`,
-      `"${a.assignedBranchName || 'الفرع الرئيسي'}"`,
-      `"${a.profession || ''}"`,
-      a.requestedAmount || 0,
-      a.approvedAmount || 0,
-      `"${statusMapAr[a.status] || a.status}"`,
-      `"${(a.rejectionReason || '').replace(/"/g, '""')}"`,
-      `"${(a.rejectionNotes || a.reviewNote || '').replace(/"/g, '""')}"`,
-      `"${new Date(a.submittedAt).toLocaleDateString('ar-EG')}"`
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `تقرير_محفظة_كروبسا_${activeCompany.code}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportApplicationsToExcel(filteredReportApps, `تقرير_محفظة_كروبسا_${activeCompany.code || 'الشركة'}`);
   };
 
   const exportApplicationsCSV = handleExportCsv;

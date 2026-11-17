@@ -257,7 +257,7 @@ interface StoreContextType {
   bulkImportApplications: (items: Array<{
     client: Partial<Client>;
     application: Partial<Application>;
-  }>) => Promise<{ importedCount: number; errors: string[] }>;
+  }>) => Promise<{ importedCount: number; updatedCount: number; errors: string[] }>;
 
   // System & Navigation
   addNotification: (
@@ -7128,14 +7128,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       client: Partial<Client>;
       application: Partial<Application>;
     }>
-  ): Promise<{ importedCount: number; errors: string[] }> => {
-    if (!currentUser) return { importedCount: 0, errors: ['غير مسجل الدخول'] };
+  ): Promise<{ importedCount: number; updatedCount: number; errors: string[] }> => {
+    if (!currentUser) return { importedCount: 0, updatedCount: 0, errors: ['غير مسجل الدخول'] };
     const errors: string[] = [];
-    let count = 0;
+    let importedCount = 0;
+    let updatedCount = 0;
     const nowStr = new Date().toISOString();
+
+    let currentApps: Application[] = applications;
+    try {
+      const saved = localStorage.getItem('cropsa_applications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          currentApps = parsed;
+        }
+      }
+    } catch (e) {}
 
     const newClientsToAdd: Client[] = [];
     const newAppsToAdd: Application[] = [];
+    const updatedAppsToSave: Application[] = [];
 
     for (let i = 0; i < items.length; i++) {
       const { client: cData, application: aData } = items[i];
@@ -7187,79 +7200,146 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
       newClientsToAdd.push(clientObj);
 
-      const appId = `app_imp_${Date.now()}_${i}`;
-      const submittedDate = aData.submittedAt || nowStr;
-      const lastStageDate = aData.lastStageDate || aData.reviewedAt || submittedDate;
-      const appStatus = aData.status || ApplicationStatus.SUBMITTED;
+      // Check if this application already exists in the system (Roundtrip Excel update)
+      const targetAppId = aData.id?.trim();
+      const existingApp = targetAppId ? currentApps.find(a => a.id === targetAppId) : undefined;
 
-      const targetComp = aData.companyId 
-        ? companies.find(c => c.id === aData.companyId)
-        : (aData.assignedCompanyIds?.[0] ? companies.find(c => c.id === aData.assignedCompanyIds![0]) : companies[0]);
+      if (existingApp) {
+        // === UPDATE EXISTING APPLICATION ===
+        const appStatus = aData.status || existingApp.status;
+        const statusChanged = appStatus !== existingApp.status;
+        const submittedDate = aData.submittedAt || existingApp.submittedAt || nowStr;
+        const lastStageDate = aData.lastStageDate || (statusChanged ? nowStr : existingApp.lastStageDate) || nowStr;
+        const reqAmount = aData.requestedAmount !== undefined && !isNaN(Number(aData.requestedAmount)) ? Number(aData.requestedAmount) : existingApp.requestedAmount;
+        const appAmount = aData.approvedAmount !== undefined && !isNaN(Number(aData.approvedAmount)) ? Number(aData.approvedAmount) : existingApp.approvedAmount;
+        const durMonths = aData.durationMonths !== undefined && !isNaN(Number(aData.durationMonths)) ? Number(aData.durationMonths) : existingApp.durationMonths;
 
-      const compId = aData.companyId || targetComp?.id || aData.assignedCompanyIds?.[0] || 'comp_01';
-      const compName = aData.companyName || targetComp?.name || 'شركة تقسيط';
+        const targetComp = aData.companyId 
+          ? companies.find(c => c.id === aData.companyId)
+          : (aData.assignedCompanyIds?.[0] ? companies.find(c => c.id === aData.assignedCompanyIds![0]) : undefined);
 
-      const newApp: Application = {
-        id: appId,
-        clientId,
-        clientName: aData.clientName.trim(),
-        clientNationalId: finalNationalId,
-        phoneNumber: aData.phoneNumber || '',
-        whatsappNumber: aData.whatsappNumber || aData.phoneNumber || '',
-        governorate: aData.governorate || 'القاهرة',
-        profession: (aData.profession as any) || 'MERCHANT',
-        financeType: aData.financeType || 'INSTALLMENT',
-        durationMonths: Number(aData.durationMonths) || 12,
-        requestedAmount: Number(aData.requestedAmount) || Number(aData.approvedAmount) || 0,
-        approvedAmount: Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0,
-        usedAmount: appStatus === ApplicationStatus.AMOUNT_TRANSFERRED ? (Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0) : 0,
-        status: appStatus,
-        companyId: compId,
-        companyName: compName,
-        submittedBy: currentUser.id,
-        submittedByName: currentUser.name,
-        submittedAt: submittedDate,
-        reviewedAt: lastStageDate,
-        lastStageDate: lastStageDate,
-        assignedCompanyIds: (aData.assignedCompanyIds && aData.assignedCompanyIds.length > 0) ? aData.assignedCompanyIds : [compId],
-        selectedProgramId: aData.selectedProgramId,
-        selectedProgramName: aData.selectedProgramName,
-        programInterestRate: aData.programInterestRate,
-        programAdminFeePercent: aData.programAdminFeePercent,
-        description: aData.description || 'طلب تمويل مستورد مجمعاً عبر شيت إكسيل',
-        hasRecentInstallment: true,
-        hasRecentReceipt: false,
-        history: [
-          {
-            action: 'CREATED',
-            timestamp: submittedDate,
-            performedBy: currentUser.id,
-            details: `تم تقديم الطلب وتسجيله بالمنظومة (${submittedDate.split('T')[0]})`
-          },
-          ...(lastStageDate !== submittedDate ? [{
-            action: 'STATUS_CHANGED',
-            timestamp: lastStageDate,
-            performedBy: currentUser.id,
-            details: `تحديث مرحلة الطلب إلى (${STATUS_ARABIC[appStatus] || appStatus}) بتاريخ ${lastStageDate.split('T')[0]}`
-          }] : [])
-        ]
-      };
-      newAppsToAdd.push(newApp);
-      count++;
+        const compId = aData.companyId || targetComp?.id || aData.assignedCompanyIds?.[0] || existingApp.companyId || 'comp_01';
+        const compName = aData.companyName || targetComp?.name || existingApp.companyName || 'شركة تقسيط';
+
+        const historyItem: ApplicationHistoryItem = {
+          action: (statusChanged ? appStatus : 'UPDATED') as any,
+          timestamp: nowStr,
+          performedBy: currentUser.id,
+          performedByName: currentUser.name,
+          details: statusChanged
+            ? `تحديث مرحلة الطلب عبر شيت إكسيل من (${STATUS_ARABIC[existingApp.status] || existingApp.status}) إلى (${STATUS_ARABIC[appStatus] || appStatus})`
+            : 'تحديث بيانات ومبالغ وملاحظات الطلب عبر استيراد شيت إكسيل'
+        };
+
+        const updatedApp: Application = {
+          ...existingApp,
+          clientName: aData.clientName ? aData.clientName.trim() : existingApp.clientName,
+          clientNationalId: !isMissingNid ? finalNationalId : existingApp.clientNationalId,
+          phoneNumber: aData.phoneNumber ? aData.phoneNumber.trim() : existingApp.phoneNumber,
+          whatsappNumber: aData.whatsappNumber ? aData.whatsappNumber.trim() : (existingApp.whatsappNumber || existingApp.phoneNumber),
+          governorate: aData.governorate || existingApp.governorate,
+          profession: (aData.profession as any) || existingApp.profession,
+          requestedAmount: reqAmount,
+          totalAmount: reqAmount,
+          approvedAmount: appAmount,
+          financedAmount: appAmount || reqAmount,
+          monthlyInstallment: Math.round((appAmount || reqAmount || 0) / (durMonths || 12)),
+          durationMonths: durMonths,
+          usedAmount: appStatus === ApplicationStatus.AMOUNT_TRANSFERRED ? (appAmount || reqAmount || 0) : existingApp.usedAmount,
+          status: appStatus,
+          companyId: compId,
+          companyName: compName,
+          assignedCompanyIds: (aData.assignedCompanyIds && aData.assignedCompanyIds.length > 0) ? aData.assignedCompanyIds : (existingApp.assignedCompanyIds || [compId]),
+          selectedProgramId: aData.selectedProgramId || existingApp.selectedProgramId,
+          selectedProgramName: aData.selectedProgramName || existingApp.selectedProgramName,
+          programInterestRate: aData.programInterestRate !== undefined ? aData.programInterestRate : existingApp.programInterestRate,
+          programAdminFeePercent: aData.programAdminFeePercent !== undefined ? aData.programAdminFeePercent : existingApp.programAdminFeePercent,
+          salesmanName: aData.salesmanName || existingApp.salesmanName,
+          salesmanId: aData.salesmanId || existingApp.salesmanId,
+          rejectionReason: appStatus === ApplicationStatus.REJECTED ? (aData.rejectionReason || existingApp.rejectionReason) : undefined,
+          description: aData.description || existingApp.description,
+          lastStageDate: lastStageDate,
+          reviewedAt: lastStageDate,
+          history: [historyItem, ...(existingApp.history || [])]
+        };
+
+        updatedAppsToSave.push(updatedApp);
+        updatedCount++;
+      } else {
+        // === INSERT NEW APPLICATION ===
+        const appId = targetAppId || `app_imp_${Date.now()}_${i}`;
+        const submittedDate = aData.submittedAt || nowStr;
+        const lastStageDate = aData.lastStageDate || aData.reviewedAt || submittedDate;
+        const appStatus = aData.status || ApplicationStatus.SUBMITTED;
+
+        const targetComp = aData.companyId 
+          ? companies.find(c => c.id === aData.companyId)
+          : (aData.assignedCompanyIds?.[0] ? companies.find(c => c.id === aData.assignedCompanyIds![0]) : companies[0]);
+
+        const compId = aData.companyId || targetComp?.id || aData.assignedCompanyIds?.[0] || 'comp_01';
+        const compName = aData.companyName || targetComp?.name || 'شركة تقسيط';
+
+        const newApp: Application = {
+          id: appId,
+          clientId,
+          clientName: aData.clientName.trim(),
+          clientNationalId: finalNationalId,
+          phoneNumber: aData.phoneNumber || '',
+          whatsappNumber: aData.whatsappNumber || aData.phoneNumber || '',
+          governorate: aData.governorate || 'القاهرة',
+          profession: (aData.profession as any) || 'MERCHANT',
+          financeType: aData.financeType || 'INSTALLMENT',
+          durationMonths: Number(aData.durationMonths) || 12,
+          requestedAmount: Number(aData.requestedAmount) || Number(aData.approvedAmount) || 0,
+          approvedAmount: Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0,
+          usedAmount: appStatus === ApplicationStatus.AMOUNT_TRANSFERRED ? (Number(aData.approvedAmount) || Number(aData.requestedAmount) || 0) : 0,
+          status: appStatus,
+          companyId: compId,
+          companyName: compName,
+          submittedBy: currentUser.id,
+          submittedByName: currentUser.name,
+          submittedAt: submittedDate,
+          reviewedAt: lastStageDate,
+          lastStageDate: lastStageDate,
+          assignedCompanyIds: (aData.assignedCompanyIds && aData.assignedCompanyIds.length > 0) ? aData.assignedCompanyIds : [compId],
+          selectedProgramId: aData.selectedProgramId,
+          selectedProgramName: aData.selectedProgramName,
+          programInterestRate: aData.programInterestRate,
+          programAdminFeePercent: aData.programAdminFeePercent,
+          salesmanName: aData.salesmanName,
+          salesmanId: aData.salesmanId,
+          rejectionReason: appStatus === ApplicationStatus.REJECTED ? aData.rejectionReason : undefined,
+          description: aData.description || 'طلب تمويل مستورد مجمعاً عبر شيت إكسيل',
+          hasRecentInstallment: true,
+          hasRecentReceipt: false,
+          history: [
+            {
+              action: 'CREATED',
+              timestamp: submittedDate,
+              performedBy: currentUser.id,
+              details: `تم تقديم الطلب وتسجيله بالمنظومة (${submittedDate.split('T')[0]})`
+            },
+            ...(lastStageDate !== submittedDate ? [{
+              action: 'STATUS_CHANGED' as any,
+              timestamp: lastStageDate,
+              performedBy: currentUser.id,
+              details: `تحديث مرحلة الطلب إلى (${STATUS_ARABIC[appStatus] || appStatus}) بتاريخ ${lastStageDate.split('T')[0]}`
+            }] : [])
+          ]
+        };
+        newAppsToAdd.push(newApp);
+        importedCount++;
+      }
     }
 
-    let currentApps: Application[] = applications;
-    try {
-      const saved = localStorage.getItem('cropsa_applications');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          currentApps = parsed;
-        }
-      }
-    } catch (e) {}
+    const updatedMap = new Map<string, Application>();
+    updatedAppsToSave.forEach(u => updatedMap.set(u.id, u));
 
-    const allUpdatedApps = [...newAppsToAdd, ...currentApps];
+    const allUpdatedApps: Application[] = [
+      ...newAppsToAdd,
+      ...currentApps.map(a => updatedMap.get(a.id) || a)
+    ];
+
     setApplications(allUpdatedApps);
     try {
       localStorage.setItem('cropsa_applications', JSON.stringify(allUpdatedApps));
@@ -7315,7 +7395,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           await supabase.from('clients').upsert(clientRows);
         }
 
-        const appRows = newAppsToAdd.map(na => ({
+        const appsToUpsertInRelational = [...newAppsToAdd, ...updatedAppsToSave].map(na => ({
           id: na.id,
           client_id: na.clientId || na.id,
           client_name: na.clientName,
@@ -7331,7 +7411,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           product_type: na.selectedProgramName || 'تمويل تقسيط',
           product_description: na.description || ''
         }));
-        await supabase.from('applications').upsert(appRows);
+        if (appsToUpsertInRelational.length > 0) {
+          await supabase.from('applications').upsert(appsToUpsertInRelational);
+        }
       } catch (err) {
         console.warn('Supabase relational bulkImportApplications fallback:', err);
       }
@@ -7342,16 +7424,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       for (const nc of newClientsToAdd) {
         await setDoc(doc(db, 'clients', nc.id), nc);
       }
-      for (const na of newAppsToAdd) {
+      for (const na of [...newAppsToAdd, ...updatedAppsToSave]) {
         await setDoc(doc(db, 'applications', na.id), na);
       }
     } catch (e) {
       console.warn('Firestore bulkImportApplications fallback:', e);
     }
 
-    addAuditLog('BULK_IMPORT_APPLICATIONS', `استيراد مجمع لعدد ${count} طلب تقسيط عبر شيت إكسل`, currentUser.id);
+    addAuditLog(
+      'BULK_IMPORT_APPLICATIONS',
+      `استيراد وتحديث مجمع: تم إضافة ${importedCount} طلب جديد وتحديث ${updatedCount} حالة قائمة عبر شيت إكسل`,
+      currentUser.id
+    );
 
-    return { importedCount: count, errors };
+    return { importedCount, updatedCount, errors };
   };
 
   const markNotificationRead = async (notifId: string) => {

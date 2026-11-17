@@ -18,13 +18,17 @@ import {
   MapPin, 
   Search, 
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react';
 import { useStore } from '../context/Store';
 import { ApplicationStatus, STATUS_ARABIC, Role } from '../types';
+import { exportApplicationsToExcel, generateApplicationsSampleTemplate } from '../utils/applicationExcel';
 
 interface ParsedAppRow {
   id: string;
+  appId?: string;
+  isUpdate: boolean;
   clientName: string;
   clientNationalId: string;
   phoneNumber: string;
@@ -43,6 +47,8 @@ interface ParsedAppRow {
   lastStageDate: string; // YYYY-MM-DD
   description: string;
   isMissingNid: boolean;
+  rejectionReason?: string;
+  salesmanName?: string;
 }
 
 interface BulkApplicationsImportModalProps {
@@ -58,6 +64,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
     currentUser, 
     companies, 
     financingPrograms, 
+    applications,
     bulkImportApplications, 
     addAuditLog 
   } = useStore();
@@ -66,7 +73,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
   const [parsedRows, setParsedRows] = useState<ParsedAppRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [importSummary, setImportSummary] = useState<{ count: number; errors: string[] } | null>(null);
+  const [importSummary, setImportSummary] = useState<{ count: number; updatedCount: number; errors: string[] } | null>(null);
 
   // Global Defaults for the entire batch
   const [globalCompanyId, setGlobalCompanyId] = useState<string>(companies[0]?.id || '');
@@ -162,9 +169,12 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
     if (clean.includes('موافق') || clean.includes('معتمد') || clean.includes('approved')) return ApplicationStatus.APPROVED;
     if (clean.includes('رفض') || clean.includes('مرفوض') || clean.includes('rejected')) return ApplicationStatus.REJECTED;
     if (clean.includes('عقد') || clean.includes('توقيع') || clean.includes('contract')) return ApplicationStatus.CONTRACT_SIGNING;
-    if (clean.includes('ميداني') || clean.includes('استعلام') || clean.includes('investigation')) return ApplicationStatus.FIELD_INVESTIGATION;
+    if (clean.includes('ميداني') || clean.includes('استعلام') || clean.includes('investigation') || clean.includes('field')) return ApplicationStatus.FIELD_INVESTIGATION;
     if (clean.includes('سكور') || clean.includes('iscore') || clean.includes('i-score')) return ApplicationStatus.ISCORE_CHECK;
-    if (clean.includes('جديد') || clean.includes('مراجعة') || clean.includes('submitted')) return ApplicationStatus.SUBMITTED;
+    if (clean.includes('إضافية') || clean.includes('اضافيه') || clean.includes('additional')) return ApplicationStatus.ADDITIONAL_PAPERS;
+    if (clean.includes('أوراق') || clean.includes('اوراق') || clean.includes('paper') || clean.includes('مراجعة')) return ApplicationStatus.PAPER_REVIEW;
+    if (clean.includes('مستلم') || clean.includes('جديد') || clean.includes('received') || clean.includes('submitted')) return ApplicationStatus.RECEIVED;
+    if (clean.includes('أدمن') || clean.includes('admin')) return ApplicationStatus.PENDING_ADMIN;
     return ApplicationStatus.APPROVED;
   };
 
@@ -229,22 +239,33 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
           const normalized: Record<string, any> = {};
           Object.keys(row).forEach(k => {
             const cleanKey = k.trim().toLowerCase()
-              .replace(/[\s\-_]/g, '')
+              .replace(/[\s\-_()]/g, '')
               .replace(/أ|إ|آ/g, 'ا')
               .replace(/ة/g, 'ه');
             normalized[cleanKey] = row[k];
           });
 
+          // Detect Application ID (for updating existing cases)
+          const rawAppId = String(
+            normalized['رقمالطلبid'] || normalized['رقمالطلب'] || normalized['كودالطلب'] || 
+            normalized['رقمالحاله'] || normalized['id'] || normalized['appid'] || 
+            normalized['applicationid'] || ''
+          ).trim();
+
+          const existingApp = rawAppId ? applications.find(a => a.id === rawAppId) : undefined;
+          const isUpdate = Boolean(existingApp);
+          const appId = rawAppId || undefined;
+
           const clientName = String(
             normalized['اسمالعميل'] || normalized['العميل'] || normalized['الاسم'] || 
-            normalized['clientname'] || normalized['name'] || ''
+            normalized['clientname'] || normalized['name'] || existingApp?.clientName || ''
           ).trim();
 
           if (!clientName) return; // Skip empty name rows
 
           const rawNid = String(
             normalized['الرقمالقومي'] || normalized['القومي'] || normalized['بطاقه'] || 
-            normalized['nationalid'] || normalized['nid'] || ''
+            normalized['nationalid'] || normalized['nid'] || existingApp?.clientNationalId || ''
           ).replace(/\D/g, '');
 
           const isMissingNid = !rawNid || rawNid.length !== 14;
@@ -252,86 +273,111 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
 
           const phone = String(
             normalized['رقمموبايل'] || normalized['الهاتف'] || normalized['الموبايل'] || 
-            normalized['تليفون'] || normalized['phone'] || normalized['mobile'] || ''
+            normalized['تليفون'] || normalized['phone'] || normalized['mobile'] || 
+            normalized['رقمPhone'] || existingApp?.phoneNumber || ''
           ).trim();
 
           const whatsapp = String(
-            normalized['الواتساب'] || normalized['واتساب'] || normalized['whatsapp'] || phone
+            normalized['الواتساب'] || normalized['واتساب'] || normalized['whatsapp'] || 
+            normalized['رقمwhatsapp'] || existingApp?.whatsappNumber || phone
           ).trim();
 
           const gov = String(
-            normalized['المحافظه'] || normalized['محافظه'] || normalized['governorate'] || 'القاهرة'
+            normalized['المحافظه'] || normalized['محافظه'] || normalized['governorate'] || 
+            existingApp?.governorate || 'القاهرة'
           ).trim();
 
           const profession = String(
-            normalized['المهنه'] || normalized['الوظيفه'] || normalized['profession'] || 'تاجر'
+            normalized['المهنه'] || normalized['الوظيفه'] || normalized['النشاط'] || 
+            normalized['profession'] || existingApp?.profession || 'تاجر'
           ).trim();
 
           const description = String(
-            normalized['ملاحظات'] || normalized['وصف'] || normalized['notes'] || normalized['description'] || 'طلب تقسيط مستورد مجمعاً'
+            normalized['ملاحظات'] || normalized['وصف'] || normalized['ملاحظاتوتفاصيل'] || 
+            normalized['notes'] || normalized['description'] || existingApp?.description || 'طلب تقسيط مستورد عبر شيت إكسيل'
+          ).trim();
+
+          const rejectionReason = String(
+            normalized['سببالرفض'] || normalized['سببالرفضانوcolumn'] || normalized['سببالرفضانوجد'] || 
+            normalized['rejectionreason'] || existingApp?.rejectionReason || ''
+          ).trim();
+
+          const salesmanName = String(
+            normalized['اسمالمندوب'] || normalized['المندوب'] || normalized['المبيعات'] || 
+            normalized['salesman'] || normalized['salesmanname'] || existingApp?.salesmanName || ''
           ).trim();
 
           const requestedAmount = parseSmartAmount(
-            normalized['المبلغالمطلوب'] || normalized['مبلغالطلب'] || normalized['المطلوب'] || 
-            normalized['requestedamount'] || normalized['amount'] || 50000
+            normalized['المبلغالمطلوبجنيه'] || normalized['المبلغالمطلوب'] || normalized['مبلغالطلب'] || 
+            normalized['المطلوب'] || normalized['requestedamount'] || normalized['amount'] || 
+            existingApp?.requestedAmount || 50000
           );
 
           // Status matching
           const statusRaw = String(
-            normalized['الحاله'] || normalized['المرحله'] || normalized['status'] || normalized['stage'] || ''
+            normalized['حالهالطلب'] || normalized['الحاله'] || normalized['المرحله'] || 
+            normalized['status'] || normalized['stage'] || ''
           );
-          const status = parseSmartStatus(statusRaw);
+          const status = statusRaw ? parseSmartStatus(statusRaw) : (existingApp?.status || ApplicationStatus.APPROVED);
 
           const isApprovedStatus = status === ApplicationStatus.APPROVED || 
                                    status === ApplicationStatus.CONTRACT_SIGNING || 
                                    status === ApplicationStatus.AMOUNT_TRANSFERRED;
 
-          const rawApprovedStr = normalized['المبلغالمعتمد'] || normalized['المعتمد'] || normalized['مبلغالتمويل'] || normalized['approvedamount'];
+          const rawApprovedStr = normalized['المبلغالمعتمدجنيه'] || normalized['المبلغالمعتمد'] || 
+                                normalized['المعتمد'] || normalized['مبلغالتمويل'] || normalized['approvedamount'];
           
           const approvedAmount = rawApprovedStr 
             ? parseSmartAmount(rawApprovedStr) 
-            : (isApprovedStatus ? requestedAmount : 0);
+            : (existingApp?.approvedAmount !== undefined ? existingApp.approvedAmount : (isApprovedStatus ? requestedAmount : 0));
 
           let durationMonths = parseInt(String(
-            normalized['المده'] || normalized['مدهالتقسيط'] || normalized['الشهور'] || 
-            normalized['duration'] || normalized['months'] || ''
+            normalized['مدهالتقسيطشهور'] || normalized['المده'] || normalized['مدهالتقسيط'] || 
+            normalized['الشهور'] || normalized['duration'] || normalized['months'] || 
+            existingApp?.durationMonths || ''
           ));
 
-          // If duration not explicitly in a column, check description for expressions like "على 7 شهور", "7 شهور", "لمدة 6 أشهر"
           if (!durationMonths || isNaN(durationMonths)) {
             const durationMatch = description.match(/(?:على|خلال|لمدة|مدة)\s*(\d+)\s*(?:شهر|شهور|أشهر|months?)/i) || 
                                   description.match(/(\d+)\s*(?:شهر|شهور|أشهر)/i);
             if (durationMatch) {
               durationMonths = parseInt(durationMatch[1], 10);
             } else {
-              durationMonths = 12;
+              durationMonths = existingApp?.durationMonths || 12;
             }
           }
 
           // Company matching
           const companyRaw = String(
-            normalized['الشركه'] || normalized['البنك'] || normalized['اسمبانك'] || 
-            normalized['company'] || normalized['bank'] || ''
+            normalized['شركهالتمويل'] || normalized['الشركه'] || normalized['البنك'] || 
+            normalized['اسمبانك'] || normalized['company'] || normalized['bank'] || 
+            existingApp?.companyName || ''
           ).trim();
           const matchedComp = matchCompany(companyRaw);
 
           // Program matching
           const programRaw = String(
-            normalized['البرنامج'] || normalized['البرنامجالتمويلي'] || normalized['نوعالبرنامج'] || 
-            normalized['program'] || ''
+            normalized['البرنامجالتمويلي'] || normalized['البرنامج'] || normalized['نوعالبرنامج'] || 
+            normalized['program'] || existingApp?.selectedProgramName || ''
           ).trim();
           const matchedProg = matchProgram(matchedComp.id, programRaw);
 
           // Submitted date (دخل من امتي)
-          const submittedRaw = normalized['تاريخالتقديم'] || normalized['تاريخالدخول'] || normalized['تاريخالطلب'] || normalized['submittedat'] || normalized['date'];
+          const submittedRaw = normalized['تاريخالتقديم'] || normalized['تاريخالدخول'] || 
+                              normalized['تاريخالطلب'] || normalized['submittedat'] || normalized['date'] || 
+                              existingApp?.submittedAt;
           const submittedAt = parseSmartDateStr(submittedRaw, globalSubmittedAt);
 
           // Last stage date (واخر مرحلة كانت يوم كام)
-          const lastStageRaw = normalized['تاريخاخرمرحله'] || normalized['تاريخالتحديث'] || normalized['تاريخالموافقه'] || normalized['laststagedate'] || normalized['updatedat'];
+          const lastStageRaw = normalized['تاريخاخرمرحله'] || normalized['تاريخالتحديث'] || 
+                              normalized['تاريخالموافقه'] || normalized['laststagedate'] || normalized['updatedat'] || 
+                              existingApp?.lastStageDate;
           const lastStageDate = parseSmartDateStr(lastStageRaw, globalLastStageDate);
 
           rows.push({
             id: `row_${Date.now()}_${idx}`,
+            appId,
+            isUpdate,
             clientName,
             clientNationalId: finalNid,
             phoneNumber: phone,
@@ -349,7 +395,9 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
             submittedAt,
             lastStageDate,
             description,
-            isMissingNid
+            isMissingNid,
+            rejectionReason: rejectionReason || existingApp?.rejectionReason,
+            salesmanName: salesmanName || existingApp?.salesmanName
           });
         });
 
@@ -364,47 +412,14 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
     e.target.value = '';
   };
 
-  // Download Sample Excel Template
+  // Download Sample Excel Template & Reference Guide
   const handleDownloadTemplate = () => {
-    const templateData = [
-      {
-        'اسم العميل': 'محمد أحمد حسن',
-        'الرقم القومي': '29001011234567',
-        'الهاتف': '01012345678',
-        'المحافظة': 'القاهرة',
-        'المهنة': 'تاجر محاصيل',
-        'المبلغ المطلوب': 75000,
-        'المبلغ المعتمد': 70000,
-        'الشهور': 18,
-        'الشركة / البنك': companies[0]?.name || 'شركة تمويل',
-        'البرنامج التمويلي': globalCompanyPrograms[0]?.name || 'برنامج التمويل السريع',
-        'المرحلة': 'موافقة ائتمانية معتمدة',
-        'تاريخ التقديم': '2024-03-01',
-        'تاريخ آخر مرحلة': '2024-05-15',
-        'ملاحظات': 'عميل منتظم بسجل ائتماني ممتاز'
-      },
-      {
-        'اسم العميل': 'محمود عبد الرحيم علي',
-        'الرقم القومي': '', // Can be empty!
-        'الهاتف': '01123456789',
-        'المحافظة': 'الشرقية',
-        'المهنة': 'مزارع',
-        'المبلغ المطلوب': 50000,
-        'المبلغ المعتمد': 50000,
-        'الشهور': 12,
-        'الشركة / البنك': companies[0]?.name || 'شركة تمويل',
-        'البرنامج التمويلي': globalCompanyPrograms[0]?.name || 'برنامج تمويل زراعي',
-        'المرحلة': 'فحص آي سكور I-Score',
-        'تاريخ التقديم': '2024-06-10',
-        'تاريخ آخر مرحلة': '2024-06-25',
-        'ملاحظات': 'بانتظار استكمال صورة البطاقة'
-      }
-    ];
+    generateApplicationsSampleTemplate(companies, financingPrograms);
+  };
 
-    const ws = XLSX.utils.json_to_sheet(templateData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'طلبات_التقسيط');
-    XLSX.writeFile(wb, `نموذج_استيراد_طلبات_التقسيط_${new Date().toISOString().split('T')[0]}.xlsx`);
+  // Export current live applications to Excel
+  const handleExportCurrentApplications = () => {
+    exportApplicationsToExcel(applications, 'كافة_حالات_التقسيط_الحالية');
   };
 
   // Apply Global Defaults to All Rows
@@ -475,6 +490,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
             profession: row.profession as any
           },
           application: {
+            id: row.appId,
             clientName: row.clientName,
             clientNationalId: row.clientNationalId || undefined,
             phoneNumber: row.phoneNumber,
@@ -494,15 +510,17 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
             selectedProgramName: row.programName,
             programInterestRate: prog?.interestRate || 0,
             programAdminFeePercent: prog?.adminFeePercent || 2.5,
+            salesmanName: row.salesmanName,
+            rejectionReason: row.rejectionReason,
             description: row.description
           }
         };
       });
 
       const res = await bulkImportApplications(items);
-      setImportSummary({ count: res.importedCount, errors: res.errors });
+      setImportSummary({ count: res.importedCount, updatedCount: res.updatedCount, errors: res.errors });
 
-      if (res.importedCount > 0) {
+      if (res.importedCount > 0 || res.updatedCount > 0) {
         setParsedRows([]);
       }
     } catch (err) {
@@ -522,13 +540,16 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
       r.clientNationalId.includes(term) ||
       r.phoneNumber.includes(term) ||
       r.companyName.toLowerCase().includes(term) ||
-      r.programName.toLowerCase().includes(term)
+      r.programName.toLowerCase().includes(term) ||
+      (r.appId && r.appId.toLowerCase().includes(term))
     );
   }, [parsedRows, searchTerm]);
 
   // Totals
   const totalRequested = useMemo(() => parsedRows.reduce((sum, r) => sum + (Number(r.requestedAmount) || 0), 0), [parsedRows]);
   const totalApproved = useMemo(() => parsedRows.reduce((sum, r) => sum + (Number(r.approvedAmount) || 0), 0), [parsedRows]);
+  const updateCasesCount = useMemo(() => parsedRows.filter(r => r.isUpdate).length, [parsedRows]);
+  const newCasesCount = useMemo(() => parsedRows.filter(r => !r.isUpdate).length, [parsedRows]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden" dir="rtl">
@@ -543,31 +564,42 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-black text-slate-900 text-lg">
-                  استيراد ورفع طلبات تقسيط مجمعة (شيت بالك)
+                  استيراد وتحديث طلبات التقسيط مجمعة (شيت إكسيل)
                 </h3>
                 <span className="text-[10px] font-bold bg-sky-100 text-sky-900 px-2.5 py-0.5 rounded-full border border-sky-200">
-                  ربط الشركات والبنوك والبرامج والتواريخ
+                  إضافة طلبات جديدة + تحديث الحالات القائمة
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                تحديد بنك/شركة التمويل، البرنامج الائتماني، مرحلة الطلب الحالية، تاريخ التقديم وتاريخ آخر مرحلة
+                يمكنك تحميل ملف الحالات الحالي وتعديله ثم إعادة رفعه، أو تحميل النموذج الاسترشادي لإضافة طلبات جديدة
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleExportCurrentApplications}
+              className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              title="تحميل شيت إكسيل يحتوي على كافة الحالات المسجلة حالياً لتعديلها وإعادة رفعها"
+            >
+              <Download className="h-4 w-4 text-emerald-600" />
+              <span>تحميل الحالات الحالية (Excel)</span>
+            </button>
+
             <button
               type="button"
               onClick={handleDownloadTemplate}
-              className="text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors"
+              className="text-xs font-bold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              title="تحميل شيت نموذج استرشادي فارغ مع أمثلة ودليل تفصيلي"
             >
-              <Download className="h-4 w-4" />
-              <span>تحميل شيت النموذج (.xlsx)</span>
+              <FileSpreadsheet className="h-4 w-4 text-sky-600" />
+              <span>النموذج الاسترشادي والدليل (.xlsx)</span>
             </button>
 
             <button 
               onClick={onClose} 
-              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X className="h-6 w-6" />
             </button>
@@ -581,12 +613,24 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
           {importSummary && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3">
               <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-              <div className="space-y-1">
+              <div className="space-y-1.5 flex-1">
                 <h4 className="font-bold text-emerald-950 text-sm">
-                  تم استيراد وحفظ {importSummary.count} طلب تقسيط بنجاح في المنظومة وقاعدة البيانات!
+                  تمت معالجة وحفظ البيانات بنجاح في المنظومة وقاعدة البيانات السحابية!
                 </h4>
-                <p className="text-emerald-800 text-xs">
-                  تم إنشاء سجلات العملاء وربط البرامج والشركات ومراحل الطلبات وتوثيق تاريخ الدخول وآخر تحديث.
+                <div className="flex items-center gap-3 text-emerald-800 text-xs flex-wrap font-medium pt-0.5">
+                  {importSummary.count > 0 && (
+                    <span className="bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-300 font-bold text-emerald-950">
+                      ➕ طلبات جديدة أُضيفت: <strong className="font-black">{importSummary.count}</strong>
+                    </span>
+                  )}
+                  {importSummary.updatedCount > 0 && (
+                    <span className="bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-300 font-bold text-amber-950">
+                      🔄 حالات قائمة تم تحديثها: <strong className="font-black">{importSummary.updatedCount}</strong>
+                    </span>
+                  )}
+                </div>
+                <p className="text-emerald-800 text-xs pt-0.5">
+                  تم توثيق التحديثات والتواريخ والمبالغ في سجل العمليات السحابي، وستظهر فوراً في جدول الحالات.
                 </p>
                 {importSummary.errors.length > 0 && (
                   <div className="mt-2 text-rose-700 text-[11px] space-y-0.5">
@@ -614,29 +658,38 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
               </div>
               <div>
                 <h4 className="font-black text-slate-800 text-base">
-                  اختر أو اسحب ملف شيت طلبات التقسيط المجمعة
+                  اختر أو اسحب ملف شيت طلبات التقسيط (Excel / CSV)
                 </h4>
-                <p className="text-slate-500 text-xs mt-1 max-w-md mx-auto">
-                  يدعم صيغ Excel (.xlsx, .xls) و CSV. يتعرف النظام تلقائياً على الأعمدة العربية والإنجليزية ويقبل الطلبات حتى لو لم يتوفر الرقم القومي فوراً.
+                <p className="text-slate-500 text-xs mt-1 max-w-lg mx-auto">
+                  يدعم صيغ Excel (.xlsx, .xls) و CSV. إذا كان الملف يحتوي على عمود (رقم الطلب) فسيتم تحديث الحالات القائمة مباشرة، وإذا كان العمود فارغاً فسيتم تسجيل طلبات جديدة بالمنظومة.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-3 pt-2 flex-wrap justify-center">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow-md flex items-center gap-2 transition-colors text-xs"
+                  className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow-md flex items-center gap-2 transition-colors text-xs cursor-pointer"
                 >
                   <Upload className="h-4 w-4" />
                   <span>رفع ملف الإكسيل الآن</span>
                 </button>
                 <button
                   type="button"
-                  onClick={handleDownloadTemplate}
-                  className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold transition-colors text-xs flex items-center gap-1.5"
+                  onClick={handleExportCurrentApplications}
+                  className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl font-bold transition-colors text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="تحميل جميع الحالات الحالية للتعديل"
                 >
-                  <Download className="h-4 w-4 text-slate-500" />
-                  <span>تحميل النموذج الاسترشادي</span>
+                  <Download className="h-4 w-4 text-emerald-600" />
+                  <span>تحميل الحالات الحالية للتعديل (.xlsx)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-bold transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-sky-600" />
+                  <span>تحميل النموذج الاسترشادي والدليل</span>
                 </button>
               </div>
             </div>
@@ -658,7 +711,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                   <button
                     type="button"
                     onClick={handleApplyGlobalToAll}
-                    className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow-xs transition-colors flex items-center gap-1"
+                    className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <span>تطبيق هذه الإعدادات على جميع الأسطر</span>
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -718,12 +771,13 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                       onChange={e => setGlobalStatus(e.target.value as ApplicationStatus)}
                       className="w-full text-xs font-bold p-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500"
                     >
-                      <option value={ApplicationStatus.APPROVED}>موافقة ائتمانية معتمدة (Approved)</option>
-                      <option value={ApplicationStatus.AMOUNT_TRANSFERRED}>تم صرف المبلغ (Amount Transferred)</option>
+                      <option value={ApplicationStatus.APPROVED}>طلب معتمد (Approved)</option>
+                      <option value={ApplicationStatus.AMOUNT_TRANSFERRED}>تم تحويل المبلغ (Transferred)</option>
                       <option value={ApplicationStatus.CONTRACT_SIGNING}>توقيع عقود (Contract Signing)</option>
-                      <option value={ApplicationStatus.FIELD_INVESTIGATION}>استعلام ميداني (Investigation)</option>
-                      <option value={ApplicationStatus.ISCORE_CHECK}>فحص I-Score</option>
-                      <option value={ApplicationStatus.SUBMITTED}>طلب جديد / تحت الدراسة</option>
+                      <option value={ApplicationStatus.FIELD_INVESTIGATION}>الاستعلام الميداني (Investigation)</option>
+                      <option value={ApplicationStatus.ISCORE_CHECK}>استعلام I-Score</option>
+                      <option value={ApplicationStatus.PAPER_REVIEW}>مراجعة الأوراق (Paper Review)</option>
+                      <option value={ApplicationStatus.RECEIVED}>طلب مستلم جديد</option>
                       <option value={ApplicationStatus.REJECTED}>مرفوض (Rejected)</option>
                     </select>
                   </div>
@@ -762,15 +816,22 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-bold text-slate-700 text-xs">
-                    إجمالي الطلبات المستوردة: <strong className="text-slate-950 font-black">{parsedRows.length}</strong>
+                    إجمالي الصفوف: <strong className="text-slate-950 font-black">{parsedRows.length}</strong>
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-xs bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-bold">
+                    🔄 حالات للتحديث: <strong>{updateCasesCount}</strong>
+                  </span>
+                  <span className="text-xs bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-md font-bold">
+                    ✨ طلبات جديدة: <strong>{newCasesCount}</strong>
                   </span>
                   <span className="text-slate-300">|</span>
                   <span className="font-bold text-slate-700 text-xs">
-                    إجمالي المبالغ المطلوبة: <strong className="text-sky-700 font-mono font-black">{totalRequested.toLocaleString()} ج.م</strong>
+                    إجمالي المطلوب: <strong className="text-sky-700 font-mono font-black">{totalRequested.toLocaleString()} ج.م</strong>
                   </span>
                   <span className="text-slate-300">|</span>
                   <span className="font-bold text-slate-700 text-xs">
-                    إجمالي المبالغ المعتمدة: <strong className="text-emerald-700 font-mono font-black">{totalApproved.toLocaleString()} ج.م</strong>
+                    إجمالي المعتمد: <strong className="text-emerald-700 font-mono font-black">{totalApproved.toLocaleString()} ج.م</strong>
                   </span>
                 </div>
 
@@ -793,7 +854,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                         setParsedRows([]);
                       }
                     }}
-                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors"
+                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors cursor-pointer"
                     title="إفراغ القائمة"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -807,6 +868,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                   <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 z-10 shadow-2xs">
                     <tr>
                       <th className="p-2.5 text-center">#</th>
+                      <th className="p-2.5 text-center">العملية</th>
                       <th className="p-2.5">العميل</th>
                       <th className="p-2.5">الرقم القومي</th>
                       <th className="p-2.5">الهاتف</th>
@@ -826,9 +888,23 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                       const rowCompPrograms = (financingPrograms || []).filter(p => p.companyId === row.companyId && p.active !== false);
 
                       return (
-                        <tr key={row.id} className="hover:bg-sky-50/40 transition-colors">
+                        <tr key={row.id} className={`transition-colors ${row.isUpdate ? 'bg-amber-50/30 hover:bg-amber-50/60' : 'hover:bg-sky-50/40'}`}>
                           <td className="p-2.5 text-center text-slate-400 font-mono">{idx + 1}</td>
                           
+                          {/* Operation type badge */}
+                          <td className="p-2 text-center">
+                            {row.isUpdate ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-lg font-black text-[10px]" title={`سيتم تحديث الطلب القائم رقم: ${row.appId}`}>
+                                <RefreshCw className="h-2.5 w-2.5 text-amber-700 animate-spin" />
+                                <span>تحديث</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-lg font-black text-[10px]">
+                                <span>جديد +</span>
+                              </span>
+                            )}
+                          </td>
+
                           {/* Client Name */}
                           <td className="p-2">
                             <input
@@ -933,12 +1009,13 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                               onChange={e => handleUpdateRow(row.id, 'status', e.target.value as ApplicationStatus)}
                               className="w-36 p-1.5 text-xs font-bold bg-white border border-slate-200 rounded-lg"
                             >
-                              <option value={ApplicationStatus.APPROVED}>معتمد (Approved)</option>
-                              <option value={ApplicationStatus.AMOUNT_TRANSFERRED}>تم الصرف (Transferred)</option>
+                              <option value={ApplicationStatus.APPROVED}>طلب معتمد (Approved)</option>
+                              <option value={ApplicationStatus.AMOUNT_TRANSFERRED}>تم تحويل المبلغ (Transferred)</option>
                               <option value={ApplicationStatus.CONTRACT_SIGNING}>توقيع عقود (Contract)</option>
-                              <option value={ApplicationStatus.FIELD_INVESTIGATION}>استعلام ميداني</option>
-                              <option value={ApplicationStatus.ISCORE_CHECK}>آي سكور I-Score</option>
-                              <option value={ApplicationStatus.SUBMITTED}>طلب جديد</option>
+                              <option value={ApplicationStatus.FIELD_INVESTIGATION}>الاستعلام الميداني</option>
+                              <option value={ApplicationStatus.ISCORE_CHECK}>استعلام I-Score</option>
+                              <option value={ApplicationStatus.PAPER_REVIEW}>مراجعة الأوراق</option>
+                              <option value={ApplicationStatus.RECEIVED}>طلب مستلم جديد</option>
                               <option value={ApplicationStatus.REJECTED}>مرفوض (Rejected)</option>
                             </select>
                           </td>
@@ -968,7 +1045,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
                             <button
                               type="button"
                               onClick={() => handleDeleteRow(row.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="حذف هذا الصف"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -989,7 +1066,7 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+            className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
           >
             إغلاق
           </button>
@@ -1004,7 +1081,9 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
               >
                 <CheckCircle2 className="h-4 w-4" />
                 <span>
-                  {isProcessing ? 'جاري استيراد وحفظ الطلبات سحابياً...' : `تأكيد وحفظ (${parsedRows.length}) طلب تقسيط`}
+                  {isProcessing 
+                    ? 'جاري حفظ ومزامنة البيانات سحابياً...' 
+                    : `تأكيد وحفظ (${parsedRows.length}) سجل [${newCasesCount} جديد + ${updateCasesCount} تحديث]`}
                 </span>
               </button>
             )}
@@ -1014,3 +1093,4 @@ export const BulkApplicationsImportModal: React.FC<BulkApplicationsImportModalPr
     </div>
   );
 };
+

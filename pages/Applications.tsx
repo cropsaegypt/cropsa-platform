@@ -41,7 +41,9 @@ import {
   Inbox,
   FolderOpen,
   Sparkles,
-  UserCheck
+  UserCheck,
+  FileSpreadsheet,
+  Upload
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
 import { ClientDetailModal } from '../components/ClientDetailModal';
@@ -53,6 +55,7 @@ import { NeedsUpdateNotificationBoard } from '../components/NeedsUpdateNotificat
 import { BulkApplicationsImportModal } from '../components/BulkApplicationsImportModal';
 import { InternalInstallmentCalculatorModal } from '../components/InternalInstallmentCalculatorModal';
 import { InternalInboxModal } from '../components/InternalInboxModal';
+import { exportApplicationsToExcel, generateApplicationsSampleTemplate } from '../utils/applicationExcel';
 
 const REJECTION_REASONS = [
   "درجة الائتمان منخفضة جداً",
@@ -88,6 +91,7 @@ export const Applications: React.FC = () => {
     users, 
     branches,
     companies,
+    financingPrograms,
     inboxMessages,
     salesRepresentatives,
     addSalesRepresentative,
@@ -590,16 +594,38 @@ export const Applications: React.FC = () => {
               <span className="font-sans">حاسبة التقسيط والأجل 🧮</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => exportApplicationsToExcel(filteredApps, 'حالات_التقسيط_منظومة_كروبسا')}
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 hover:border-emerald-400 px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="تحميل ملف إكسيل كامل لكافة الحالات الظاهرة لتحديثها أو حفظها على جهازك"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              <span className="font-sans">تصدير إكسيل ({filteredApps.length})</span>
+            </button>
+
             {(currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.ADMIN) && (
-              <button
-                type="button"
-                onClick={() => setShowBulkImportAppsModal(true)}
-                className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors border border-slate-800 cursor-pointer"
-                title="استيراد طلبات تقسيط مجمعة عبر شيت إكسيل"
-              >
-                <FileText className="h-4 w-4 text-emerald-400" />
-                <span className="font-sans">رفع طلبات بالك</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => generateApplicationsSampleTemplate(companies, financingPrograms)}
+                  className="bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 px-3 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="تحميل النموذج الاسترشادي الكامل مع دليل الحالات"
+                >
+                  <Download className="h-4 w-4 text-sky-600" />
+                  <span className="font-sans">النموذج الاسترشادي</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowBulkImportAppsModal(true)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors border border-slate-800 cursor-pointer"
+                  title="استيراد وتحديث طلبات تقسيط مجمعة عبر شيت إكسيل"
+                >
+                  <Upload className="h-4 w-4 text-emerald-400" />
+                  <span className="font-sans">رفع وتحديث بالك</span>
+                </button>
+              </>
             )}
             <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl font-bold border border-slate-200">
               إجمالي النتائج: <strong className="text-slate-950">{filteredApps.length}</strong> من أصل {applications.length}
