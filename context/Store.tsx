@@ -258,6 +258,7 @@ interface StoreContextType {
     client: Partial<Client>;
     application: Partial<Application>;
   }>) => Promise<{ importedCount: number; updatedCount: number; errors: string[] }>;
+  refreshCloudData: () => Promise<void>;
 
   // System & Navigation
   addNotification: (
@@ -406,14 +407,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const [applications, setApplications] = useState<Application[]>(() => {
     try {
+      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
       const saved = localStorage.getItem('cropsa_applications');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
       }
-      return MOCK_APPLICATIONS;
+      return [];
     } catch {
-      return MOCK_APPLICATIONS;
+      return [];
     }
   });
 
@@ -1089,7 +1091,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const existing = companyMap.get(c.id) || MOCK_COMPANIES.find(m => m.id === c.id);
             if (existing) {
               // Existing company with full rich settings (fraLicense, default interest/admin fee, status, documents):
-              // preserve existing rich fields and update relational columns if provided
+              // preserve existing rich fields and update relational columns if provided, preserving user-edited rates & governorates
               companyMap.set(c.id, {
                 ...existing,
                 name: c.name || existing.name,
@@ -1100,10 +1102,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 phone: c.phone || existing.phone || '',
                 commercialRegister: c.commercial_register || existing.commercialRegister || '',
                 taxNumber: c.tax_number || existing.taxNumber || '',
-                creditCeiling: c.credit_ceiling !== undefined && c.credit_ceiling !== null ? Number(c.credit_ceiling) : existing.creditCeiling,
+                creditCeiling: (existing.creditCeiling !== undefined && existing.creditCeiling !== null) ? existing.creditCeiling : (c.credit_ceiling !== undefined && c.credit_ceiling !== null ? Number(c.credit_ceiling) : 20000000),
                 usedCredit: c.used_credit !== undefined && c.used_credit !== null ? Number(c.used_credit) : existing.usedCredit,
-                commissionRate: c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : (existing.commissionRate !== undefined ? existing.commissionRate : 0),
-                allowedGovernorates: (c.allowed_governorates && c.allowed_governorates.length > 0) ? c.allowed_governorates : existing.allowedGovernorates,
+                commissionRate: (existing.commissionRate !== undefined && existing.commissionRate !== null) ? existing.commissionRate : (c.commission_rate !== undefined && c.commission_rate !== null ? Number(c.commission_rate) : 0),
+                allowedGovernorates: (existing.allowedGovernorates && existing.allowedGovernorates.length > 0) ? existing.allowedGovernorates : ((c.allowed_governorates && c.allowed_governorates.length > 0) ? c.allowed_governorates : ['القاهرة', 'الجيزة']),
                 createdAt: existing.createdAt || c.created_at || new Date().toISOString()
               });
             } else {
@@ -1408,29 +1410,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           });
         }
 
-        // C. Merge applications from local storage (so offline/cached applications are NOT lost!)
-        if (!isWiped) {
+        // C. Fallback to localStorage ONLY IF cloud had NO data at all and system is not wiped
+        if (appMap.size === 0 && !isWiped) {
           try {
             const savedLocalApps = localStorage.getItem('cropsa_applications');
             if (savedLocalApps) {
               const parsed = JSON.parse(savedLocalApps);
               if (Array.isArray(parsed) && parsed.length > 0) {
-                let localNewFound = false;
                 parsed.forEach((a: Application) => {
-                  if (a && a.id && !appMap.has(a.id)) {
-                    appMap.set(a.id, a);
-                    localNewFound = true;
-                  }
+                  if (a && a.id) appMap.set(a.id, a);
                 });
-                if (localNewFound && supabase) {
-                  // Sync newly merged local apps up to Supabase!
-                  const mergedList = Array.from(appMap.values());
-                  supabase.from('system_settings').upsert({
-                    id: 'applications_data',
-                    data: mergedList,
-                    updated_at: new Date().toISOString()
-                  }).catch(console.warn);
-                }
               }
             }
           } catch (e) {}
@@ -1461,10 +1450,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     syncSupabaseInitialData();
 
-    // Setup Realtime listener across Supabase tables
+    // Setup Realtime listener and Broadcast channel across Supabase tables
     try {
       supabaseChannel = supabase
-        .channel('cropsa_system_settings_channel')
+        .channel('cropsa_system_settings_channel', { config: { broadcast: { self: false } } })
+        .on('broadcast', { event: 'cropsa_data_sync' }, async (payload: any) => {
+          if (!isMounted) return;
+          const syncType = payload?.payload?.type;
+          if (syncType === 'applications' || syncType === 'all') {
+            try {
+              const { data: appData } = await supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle();
+              if (appData?.data && Array.isArray(appData.data) && isMounted) {
+                setApplications(appData.data);
+                try { localStorage.setItem('cropsa_applications', JSON.stringify(appData.data)); } catch (e) {}
+              }
+            } catch (e) {}
+          }
+          if (syncType === 'companies' || syncType === 'all') {
+            try {
+              const { data: compData } = await supabase!.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle();
+              if (compData?.data && Array.isArray(compData.data) && isMounted) {
+                setCompanies(compData.data);
+                try { localStorage.setItem('cropsa_companies', JSON.stringify(compData.data)); } catch (e) {}
+              }
+            } catch (e) {}
+          }
+        })
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'system_settings' },
@@ -1716,13 +1727,82 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('Supabase realtime subscribe fallback:', e);
     }
 
+    let lastFocusSync = Date.now();
+    const handleFocusSync = async () => {
+      if (!supabase) return;
+      if (Date.now() - lastFocusSync > 5000) {
+        lastFocusSync = Date.now();
+        try {
+          const { data: appData } = await supabase.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle();
+          if (appData?.data && Array.isArray(appData.data) && isMounted) {
+            setApplications(appData.data);
+            try { localStorage.setItem('cropsa_applications', JSON.stringify(appData.data)); } catch (e) {}
+          }
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('focus', handleFocusSync);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleFocusSync();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (supabase && supabaseChannel) {
         supabase.removeChannel(supabaseChannel);
       }
     };
   }, []);
+
+  // Helper to broadcast data changes to all other connected tabs/browsers via Supabase Realtime Broadcast
+  const broadcastSync = (type: 'applications' | 'companies' | 'all') => {
+    if (!supabase) return;
+    try {
+      const channel = supabase.channel('cropsa_system_settings_channel', { config: { broadcast: { self: false } } });
+      channel.send({
+        type: 'broadcast',
+        event: 'cropsa_data_sync',
+        payload: { type, timestamp: Date.now() }
+      }).catch(() => {});
+    } catch (e) {}
+  };
+
+  // Force-pull fresh cloud data from Supabase directly into state & local storage
+  const refreshCloudData = async () => {
+    if (!supabase) return;
+    try {
+      const [appSettingRes, appRes, compSettingRes] = await Promise.all([
+        supabase.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle(),
+        supabase.from('applications').select('*'),
+        supabase.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle()
+      ]);
+
+      if (appSettingRes?.data && 'data' in appSettingRes.data && Array.isArray(appSettingRes.data.data) && appSettingRes.data.data.length > 0) {
+        setApplications(appSettingRes.data.data);
+        try {
+          localStorage.setItem('cropsa_applications', JSON.stringify(appSettingRes.data.data));
+        } catch (e) {}
+      } else if (appRes?.data && appRes.data.length > 0) {
+        const mapped = appRes.data.map((r: any) => mapApplicationRow(r));
+        setApplications(mapped);
+        try {
+          localStorage.setItem('cropsa_applications', JSON.stringify(mapped));
+        } catch (e) {}
+      }
+
+      if (compSettingRes?.data?.data && Array.isArray(compSettingRes.data.data) && compSettingRes.data.data.length > 0) {
+        setCompanies(compSettingRes.data.data);
+        try {
+          localStorage.setItem('cropsa_companies', JSON.stringify(compSettingRes.data.data));
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('refreshCloudData error:', err);
+    }
+  };
 
   // Helper: add audit log
   const addAuditLog = async (action: string, details: string, referenceId?: string) => {
@@ -2570,19 +2650,35 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       createdAt: new Date().toISOString()
     };
 
-    let updatedComps: InstallmentCompany[] = [];
-    setCompanies(prev => {
-      updatedComps = [...prev.filter(c => c.id !== compId), newComp];
-      try { localStorage.setItem('cropsa_companies', JSON.stringify(updatedComps)); } catch (e) {}
-      return updatedComps;
-    });
+    let currentComps = companies.length > 0 ? companies : [];
+    if (currentComps.length === 0) {
+      try {
+        const s = localStorage.getItem('cropsa_companies');
+        if (s) {
+          const parsed = JSON.parse(s);
+          if (Array.isArray(parsed) && parsed.length > 0) currentComps = parsed;
+        }
+      } catch {}
+    }
+    if (currentComps.length === 0) currentComps = MOCK_COMPANIES;
+    const updatedComps = [...currentComps.filter(c => c.id !== compId), newComp];
+    setCompanies(updatedComps);
+    try { localStorage.setItem('cropsa_companies', JSON.stringify(updatedComps)); } catch (e) {}
 
-    let updatedUsers: User[] = [];
-    setUsers(prev => {
-      updatedUsers = [...prev.filter(u => u.id !== initialAdmin.id), initialAdmin];
-      try { localStorage.setItem('cropsa_staff_users', JSON.stringify(updatedUsers)); } catch (e) {}
-      return updatedUsers;
-    });
+    let currentUsers = users.length > 0 ? users : [];
+    if (currentUsers.length === 0) {
+      try {
+        const s = localStorage.getItem('cropsa_staff_users');
+        if (s) {
+          const parsed = JSON.parse(s);
+          if (Array.isArray(parsed) && parsed.length > 0) currentUsers = parsed;
+        }
+      } catch {}
+    }
+    if (currentUsers.length === 0) currentUsers = MOCK_USERS;
+    const updatedUsers = [...currentUsers.filter(u => u.id !== initialAdmin.id), initialAdmin];
+    setUsers(updatedUsers);
+    try { localStorage.setItem('cropsa_staff_users', JSON.stringify(updatedUsers)); } catch (e) {}
 
     // Clean up deleted_company_ids if resurrected
     try {
@@ -2676,6 +2772,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     addAuditLog('CREATE_COMPANY', `Added installment company ${newComp.name}`, compId);
     addNotification('u_super', `تم تسجيل شركة تقسيط جديدة: ${newComp.name}`, 'SUCCESS', compId);
+    broadcastSync('companies');
   };
 
   const updateCompany = async (companyId: string, updates: Partial<InstallmentCompany>) => {
@@ -2761,6 +2858,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('Firestore updateCompany fallback:', err);
     }
     addAuditLog('UPDATE_COMPANY', `Updated profile of company ${companyId}`, companyId);
+    broadcastSync('companies');
   };
 
   const updateCompanyAdminCredentials = async (companyId: string, creds: { username?: string; email?: string; password?: string }) => {
@@ -2892,28 +2990,22 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch {}
 
     // 2. Synchronously filter companies
-    let nextComps: InstallmentCompany[] = [];
-    setCompanies(prev => {
-      nextComps = prev.filter(c => c.id !== companyId);
-      try { localStorage.setItem('cropsa_companies', JSON.stringify(nextComps)); } catch (e) {}
-      return nextComps;
-    });
+    const currentComps = companies.length > 0 ? companies : [];
+    const nextComps = currentComps.filter(c => c.id !== companyId);
+    setCompanies(nextComps);
+    try { localStorage.setItem('cropsa_companies', JSON.stringify(nextComps)); } catch (e) {}
 
     // 3. Synchronously filter branches
-    let nextBranches: CompanyBranch[] = [];
-    setBranches(prev => {
-      nextBranches = prev.filter(b => b.companyId !== companyId);
-      try { localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches)); } catch (e) {}
-      return nextBranches;
-    });
+    const currentBranches = branches.length > 0 ? branches : [];
+    const nextBranches = currentBranches.filter(b => b.companyId !== companyId);
+    setBranches(nextBranches);
+    try { localStorage.setItem('cropsa_branches', JSON.stringify(nextBranches)); } catch (e) {}
 
     // 4. Synchronously filter financing programs for that company
-    let nextPrograms: FinancingProgram[] = [];
-    setFinancingPrograms(prev => {
-      nextPrograms = prev.filter(p => p.companyId !== companyId);
-      try { localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms)); } catch (e) {}
-      return nextPrograms;
-    });
+    const currentPrograms = financingPrograms.length > 0 ? financingPrograms : [];
+    const nextPrograms = currentPrograms.filter(p => p.companyId !== companyId);
+    setFinancingPrograms(nextPrograms);
+    try { localStorage.setItem('cropsa_financing_programs', JSON.stringify(nextPrograms)); } catch (e) {}
 
     // 5. Persist to Supabase
     if (supabase) {
@@ -2950,6 +3042,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch (err) {}
 
     addAuditLog('DELETE_COMPANY', `Deleted company ${companyId}`, companyId);
+    broadcastSync('companies');
   };
 
   const createBranch = async (branchData: Partial<CompanyBranch>) => {
@@ -4172,6 +4265,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (autoOfficerId) {
       addNotification(autoOfficerId, `طلب تمويل جديد مسند إليك لدراسته للعميل ${newApp.clientName} (${appGov})`, 'INFO', appId, undefined, 'APPLICATION', { targetOfficerId: autoOfficerId, targetBranchId: autoBranchId });
     }
+    broadcastSync('applications');
   };
 
   const updateApplication = async (appId: string, updates: Partial<Application>) => {
@@ -4313,6 +4407,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         );
       });
     }
+    broadcastSync('applications');
   };
 
   const deleteApplication = async (appId: string): Promise<boolean> => {
@@ -4360,6 +4455,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     addAuditLog('DELETE_APPLICATION', `Deleted application ${appId} (${appToDelete?.clientName || 'Unknown'}) by ${currentUser.name}`, appId);
+    broadcastSync('applications');
     return true;
   };
 
@@ -4628,22 +4724,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const updateCompanyRejectionReasons = async (companyId: string, reasons: string[]) => {
-    setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, rejectionReasons: reasons } : c));
-    try {
-      await updateDoc(doc(db, 'companies', companyId), { rejectionReasons: reasons });
-    } catch (err) {
-      console.warn('updateCompanyRejectionReasons fallback:', err);
-    }
+    await updateCompany(companyId, { rejectionReasons: reasons });
     addAuditLog('UPDATE_REJECTION_REASONS', `Updated standard rejection reasons for company ${companyId}`, companyId);
   };
 
   const updateCompanyWorkflowConfig = async (companyId: string, config: CompanyWorkflowConfig) => {
-    setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, workflowConfig: config } : c));
-    try {
-      await updateDoc(doc(db, 'companies', companyId), { workflowConfig: config });
-    } catch (err) {
-      console.warn('updateCompanyWorkflowConfig fallback:', err);
-    }
+    await updateCompany(companyId, { workflowConfig: config });
     addAuditLog('UPDATE_WORKFLOW_CONFIG', `Updated workflow stages scheme for company ${companyId}`, companyId);
     addNotification(companyId, 'تم تحديث وتخصيص مخطط ومراحل مسار دراسة الطلبات للشركة بنجاح', 'SUCCESS');
   };
@@ -7436,6 +7522,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       `استيراد وتحديث مجمع: تم إضافة ${importedCount} طلب جديد وتحديث ${updatedCount} حالة قائمة عبر شيت إكسل`,
       currentUser.id
     );
+    broadcastSync('applications');
 
     return { importedCount, updatedCount, errors };
   };
@@ -8176,6 +8263,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       renewInstallment,
       bulkImportClients,
       bulkImportApplications,
+      refreshCloudData,
       addNotification,
       markNotificationRead,
       addAuditLog,

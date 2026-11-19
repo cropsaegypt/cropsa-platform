@@ -43,7 +43,8 @@ import {
   Sparkles,
   UserCheck,
   FileSpreadsheet,
-  Upload
+  Upload,
+  RefreshCw
 } from 'lucide-react';
 import { ApplicationForm } from '../components/ApplicationForm';
 import { ClientDetailModal } from '../components/ClientDetailModal';
@@ -103,7 +104,8 @@ export const Applications: React.FC = () => {
     deleteApplication,
     expediteApplication,
     pendingNavigation, 
-    setNavigation 
+    setNavigation,
+    refreshCloudData 
   } = useStore();
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -112,6 +114,23 @@ export const Applications: React.FC = () => {
   const [isDeletingApp, setIsDeletingApp] = useState(false);
   const [isAddingSalesmanDirect, setIsAddingSalesmanDirect] = useState(false);
   const [newSalesmanDirectInput, setNewSalesmanDirectInput] = useState('');
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const handleManualCloudSync = async () => {
+    setIsSyncingCloud(true);
+    setSyncFeedback(null);
+    try {
+      await refreshCloudData();
+      setSyncFeedback('تمت مزامنة كافة حالات التمويل السحابية بنجاح ☁️');
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } catch {
+      setSyncFeedback('تعذر الاتصال بالسحابة للمزامنة');
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
 
   const allSalesmen = React.useMemo(() => {
     const names = new Set<string>();
@@ -596,6 +615,17 @@ export const Applications: React.FC = () => {
 
             <button
               type="button"
+              onClick={handleManualCloudSync}
+              disabled={isSyncingCloud}
+              className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 hover:border-blue-400 px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+              title="مزامنة فورية لكافة الحالات مباشرة من السحابة وتجاوز أي كاش محلي"
+            >
+              <RefreshCw className={`h-4 w-4 text-blue-600 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              <span className="font-sans">مزامنة سحابية فورية</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => exportApplicationsToExcel(filteredApps, 'حالات_التقسيط_منظومة_كروبسا')}
               className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 hover:border-emerald-400 px-3.5 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               title="تحميل ملف إكسيل كامل لكافة الحالات الظاهرة لتحديثها أو حفظها على جهازك"
@@ -632,6 +662,32 @@ export const Applications: React.FC = () => {
             </span>
           </div>
         </div>
+
+        {/* Sync Feedback Alert */}
+        {syncFeedback && (
+          <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{syncFeedback}</span>
+            </div>
+            <button type="button" onClick={() => setSyncFeedback(null)} className="text-emerald-700 hover:text-emerald-900 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Role Scoping Notice */}
+        {currentUser && currentUser.role !== Role.SUPER_ADMIN && currentUser.role !== Role.ADMIN && (
+          <div className="bg-amber-50/90 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-xl text-xs font-medium flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                أنت مسجل بحساب: <strong>{currentUser.name}</strong> ({currentUser.role === Role.INSTALLMENT_COMPANY ? 'شركة تقسيط' : currentUser.role === Role.SALESMAN ? 'مسؤول مبيعات' : currentUser.role === Role.BRANCH_MANAGER ? 'مدير فرع' : currentUser.role}) — يتم عرض الحالات المخصصة لحسابك فقط ({filteredApps.length} طلب من إجمالي {applications.length} طلب سحابي).
+              </span>
+            </div>
+            <span className="text-[11px] bg-amber-200/70 text-amber-900 font-bold px-2 py-0.5 rounded-md">عزل صلاحيات دور المستخدم</span>
+          </div>
+        )}
 
         {/* Financing Companies Interactive Cards Grid (مربعات شركات التمويل واللوجو) */}
         <div className="space-y-2.5">
