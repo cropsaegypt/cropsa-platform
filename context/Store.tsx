@@ -407,11 +407,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const [applications, setApplications] = useState<Application[]>(() => {
     try {
-      if (localStorage.getItem('cropsa_demo_data_wiped') === 'true') return [];
       const saved = localStorage.getItem('cropsa_applications');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
       return [];
     } catch {
@@ -491,7 +490,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   useEffect(() => {
     try {
-      localStorage.setItem('cropsa_applications', JSON.stringify(applications));
+      if (applications && applications.length > 0) {
+        localStorage.setItem('cropsa_applications', JSON.stringify(applications));
+      }
     } catch (e) {
       console.warn('Failed to persist applications to localStorage:', e);
     }
@@ -890,7 +891,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     async function syncSupabaseInitialData() {
       try {
-        // Fetch all primary database collections concurrently for instant rendering
+        const safeFetch = async <T,>(p: Promise<T>): Promise<T | { data: null; error: any }> => {
+          try {
+            return await p;
+          } catch (e) {
+            console.warn('Safe fetch caught error:', e);
+            return { data: null, error: e } as any;
+          }
+        };
+
+        // Fetch all primary database collections concurrently with resilience
         const [
           brandingRes,
           companiesRes,
@@ -913,26 +923,26 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           salesRepsRes,
           salesTargetsRes
         ] = await Promise.all([
-          supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle(),
-          supabase!.from('companies').select('*'),
-          supabase!.from('company_branches').select('*'),
-          supabase!.from('clients').select('*'),
-          supabase!.from('users').select('*'),
-          supabase!.from('applications').select('*'),
-          supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'smtp_config').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'external_dispatch_templates').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'system_demo_wiped').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'company_branches_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'users_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'financing_programs').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'clients_data').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'deleted_company_ids').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'inbox_messages').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'deleted_inbox_ids').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'sales_representatives').maybeSingle(),
-          supabase!.from('system_settings').select('data').eq('id', 'sales_targets').maybeSingle()
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'branding').maybeSingle()),
+          safeFetch(supabase!.from('companies').select('*')),
+          safeFetch(supabase!.from('company_branches').select('*')),
+          safeFetch(supabase!.from('clients').select('*')),
+          safeFetch(supabase!.from('users').select('*')),
+          safeFetch(supabase!.from('applications').select('*')),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'smtp_config').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'external_dispatch_templates').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'system_demo_wiped').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'company_branches_data').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'users_data').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'financing_programs').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'clients_data').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'deleted_company_ids').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'inbox_messages').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'deleted_inbox_ids').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'sales_representatives').maybeSingle()),
+          safeFetch(supabase!.from('system_settings').select('data').eq('id', 'sales_targets').maybeSingle())
         ]);
 
         const isRemoteWiped = demoWipedRes?.data?.data?.wiped === true;
@@ -1403,15 +1413,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
 
         // B. Merge applications from relational table
-        if (appRes?.data && appRes.data.length > 0) {
+        if (appRes?.data && Array.isArray(appRes.data) && appRes.data.length > 0) {
           appRes.data.forEach((a: any) => {
             const existingMock = appMap.get(a.id);
             appMap.set(a.id, mapApplicationRow(a, existingMock));
           });
         }
 
-        // C. Fallback to localStorage ONLY IF cloud had NO data at all and system is not wiped
-        if (appMap.size === 0 && !isWiped) {
+        // C. Fallback to localStorage if cloud had NO data
+        if (appMap.size === 0) {
           try {
             const savedLocalApps = localStorage.getItem('cropsa_applications');
             if (savedLocalApps) {
@@ -1425,12 +1435,28 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           } catch (e) {}
         }
 
+        // D. Cloud direct retry if still empty
+        if (appMap.size === 0 && supabase) {
+          try {
+            const retryRes = await supabase.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle();
+            if (retryRes?.data && 'data' in retryRes.data && Array.isArray(retryRes.data.data) && retryRes.data.data.length > 0) {
+              retryRes.data.data.forEach((a: Application) => {
+                if (a && a.id) appMap.set(a.id, a);
+              });
+            }
+          } catch (e) {}
+        }
+
         if (isMounted) {
           const finalApps = Array.from(appMap.values());
-          setApplications(finalApps);
-          try {
-            localStorage.setItem('cropsa_applications', JSON.stringify(finalApps));
-          } catch {}
+          if (finalApps.length > 0 || !isWiped) {
+            setApplications(finalApps);
+            if (finalApps.length > 0) {
+              try {
+                localStorage.setItem('cropsa_applications', JSON.stringify(finalApps));
+              } catch {}
+            }
+          }
         }
 
         if (isWiped && isMounted) {
@@ -1774,22 +1800,36 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const refreshCloudData = async () => {
     if (!supabase) return;
     try {
+      const safeFetch = async <T,>(p: Promise<T>): Promise<T | { data: null; error: any }> => {
+        try { return await p; } catch (e) { return { data: null, error: e } as any; }
+      };
+
       const [appSettingRes, appRes, compSettingRes] = await Promise.all([
-        supabase.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle(),
-        supabase.from('applications').select('*'),
-        supabase.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle()
+        safeFetch(supabase.from('system_settings').select('data').eq('id', 'applications_data').maybeSingle()),
+        safeFetch(supabase.from('applications').select('*')),
+        safeFetch(supabase.from('system_settings').select('data').eq('id', 'companies_data').maybeSingle())
       ]);
 
+      const appMap = new Map<string, Application>();
+
       if (appSettingRes?.data && 'data' in appSettingRes.data && Array.isArray(appSettingRes.data.data) && appSettingRes.data.data.length > 0) {
-        setApplications(appSettingRes.data.data);
+        appSettingRes.data.data.forEach((a: Application) => {
+          if (a && a.id) appMap.set(a.id, a);
+        });
+      }
+
+      if (appRes?.data && Array.isArray(appRes.data) && appRes.data.length > 0) {
+        appRes.data.forEach((r: any) => {
+          const existing = appMap.get(r.id);
+          appMap.set(r.id, mapApplicationRow(r, existing));
+        });
+      }
+
+      if (appMap.size > 0) {
+        const appsList = Array.from(appMap.values());
+        setApplications(appsList);
         try {
-          localStorage.setItem('cropsa_applications', JSON.stringify(appSettingRes.data.data));
-        } catch (e) {}
-      } else if (appRes?.data && appRes.data.length > 0) {
-        const mapped = appRes.data.map((r: any) => mapApplicationRow(r));
-        setApplications(mapped);
-        try {
-          localStorage.setItem('cropsa_applications', JSON.stringify(mapped));
+          localStorage.setItem('cropsa_applications', JSON.stringify(appsList));
         } catch (e) {}
       }
 

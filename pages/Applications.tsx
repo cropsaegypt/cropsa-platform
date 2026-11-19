@@ -132,6 +132,21 @@ export const Applications: React.FC = () => {
     }
   };
 
+  // Automatically refresh cloud applications on mount to ensure all browsers and devices show the exact same live state
+  useEffect(() => {
+    refreshCloudData();
+  }, []);
+
+  // Resilience check: if applications list is empty after initial mount, trigger a cloud re-fetch
+  useEffect(() => {
+    if (applications.length === 0) {
+      const timer = setTimeout(() => {
+        refreshCloudData();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [applications.length]);
+
   const allSalesmen = React.useMemo(() => {
     const names = new Set<string>();
     users.filter(u => u.role === Role.SALESMAN).forEach(u => names.add(u.name));
